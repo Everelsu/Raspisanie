@@ -1,0 +1,163 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- ============================================ -->
+    <!-- ОБЩИЕ ЦВЕТА (Используются в layouts) -->
+    <!-- ============================================ -->
+    
+    <!-- Основной фон для светлой темы -->
+    <color name="background">#FFFFFF</color>
+    
+    <!-- Основной фон для темной темы -->
+    <color name="backgroundDark">#000000</color>
+    
+    <!-- Вторичный фон (используется редко) -->
+    <color name="backgroundSecondary">#F5F5F5</color>
+    
+    <!-- Фон карточек настроек (дефолт для дневной темы) -->
+    <color name="settingsCardBg">#F5F5F5</color>
+    
+    <!-- Основной цвет текста для светлой темы -->
+    <color name="textPrimary">#000000</color>
+    
+    <!-- Вторичный цвет текста для светлой темы -->
+    <color name="textSecondary">#666666</color>
+    
+    <!-- Цвет разделителей для светлой темы -->
+    <color name="divider">#E0E0E0</color>
+    
+    <!-- Цвет разделителей для темной темы -->
+    <color name="dividerDark">#333333</color>
+    
+    <!-- Фон для номеров пар (светлая тема) -->
+    <color name="lessonNumberBg">#F5F5F5</color>
+    
+    <!-- Обводка для номеров пар (светлая тема) -->
+    <color name="lessonNumberStroke">#E8E8E8</color>
+    
+    <!-- Фон для подгрупп (светлая тема) -->
+    <color name="subgroupBg">#F0F0F0</color>
+    
+    <!-- Цвет ошибок -->
+    <color name="error">#FF3333</color>
+    
+    <!-- ============================================ -->
+    <!-- ЦВЕТА ДЛЯ ТЕМ -->
+    <!-- ============================================ -->
+    
+    <!-- ===== СВЕТЛАЯ ТЕМА ===== -->
+    <!-- Темная: фон #000000, текст #FFFFFF, primary #FFFFFF -->
+    <!-- Светлая: фон #FFFFFF, текст #000000, primary #000000 -->
+    <color name="light_windowBackground">#FFFFFF</color>
+    <color name="light_colorPrimary">#000000</color>
+    <color name="light_colorOnPrimary">#FFFFFF</color>
+    <color name="light_colorPrimaryVariant">#000000</color>
+    <color name="light_colorSurface">#FFFFFF</color>
+    <color name="light_colorOnSurface">#000000</color>
+    <color name="light_settingsCardBg">#F5F5F5</color>
+    <color name="light_navigationBarColor">#FFFFFF</color>
+    <color name="light_textColor">#000000</color>
+    <color name="light_textColorPrimary">#000000</color>
+    <color name="light_textColorSecondary">#666666</color>
+    <color name="light_colorBackground">#FFFFFF</color>
+    <color name="light_colorOnBackground">#000000</color>
+    <!-- Lesson number colors (инвертированы от темной, обводка того же цвета что фон - не видна) -->
+    <color name="light_lessonNumberBg">#F5F5F5</color>
+    <color name="light_lessonNumberStroke">#FFFFFF</color>
+    <!-- Switch colors -->
+    <color name="light_switchThumbChecked">#000000</color>
+    <color name="light_switchThumbUnchecked">#FFFFFF</color>
+    <color name="light_switchTrackChecked">#40000000</color>
+    <color name="light_switchTrackUnchecked">#1F000000</color>
+    
+    <!-- ===== ТЕМНАЯ ТЕМА ===== -->
+    <color name="dark_windowBackground">#000000</color>
+    <color name="dark_colorPrimary">#FFFFFF</color>
+    <color name="dark_colorOnPrimary">#000000</color>
+    <color name="dark_colorPrimaryVariant">#FFFFFF</color>
+    <color name="dark_colorSurface">#000000</color>
+    <color name="dark_colorOnSurface">#FFFFFF</color>
+    <color name="dark_settingsCardBg">#1A1A1A</color>
+    <color name="dark_navigationBarColor">#000000</color>
+    <color name="dark_textColor">#FFFFFF</color>
+    <color name="dark_textColorPrimary">#FFFFFF</color>
+    <color name="dark_textColorSecondary">#999999</color>
+    <color name="dark_colorBackground">#000000</color>
+    <color name="dark_colorOnBackground">#FFFFFF</color>
+    <!-- Lesson number colors -->
+    <color name="dark_lessonNumberBg">#1A1A1A</color>
+    <color name="dark_lessonNumberStroke">#333333</color>
+    <!-- Switch colors -->
+    <color name="dark_switchThumbChecked">#FFFFFF</color>
+    <color name="dark_switchThumbUnchecked">#424242</color>
+    <color name="dark_switchTrackChecked">#66FFFFFF</color>
+    <color name="dark_switchTrackUnchecked">#33FFFFFF</color>
+    
+    <!-- ===== КАСТОМНАЯ ТЕМА (Темная основа с хеллоуин акцентами) ===== -->
+    <!-- Основана на Dark теме, но primary цвет - оранжевый хеллоуин вместо белого -->
+    <color name="custom_windowBackground">#000000</color>
+    <color name="custom_colorPrimary">#FF6B35</color>
+    <color name="custom_colorOnPrimary">#000000</color>
+    <color name="custom_colorPrimaryVariant">#FF8C42</color>
+    <color name="custom_colorSurface">#000000</color>
+    <color name="custom_colorOnSurface">#FFFFFF</color>
+    <color name="custom_settingsCardBg">#1A1A1A</color>
+    <color name="custom_navigationBarColor">#000000</color>
+    <color name="custom_textColor">#FFFFFF</color>
+    <color name="custom_textColorPrimary">#FFFFFF</color>
+    <color name="custom_textColorSecondary">#999999</color>
+    <color name="custom_colorBackground">#000000</color>
+    <color name="custom_colorOnBackground">#FFFFFF</color>
+    <!-- Lesson number colors (как в темной) -->
+    <color name="custom_lessonNumberBg">#1A1A1A</color>
+    <color name="custom_lessonNumberStroke">#333333</color>
+    <!-- Switch colors (хеллоуин оранжевый) -->
+    <color name="custom_switchThumbChecked">#FF6B35</color>
+    <color name="custom_switchThumbUnchecked">#424242</color>
+    <color name="custom_switchTrackChecked">#66FF6B35</color>
+    <color name="custom_switchTrackUnchecked">#33FFFFFF</color>
+    
+    <!-- ===== NOTHING ТЕМА (Красные акценты) ===== -->
+    <color name="nothing_windowBackground">#000000</color>
+    <color name="nothing_colorPrimary">#FF3333</color>
+    <color name="nothing_colorOnPrimary">#000000</color>
+    <color name="nothing_colorPrimaryVariant">#FF0000</color>
+    <color name="nothing_colorSecondary">#FF3333</color>
+    <color name="nothing_colorOnSecondary">#000000</color>
+    <color name="nothing_colorSurface">#0F0F0F</color>
+    <color name="nothing_colorOnSurface">#FFFFFF</color>
+    <color name="nothing_settingsCardBg">#111111</color>
+    <color name="nothing_navigationBarColor">#000000</color>
+    <color name="nothing_textColor">#FFFFFF</color>
+    <color name="nothing_textColorPrimary">#FFFFFF</color>
+    <color name="nothing_textColorSecondary">#666666</color>
+    <color name="nothing_colorBackground">#000000</color>
+    <color name="nothing_colorOnBackground">#FFFFFF</color>
+    <color name="nothing_actionMenuTextColor">#FF3333</color>
+    <color name="nothing_colorControlNormal">#FF3333</color>
+    <color name="nothing_colorControlActivated">#FF3333</color>
+    <!-- Lesson number colors (как в темной) -->
+    <color name="nothing_lessonNumberBg">#1A1A1A</color>
+    <color name="nothing_lessonNumberStroke">#333333</color>
+    <!-- Switch colors -->
+    <color name="nothing_switchThumbChecked">#FF3333</color>
+    <color name="nothing_switchThumbUnchecked">#424242</color>
+    <color name="nothing_switchTrackChecked">#66FF3333</color>
+    <color name="nothing_switchTrackUnchecked">#33FFFFFF</color>
+    
+    <!-- ============================================ -->
+    <!-- ============================================ -->
+    <!-- ДОПОЛНИТЕЛЬНЫЕ ЦВЕТА (используются в коде) -->
+    <!-- ============================================ -->
+    
+    <!-- Основной цвет для светлой темы (используется в MainActivity) -->
+    <color name="primaryLight">#000000</color>
+    
+    <!-- Основной цвет для темной темы (используется в MainActivity) -->
+    <color name="primaryDark">#FFFFFF</color>
+    
+    <!-- Основной цвет для Nothing темы (используется в MainActivity) -->
+    <color name="primaryNothing">#FF3333</color>
+    
+    <!-- Adaptive icon background -->
+    <color name="ic_launcher_bg">#000000</color>
+</resources>

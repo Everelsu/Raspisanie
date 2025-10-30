@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:background="@drawable/theme_card_bg"
+    android:padding="16dp"
+    android:minHeight="140dp"
+    android:clickable="true"
+    android:focusable="true"
+    android:foreground="?android:attr/selectableItemBackground">
+
+    <!-- Theme Preview -->
+    <View
+        android:id="@+id/themePreview"
+        android:layout_width="0dp"
+        android:layout_height="60dp"
+        android:layout_marginBottom="12dp"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
+
+    <!-- Theme Name -->
+    <TextView
+        android:id="@+id/themeName"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:text="Тема"
+        android:textSize="16sp"
+        android:textColor="?android:textColorPrimary"
+        android:textStyle="bold"
+        android:gravity="center"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/themePreview" />
+
+    <!-- Description -->
+    <TextView
+        android:id="@+id/themeDescription"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:text="Описание"
+        android:textSize="12sp"
+        android:textColor="?android:textColorSecondary"
+        android:gravity="center"
+        android:layout_marginTop="4dp"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/themeName" />
+
+    <!-- Radio Button Indicator -->
+    <View
+        android:id="@+id/radioIndicator"
+        android:layout_width="20dp"
+        android:layout_height="20dp"
+        android:layout_marginTop="8dp"
+        android:layout_marginEnd="8dp"
+        android:background="@drawable/theme_radio_indicator"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
+
+</androidx.constraintlayout.widget.ConstraintLayout>
+

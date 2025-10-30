@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Settings Section Title -->
+    <style name="SettingsSectionTitle">
+        <item name="android:textSize">12sp</item>
+        <item name="android:textColor">?android:textColorSecondary</item>
+        <item name="android:fontFamily">@font/inter</item>
+        <item name="android:textStyle">bold</item>
+        <item name="android:letterSpacing">0.02</item>
+        <item name="android:textAllCaps">true</item>
+    </style>
+    
+    <!-- Switch Material Style -->
+    <style name="SettingsSwitch" parent="Widget.Material3.CompoundButton.Switch">
+        <item name="thumbTint">?attr/switchThumbTint</item>
+        <item name="trackTint">?attr/switchTrackTint</item>
+        <item name="useMaterialThemeColors">false</item>
+        <item name="rippleColor">@color/switch_ripple</item>
+    </style>
+    
+    <!-- Material Button Style - override default purple -->
+    <style name="Widget.Raspisanie.Button" parent="Widget.Material3.Button">
+        <item name="backgroundTint">?attr/colorPrimary</item>
+        <item name="android:textColor">?attr/colorOnPrimary</item>
+    </style>
+    
+    <style name="Widget.Raspisanie.Button.TextButton" parent="Widget.Material3.Button.TextButton">
+        <item name="android:textColor">?attr/colorPrimary</item>
+    </style>
+    
+    <style name="Widget.Raspisanie.Button.OutlinedButton" parent="Widget.Material3.Button.OutlinedButton">
+        <item name="strokeColor">?attr/colorPrimary</item>
+        <item name="android:textColor">?attr/colorPrimary</item>
+    </style>
+</resources>
