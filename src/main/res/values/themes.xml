@@ -30,6 +30,13 @@
         <item name="colorOnPrimary">@color/light_colorOnPrimary</item>
         <item name="colorPrimaryVariant">@color/light_colorPrimaryVariant</item>
         
+        <!-- Material3 dynamic colors - убираем фиолетовый -->
+        <item name="colorSecondary">@color/light_colorPrimary</item>
+        <item name="colorTertiary">@color/light_colorPrimary</item>
+        <item name="colorPrimaryContainer">@color/light_colorPrimary</item>
+        <item name="colorSecondaryContainer">@color/light_colorPrimary</item>
+        <item name="colorTertiaryContainer">@color/light_colorPrimary</item>
+        
         <!-- Цвет поверхности (инвертирован: #000000 -> #FFFFFF) -->
         <item name="colorSurface">@color/light_colorSurface</item>
         <item name="colorOnSurface">@color/light_colorOnSurface</item>
@@ -66,13 +73,14 @@
         <!-- Button styles to override Material3 purple -->
         <item name="materialButtonStyle">@style/Widget.Raspisanie.Button</item>
         <item name="buttonStyle">@style/Widget.Raspisanie.Button</item>
-        <!-- Apply Switch style to disable MaterialThemeColors purple -->
-        <item name="switchStyle">@style/SettingsSwitch</item>
         <!-- Switch colors -->
         <item name="switchThumbTint">@color/switch_thumb_light</item>
         <item name="switchTrackTint">@color/switch_track_light</item>
         <item name="thumbTint">@color/switch_thumb_light</item>
         <item name="trackTint">@color/switch_track_light</item>
+        <!-- Ripple colors - убираем фиолетовый -->
+        <item name="colorControlHighlight">@color/switch_ripple</item>
+        <item name="android:colorControlHighlight">@color/switch_ripple</item>
         <!-- Lesson number colors -->
         <item name="lessonNumberBg">@color/light_lessonNumberBg</item>
         <item name="lessonNumberStroke">@color/light_lessonNumberStroke</item>
@@ -88,6 +96,13 @@
         <item name="colorPrimary">@color/dark_colorPrimary</item>
         <item name="colorOnPrimary">@color/dark_colorOnPrimary</item>
         <item name="colorPrimaryVariant">@color/dark_colorPrimaryVariant</item>
+        
+        <!-- Material3 dynamic colors - убираем фиолетовый -->
+        <item name="colorSecondary">@color/dark_colorPrimary</item>
+        <item name="colorTertiary">@color/dark_colorPrimary</item>
+        <item name="colorPrimaryContainer">@color/dark_colorPrimary</item>
+        <item name="colorSecondaryContainer">@color/dark_colorPrimary</item>
+        <item name="colorTertiaryContainer">@color/dark_colorPrimary</item>
         
         <!-- Цвет поверхности -->
         <item name="colorSurface">@color/dark_colorSurface</item>
@@ -125,12 +140,14 @@
         <!-- Button styles to override Material3 purple -->
         <item name="materialButtonStyle">@style/Widget.Raspisanie.Button</item>
         <item name="buttonStyle">@style/Widget.Raspisanie.Button</item>
-        <item name="switchStyle">@style/SettingsSwitch</item>
         <!-- Switch colors -->
         <item name="switchThumbTint">@color/switch_thumb_dark</item>
         <item name="switchTrackTint">@color/switch_track_dark</item>
         <item name="thumbTint">@color/switch_thumb_dark</item>
         <item name="trackTint">@color/switch_track_dark</item>
+        <!-- Ripple colors - убираем фиолетовый -->
+        <item name="colorControlHighlight">@color/switch_ripple</item>
+        <item name="android:colorControlHighlight">@color/switch_ripple</item>
         <!-- Lesson number colors -->
         <item name="lessonNumberBg">@color/dark_lessonNumberBg</item>
         <item name="lessonNumberStroke">@color/dark_lessonNumberStroke</item>
@@ -183,12 +200,14 @@
         <!-- Button styles to override Material3 purple -->
         <item name="materialButtonStyle">@style/Widget.Raspisanie.Button</item>
         <item name="buttonStyle">@style/Widget.Raspisanie.Button</item>
-        <item name="switchStyle">@style/SettingsSwitch</item>
         <!-- Switch colors -->
         <item name="switchThumbTint">@color/switch_thumb_custom</item>
         <item name="switchTrackTint">@color/switch_track_custom</item>
         <item name="thumbTint">@color/switch_thumb_custom</item>
         <item name="trackTint">@color/switch_track_custom</item>
+        <!-- Ripple colors - убираем фиолетовый -->
+        <item name="colorControlHighlight">@color/switch_ripple</item>
+        <item name="android:colorControlHighlight">@color/switch_ripple</item>
         <!-- Lesson number colors -->
         <item name="lessonNumberBg">@color/custom_lessonNumberBg</item>
         <item name="lessonNumberStroke">@color/custom_lessonNumberStroke</item>
@@ -245,12 +264,14 @@
         <!-- Button styles to override Material3 purple -->
         <item name="materialButtonStyle">@style/Widget.Raspisanie.Button</item>
         <item name="buttonStyle">@style/Widget.Raspisanie.Button</item>
-        <item name="switchStyle">@style/SettingsSwitch</item>
         <!-- Switch colors -->
         <item name="switchThumbTint">@color/switch_thumb_nothing</item>
         <item name="switchTrackTint">@color/switch_track_nothing</item>
         <item name="thumbTint">@color/switch_thumb_nothing</item>
         <item name="trackTint">@color/switch_track_nothing</item>
+        <!-- Ripple colors - убираем фиолетовый -->
+        <item name="colorControlHighlight">@color/switch_ripple</item>
+        <item name="android:colorControlHighlight">@color/switch_ripple</item>
         <!-- Lesson number colors -->
         <item name="lessonNumberBg">@color/nothing_lessonNumberBg</item>
         <item name="lessonNumberStroke">@color/nothing_lessonNumberStroke</item>

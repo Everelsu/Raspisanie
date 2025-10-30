@@ -54,16 +54,15 @@
         android:paddingEnd="8dp">
 
         <LinearLayout
-            android:layout_width="match_parent"
+            android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:orientation="horizontal"
             android:gravity="center_vertical">
 
             <TextView
                 android:id="@+id/subject"
-                android:layout_width="0dp"
+                android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_weight="1"
                 android:text="Предмет"
                 android:textSize="16sp"
                 android:textColor="?android:textColorPrimary"
@@ -82,8 +81,6 @@
                 android:background="@drawable/subgroup_bg"
                 android:paddingHorizontal="6dp"
                 android:paddingVertical="2dp"
-                android:minWidth="20dp"
-                android:textAlignment="center"
                 android:visibility="gone" />
 
         </LinearLayout>

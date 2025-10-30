@@ -4,5 +4,4 @@
     <string name="select_group">Выберите группу</string>
     <string name="loading_groups">Загрузка групп...</string>
     <string name="no_group_selected">Не выбрано</string>
-    <string name="select_group_hint">Группа не выбрана. Откройте настройки и выберите группу.</string>
 </resources>

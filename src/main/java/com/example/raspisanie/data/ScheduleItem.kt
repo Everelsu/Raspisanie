@@ -18,4 +18,3 @@ data class DaySchedule(
     val items: List<ScheduleItem>
 )
 
-

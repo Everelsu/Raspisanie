@@ -14,8 +14,6 @@
     <style name="SettingsSwitch" parent="Widget.Material3.CompoundButton.Switch">
         <item name="thumbTint">?attr/switchThumbTint</item>
         <item name="trackTint">?attr/switchTrackTint</item>
-        <item name="useMaterialThemeColors">false</item>
-        <item name="rippleColor">@color/switch_ripple</item>
     </style>
     
     <!-- Material Button Style - override default purple -->

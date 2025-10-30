@@ -14,15 +14,15 @@ class ScheduleViewModel : ViewModel() {
     val isLoading: StateFlow<Boolean> = repository.isLoading
     val error: StateFlow<String?> = repository.error
 
-    fun loadSchedule(groupFile: String, baseUrl: String) {
+    fun loadSchedule(groupFile: String = "cg36.htm", college: String = com.example.raspisanie.data.PreferencesManager.COLLEGE_CHTOTIB) {
         viewModelScope.launch {
-            repository.refreshSchedule(groupFile, baseUrl)
+            repository.refreshSchedule(groupFile, college)
         }
     }
 
-    fun refreshSchedule(groupFile: String, baseUrl: String) {
+    fun refreshSchedule(groupFile: String = "cg36.htm", college: String = com.example.raspisanie.data.PreferencesManager.COLLEGE_CHTOTIB) {
         viewModelScope.launch {
-            repository.refreshSchedule(groupFile, baseUrl)
+            repository.refreshSchedule(groupFile, college)
         }
     }
 

@@ -10,12 +10,19 @@ import android.util.Log
 class ScheduleParser {
     companion object {
         private const val TAG = "ScheduleParser"
+        private const val BASE_URL_CHTOTIB = "https://www.chtotib.ru/schedule_gl/"
+        private const val BASE_URL_ZABGC = "https://bbb.zabgc.ru/"
     }
 
-    suspend fun fetchSchedule(groupFile: String, baseUrl: String): List<DaySchedule> = withContext(Dispatchers.IO) {
+    suspend fun fetchSchedule(groupFile: String = "cg36.htm", college: String = PreferencesManager.COLLEGE_CHTOTIB): List<DaySchedule> = withContext(Dispatchers.IO) {
         try {
-            val scheduleUrl = if (groupFile.startsWith("http")) groupFile else "$baseUrl$groupFile"
-            Log.d(TAG, "Начинаю загрузку расписания с $scheduleUrl")
+            val baseUrl = if (college == PreferencesManager.COLLEGE_ZABGC) {
+                BASE_URL_ZABGC
+            } else {
+                BASE_URL_CHTOTIB
+            }
+            val scheduleUrl = "$baseUrl$groupFile"
+            Log.d(TAG, "Начинаю загрузку расписания с $scheduleUrl (техникум: $college)")
             val doc: Document = Jsoup.connect(scheduleUrl)
                 .timeout(20000)
                 .userAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")

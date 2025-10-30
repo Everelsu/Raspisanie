@@ -9,11 +9,25 @@ import android.util.Log
 class GroupsListParser {
     companion object {
         private const val TAG = "GroupsListParser"
+        private const val GROUPS_LIST_URL_CHTOTIB = "https://www.chtotib.ru/schedule_gl/cg.htm"
+        private const val GROUPS_LIST_URL_ZABGC = "https://bbb.zabgc.ru/cg.htm"
     }
 
-    suspend fun fetchGroupsList(groupsListUrl: String): List<Group> = withContext(Dispatchers.IO) {
+    suspend fun fetchGroupsList(college: String = PreferencesManager.COLLEGE_CHTOTIB): List<Group> = withContext(Dispatchers.IO) {
         try {
-            Log.d(TAG, "Начинаю загрузку списка групп с $groupsListUrl")
+            val groupsListUrl = if (college == PreferencesManager.COLLEGE_ZABGC) {
+                GROUPS_LIST_URL_ZABGC
+            } else {
+                GROUPS_LIST_URL_CHTOTIB
+            }
+            
+            val baseUrl = if (college == PreferencesManager.COLLEGE_ZABGC) {
+                "https://bbb.zabgc.ru/"
+            } else {
+                "https://www.chtotib.ru/schedule_gl/"
+            }
+            
+            Log.d(TAG, "Начинаю загрузку списка групп с $groupsListUrl (техникум: $college)")
             val doc: Document = Jsoup.connect(groupsListUrl)
                 .timeout(20000)
                 .userAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
@@ -45,11 +59,11 @@ class GroupsListParser {
                             href
                         }.substringBefore("?") // Remove query params if any
                         
-                        if (groupName.isNotEmpty() && fileName.isNotEmpty() && fileName.endsWith(".htm")) {
+                        if (groupName.isNotEmpty() && fileName.isNotEmpty() && fileName.startsWith("cg") && fileName.endsWith(".htm")) {
                             groups.add(
                                 Group(
                                     name = groupName,
-                                    url = fileName, // store file name; full URL will be built by parser
+                                    url = "$baseUrl$fileName",
                                     fileName = fileName
                                 )
                             )

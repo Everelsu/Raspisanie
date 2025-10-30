@@ -3,5 +3,3 @@
     <item android:color="@color/light_switchThumbChecked" android:state_checked="true" />
     <item android:color="@color/light_switchThumbUnchecked" />
 </selector>
-
-

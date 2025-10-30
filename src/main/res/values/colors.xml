@@ -13,9 +13,6 @@
     <!-- Вторичный фон (используется редко) -->
     <color name="backgroundSecondary">#F5F5F5</color>
     
-    <!-- Фон карточек настроек (дефолт для дневной темы) -->
-    <color name="settingsCardBg">#F5F5F5</color>
-    
     <!-- Основной цвет текста для светлой темы -->
     <color name="textPrimary">#000000</color>
     
@@ -36,6 +33,9 @@
     
     <!-- Фон для подгрупп (светлая тема) -->
     <color name="subgroupBg">#F0F0F0</color>
+    
+    <!-- Фон для карточек настроек (светлая тема - используется как fallback) -->
+    <color name="settingsCardBg">#F5F5F5</color>
     
     <!-- Цвет ошибок -->
     <color name="error">#FF3333</color>
@@ -157,7 +157,4 @@
     
     <!-- Основной цвет для Nothing темы (используется в MainActivity) -->
     <color name="primaryNothing">#FF3333</color>
-    
-    <!-- Adaptive icon background -->
-    <color name="ic_launcher_bg">#000000</color>
 </resources>

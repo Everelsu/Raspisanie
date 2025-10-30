@@ -22,13 +22,13 @@ class ScheduleRepository {
     private val _error = MutableStateFlow<String?>(null)
     val error: StateFlow<String?> = _error.asStateFlow()
 
-    suspend fun refreshSchedule(groupFile: String, baseUrl: String) {
+    suspend fun refreshSchedule(groupFile: String = "cg36.htm", college: String = com.example.raspisanie.data.PreferencesManager.COLLEGE_CHTOTIB) {
         _isLoading.value = true
         _error.value = null
         
         try {
-            Log.d(TAG, "Начинаю обновление расписания: $groupFile (base=$baseUrl)")
-            val newSchedule = parser.fetchSchedule(groupFile, baseUrl)
+            Log.d(TAG, "Начинаю обновление расписания для группы: $groupFile, техникум: $college")
+            val newSchedule = parser.fetchSchedule(groupFile, college)
             Log.d(TAG, "Расписание получено: ${newSchedule.size} дней")
             _schedule.value = newSchedule
             if (newSchedule.isEmpty()) {

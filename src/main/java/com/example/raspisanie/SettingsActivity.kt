@@ -38,9 +38,8 @@ class SettingsActivity : AppCompatActivity() {
         
         setupToolbar()
         setupSwitches()
-        setupInstituteSelection()
+        setupCollegeSelection()
         setupGroupSelection()
-        
         setupThemeSelection()
         applyNothingFontIfNeeded()
         
@@ -53,8 +52,6 @@ class SettingsActivity : AppCompatActivity() {
             }
         }
     }
-
-    
     
     override fun onSaveInstanceState(outState: Bundle) {
         super.onSaveInstanceState(outState)
@@ -105,6 +102,49 @@ class SettingsActivity : AppCompatActivity() {
             finish()
         }
     }
+    
+    private fun setupCollegeSelection() {
+        val colleges = listOf(
+            "ЧТОТиБ" to PreferencesManager.COLLEGE_CHTOTIB,
+            "ЗабГК" to PreferencesManager.COLLEGE_ZABGC
+        )
+        
+        val collegeNames = colleges.map { it.first }
+        val adapter = ArrayAdapter(
+            this,
+            android.R.layout.simple_spinner_item,
+            collegeNames
+        ).apply {
+            setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        }
+        
+        binding.collegeSpinner.adapter = adapter
+        
+        // Выбрать текущий техникум
+        val currentIndex = colleges.indexOfFirst { it.second == prefs.college }
+        if (currentIndex >= 0) {
+            binding.collegeSpinner.setSelection(currentIndex)
+        }
+        
+        // Обработчик выбора
+        binding.collegeSpinner.onItemSelectedListener = object : android.widget.AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(parent: android.widget.AdapterView<*>?, view: android.view.View?, position: Int, id: Long) {
+                val selectedCollege = colleges[position].second
+                if (selectedCollege != prefs.college) {
+                    prefs.college = selectedCollege
+                    // Сбросить выбранную группу при смене техникума
+                    prefs.selectedGroupName = ""
+                    prefs.selectedGroupFile = ""
+                    // Перезагрузить список групп
+                    setupGroupSelection()
+                    setResult(RESULT_OK)
+                    Toast.makeText(this@SettingsActivity, "Выбран техникум: ${colleges[position].first}", Toast.LENGTH_SHORT).show()
+                }
+            }
+            
+            override fun onNothingSelected(parent: android.widget.AdapterView<*>?) {}
+        }
+    }
 
     private fun setupSwitches() {
         binding.switchShowBreaks.isChecked = prefs.showBreaks
@@ -133,109 +173,94 @@ class SettingsActivity : AppCompatActivity() {
 
     private fun setupGroupSelection() {
         // Показать текущую выбранную группу или "Не выбрано"
-        binding.selectedGroupName.text = if (prefs.isGroupSelected()) prefs.selectedGroupName else getString(R.string.no_group_selected)
-
+        binding.selectedGroupName.text = if (prefs.isGroupSelected()) {
+            prefs.selectedGroupName
+        } else {
+            getString(R.string.no_group_selected)
+        }
+        
+        // Загрузить список групп асинхронно
         val groupsParser = GroupsListParser()
         val spinner = binding.groupSpinner
-        val favButton = binding.btnToggleFavorite
-        var suppressGroupSpinnerCallback = false
-
+        
         lifecycleScope.launch {
             try {
-                val (groupsListUrl, _) = getInstituteUrls(prefs.institute)
-                if (groupsListUrl.isEmpty()) {
-                    spinner.isEnabled = false
-                    binding.selectedGroupName.text = getString(R.string.no_group_selected)
-                    return@launch
+                val groups = groupsParser.fetchGroupsList(prefs.college)
+                val groupNames = groups.map { it.name }.sorted()
+                
+                // Добавить "Не выбрано" в начало списка
+                val itemsWithNone = mutableListOf(getString(R.string.no_group_selected))
+                itemsWithNone.addAll(groupNames)
+                
+                val adapter = ArrayAdapter(
+                    this@SettingsActivity,
+                    android.R.layout.simple_spinner_item,
+                    itemsWithNone
+                ).apply {
+                    setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
                 }
-
-                val groups = groupsParser.fetchGroupsList(groupsListUrl)
-
-                fun updateFavButtonState() {
-                    val file = prefs.selectedGroupFile
-                    val isFav = file.isNotEmpty() && prefs.isFavorite(prefs.institute, file)
-                    favButton.text = if (isFav) "★" else "☆"
+                
+                spinner.adapter = adapter
+                
+                // Выбрать текущую группу в списке или "Не выбрано"
+                val currentIndex = if (prefs.isGroupSelected()) {
+                    itemsWithNone.indexOf(prefs.selectedGroupName)
+                } else {
+                    0 // "Не выбрано"
                 }
-
-                fun buildItems(): Pair<List<String>, Map<String, String>> {
-                    val allNames = groups.map { it.name }
-                    val favorites = prefs.getFavoriteGroups(prefs.institute).filter { fg -> allNames.contains(fg.name) }
-                    val favNames = favorites.map { "★ " + it.name }
-                    val others = allNames.filter { n -> favorites.none { it.name == n } }.sorted()
-                    val items = mutableListOf(getString(R.string.no_group_selected)).apply {
-                        addAll(favNames)
-                        addAll(others)
-                    }
-                    // map label -> pure name
-                    val map = (favNames.map { it to it.removePrefix("★ ") } + others.map { it to it }).toMap()
-                    return items to map
+                if (currentIndex >= 0) {
+                    spinner.setSelection(currentIndex)
                 }
-
-                fun applyAdapterAndSelection() {
-                    val (items, labelToName) = buildItems()
-                    val adapter = ArrayAdapter(this@SettingsActivity, android.R.layout.simple_spinner_item, items).apply {
-                        setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
-                    }
-                    spinner.adapter = adapter
-                    val current = prefs.selectedGroupName
-                    val currentLabel = if (current.isNotEmpty() && items.contains("★ $current")) "★ $current" else current
-                    val idx = items.indexOf(currentLabel).let { if (it >= 0) it else 0 }
-                    suppressGroupSpinnerCallback = true
-                    spinner.setSelection(idx)
-                    suppressGroupSpinnerCallback = false
-
-                    spinner.onItemSelectedListener = object : android.widget.AdapterView.OnItemSelectedListener {
-                        override fun onItemSelected(parent: android.widget.AdapterView<*>?, view: android.view.View?, position: Int, id: Long) {
-                            if (suppressGroupSpinnerCallback) return
-                            val selectedLabel = items[position]
-                            if (position == 0) {
-                                if (prefs.isGroupSelected()) {
-                                    prefs.selectedGroupName = ""
-                                    prefs.selectedGroupFile = ""
-                                    binding.selectedGroupName.text = getString(R.string.no_group_selected)
-                                    Toast.makeText(this@SettingsActivity, "Группа не выбрана", Toast.LENGTH_SHORT).show()
-                                    setResult(RESULT_OK)
-                                    updateFavButtonState()
+                
+                // Обработчик выбора группы
+                spinner.onItemSelectedListener = object : android.widget.AdapterView.OnItemSelectedListener {
+                    override fun onItemSelected(parent: android.widget.AdapterView<*>?, view: android.view.View?, position: Int, id: Long) {
+                        val selectedItem = itemsWithNone[position]
+                        
+                        // Если выбрано "Не выбрано"
+                        if (position == 0) {
+                            if (prefs.isGroupSelected()) {
+                                // Очистить выбор
+                                prefs.selectedGroupName = ""
+                                prefs.selectedGroupFile = ""
+                                binding.selectedGroupName.text = getString(R.string.no_group_selected)
+                                
+                                Toast.makeText(
+                                    this@SettingsActivity,
+                                    "Группа не выбрана",
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                                
+                                setResult(RESULT_OK)
+                            }
+                        } else {
+                            // Выбрана реальная группа
+                            val selectedGroup = groups.firstOrNull { it.name == selectedItem }
+                            
+                            if (selectedGroup != null) {
+                                val wasChanged = selectedGroup.fileName != prefs.selectedGroupFile
+                                
+                                prefs.selectedGroupName = selectedGroup.name
+                                prefs.selectedGroupFile = selectedGroup.fileName
+                                binding.selectedGroupName.text = selectedGroup.name
+                                
+                                if (wasChanged) {
+                                    Toast.makeText(
+                                        this@SettingsActivity,
+                                        "Группа изменена: ${selectedGroup.name}",
+                                        Toast.LENGTH_SHORT
+                                    ).show()
                                 }
-                            } else {
-                                val pureName = labelToName[selectedLabel] ?: selectedLabel
-                                val selectedGroup = groups.firstOrNull { it.name == pureName }
-                                if (selectedGroup != null) {
-                                    val wasChanged = selectedGroup.fileName != prefs.selectedGroupFile
-                                    prefs.selectedGroupName = selectedGroup.name
-                                    prefs.selectedGroupFile = selectedGroup.fileName
-                                    binding.selectedGroupName.text = selectedGroup.name
-                                    if (wasChanged) {
-                                        Toast.makeText(this@SettingsActivity, "Группа изменена: ${selectedGroup.name}", Toast.LENGTH_SHORT).show()
-                                    }
-                                    setResult(RESULT_OK)
-                                    updateFavButtonState()
-                                }
+                                
+                                setResult(RESULT_OK)
                             }
                         }
-                        override fun onNothingSelected(parent: android.widget.AdapterView<*>?) {}
                     }
-                }
-
-                applyAdapterAndSelection()
-                updateFavButtonState()
-
-                favButton.setOnClickListener {
-                    val file = prefs.selectedGroupFile
-                    val name = prefs.selectedGroupName
-                    if (file.isNotEmpty() && name.isNotEmpty()) {
-                        if (prefs.isFavorite(prefs.institute, file)) {
-                            prefs.removeFavorite(prefs.institute, file)
-                        } else {
-                            prefs.addFavorite(prefs.institute, file, name)
-                        }
-                        applyAdapterAndSelection()
-                        updateFavButtonState()
-                    } else {
-                        Toast.makeText(this@SettingsActivity, "Сначала выберите группу", Toast.LENGTH_SHORT).show()
-                    }
+                    
+                    override fun onNothingSelected(parent: android.widget.AdapterView<*>?) {}
                 }
             } catch (e: Exception) {
+                // Если не удалось загрузить список групп
                 android.util.Log.e("SettingsActivity", "Ошибка загрузки групп", e)
                 spinner.isEnabled = false
                 binding.selectedGroupName.text = if (prefs.isGroupSelected()) {
@@ -244,50 +269,6 @@ class SettingsActivity : AppCompatActivity() {
                     "${getString(R.string.no_group_selected)} (ошибка загрузки списка)"
                 }
             }
-        }
-    }
-
-    private fun setupInstituteSelection() {
-        val spinner = binding.instituteSpinner
-        val label = binding.selectedInstituteName
-        val items = listOf("ЧТОТиБ", "ЗабГК")
-        val keys = listOf(PreferencesManager.INSTITUTE_CHTOTIB, PreferencesManager.INSTITUTE_ZABGK)
-
-        val adapter = ArrayAdapter(
-            this,
-            android.R.layout.simple_spinner_item,
-            items
-        ).apply { setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item) }
-
-        spinner.adapter = adapter
-        val currentIndex = keys.indexOf(prefs.institute).coerceAtLeast(0)
-        spinner.setSelection(currentIndex)
-        label.text = items[currentIndex]
-
-        spinner.onItemSelectedListener = object : android.widget.AdapterView.OnItemSelectedListener {
-            override fun onItemSelected(parent: android.widget.AdapterView<*>?, view: android.view.View?, position: Int, id: Long) {
-                val newKey = keys[position]
-                if (newKey != prefs.institute) {
-                    prefs.institute = newKey
-                    label.text = items[position]
-                    // Сбросить выбранную группу при смене техникума
-                    prefs.selectedGroupName = ""
-                    prefs.selectedGroupFile = ""
-                    binding.selectedGroupName.text = getString(R.string.no_group_selected)
-                    // Перезагрузить список групп
-                    setupGroupSelection()
-                    setResult(RESULT_OK)
-                }
-            }
-            override fun onNothingSelected(parent: android.widget.AdapterView<*>?) {}
-        }
-    }
-
-    private fun getInstituteUrls(institute: String): Pair<String, String> {
-        return when (institute) {
-            PreferencesManager.INSTITUTE_CHTOTIB -> "https://www.chtotib.ru/schedule_gl/cg.htm" to "https://www.chtotib.ru/schedule_gl/"
-            PreferencesManager.INSTITUTE_ZABGK -> "https://bbb.zabgc.ru/cg.htm" to "https://bbb.zabgc.ru/"
-            else -> "https://www.chtotib.ru/schedule_gl/cg.htm" to "https://www.chtotib.ru/schedule_gl/"
         }
     }
 
@@ -324,8 +305,8 @@ class SettingsActivity : AppCompatActivity() {
         
         setupThemeCard(
             R.id.themeCustom,
-            "Хеллоуин",
-            "Оранжевый акцент хе-хе",
+            "Кастомная",
+            "Фиолетовый акцент",
             R.drawable.theme_preview_custom,
             PreferencesManager.THEME_CUSTOM,
             currentTheme == PreferencesManager.THEME_CUSTOM
@@ -333,7 +314,7 @@ class SettingsActivity : AppCompatActivity() {
         
         setupThemeCard(
             R.id.themeNothing,
-            "Nothing theme",
+            "Nothing (Эксклюзив)",
             "Фирменный стиль Nothing",
             R.drawable.theme_preview_nothing,
             PreferencesManager.THEME_NOTHING,
@@ -397,15 +378,6 @@ class SettingsActivity : AppCompatActivity() {
             indicator?.isSelected = true
         }
         
-        // Press animation (micro-scale)
-        cardView.setOnTouchListener { v, e ->
-            when (e.actionMasked) {
-                android.view.MotionEvent.ACTION_DOWN -> v.animate().scaleX(0.98f).scaleY(0.98f).setDuration(80).start()
-                android.view.MotionEvent.ACTION_UP, android.view.MotionEvent.ACTION_CANCEL -> v.animate().scaleX(1f).scaleY(1f).setDuration(80).start()
-            }
-            false
-        }
-
         // Set click listener - use cardView as main target
         cardView.setOnClickListener {
             // Save scroll position before recreate

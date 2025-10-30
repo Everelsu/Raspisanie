@@ -10,10 +10,7 @@ import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
-import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
-import androidx.lifecycle.repeatOnLifecycle
-import com.google.android.material.snackbar.Snackbar
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
 import com.example.raspisanie.adapter.ScheduleAdapter
@@ -67,22 +64,8 @@ class MainActivity : AppCompatActivity() {
         
         // Загрузить расписание для выбранной группы при первом запуске
         // Только если группа выбрана
-        if (viewModel.schedule.value.isEmpty()) {
-            if (prefs.isGroupSelected()) {
-                viewModel.loadSchedule(prefs.selectedGroupFile, getBaseUrlForInstitute(prefs.institute))
-            } else {
-                // Показать явную подсказку выбрать группу
-                binding.emptyState.text = getString(R.string.select_group_hint)
-                binding.emptyState.visibility = View.VISIBLE
-                binding.errorText.visibility = View.GONE
-                binding.recyclerView.visibility = View.GONE
-                // Snack с переходом в настройки
-                Snackbar.make(binding.root, R.string.select_group_hint, Snackbar.LENGTH_LONG)
-                    .setAction(R.string.select_group) {
-                        val intent = android.content.Intent(this, SettingsActivity::class.java)
-                        startActivity(intent)
-                    }.show()
-            }
+        if (viewModel.schedule.value.isEmpty() && prefs.isGroupSelected()) {
+            viewModel.loadSchedule(prefs.selectedGroupFile, prefs.college)
         }
     }
     
@@ -141,24 +124,20 @@ class MainActivity : AppCompatActivity() {
             // Если группа изменилась - загрузить новое расписание
             if (selectedGroup != lastKnownGroupFile) {
                 lastKnownGroupFile = selectedGroup
-                viewModel.loadSchedule(selectedGroup, getBaseUrlForInstitute(prefs.institute))
+                viewModel.loadSchedule(selectedGroup, prefs.college)
             } else if (viewModel.schedule.value.isEmpty()) {
                 // Если данных нет - загрузить расписание
-                viewModel.loadSchedule(selectedGroup, getBaseUrlForInstitute(prefs.institute))
+                viewModel.loadSchedule(selectedGroup, prefs.college)
             } else {
                 // Просто обновить адаптер для отражения изменений настроек (показ времени, перерывов и т.д.)
                 // Это НЕ вызывает загрузку данных, только перерисовку UI
                 adapter.notifyDataSetChanged()
             }
         } else {
-            // Группа не выбрана - очистить расписание и показать подсказку
+            // Группа не выбрана - очистить расписание
             if (viewModel.schedule.value.isNotEmpty()) {
                 adapter.updateSchedules(emptyList())
             }
-            binding.emptyState.text = getString(R.string.select_group_hint)
-            binding.emptyState.visibility = View.VISIBLE
-            binding.errorText.visibility = View.GONE
-            binding.recyclerView.visibility = View.GONE
         }
     }
 
@@ -183,7 +162,7 @@ class MainActivity : AppCompatActivity() {
     private fun setupSwipeRefresh() {
         binding.swipeRefresh.setOnRefreshListener {
             if (prefs.isGroupSelected()) {
-                viewModel.refreshSchedule(prefs.selectedGroupFile, getBaseUrlForInstitute(prefs.institute))
+                viewModel.refreshSchedule(prefs.selectedGroupFile, prefs.college)
             } else {
                 binding.swipeRefresh.isRefreshing = false
             }
@@ -202,8 +181,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun observeViewModel() {
         lifecycleScope.launch {
-            repeatOnLifecycle(Lifecycle.State.STARTED) {
-                viewModel.schedule.collect { schedules ->
+            viewModel.schedule.collect { schedules ->
                 Log.d(TAG, "Получено расписаний: ${schedules.size}")
                 if (schedules.isNotEmpty()) {
                     adapter.updateSchedules(schedules)
@@ -219,44 +197,29 @@ class MainActivity : AppCompatActivity() {
                         Log.d(TAG, "Расписание пустое, показываю состояние загрузки")
                     }
                 }
-                }
             }
         }
 
         lifecycleScope.launch {
-            repeatOnLifecycle(Lifecycle.State.STARTED) {
-                viewModel.isLoading.collect { isLoading ->
+            viewModel.isLoading.collect { isLoading ->
                 binding.swipeRefresh.isRefreshing = isLoading
                 if (isLoading) {
                     binding.emptyState.visibility = android.view.View.GONE
                     binding.errorText.visibility = android.view.View.GONE
                 }
-                }
             }
         }
 
         lifecycleScope.launch {
-            repeatOnLifecycle(Lifecycle.State.STARTED) {
-                viewModel.error.collect { error ->
+            viewModel.error.collect { error ->
                 if (error != null) {
                     Log.e(TAG, "Ошибка загрузки: $error")
                     binding.errorText.text = "Ошибка: $error\n\nПотяните вниз для обновления"
                     binding.errorText.visibility = android.view.View.VISIBLE
                     binding.emptyState.visibility = android.view.View.GONE
                     binding.recyclerView.visibility = android.view.View.GONE
-
-                    // Offer retry via Snackbar
-                    val groupFile = prefs.selectedGroupFile
-                    Snackbar.make(binding.root, "Ошибка: $error", Snackbar.LENGTH_LONG).apply {
-                        setAction("Повторить") {
-                            if (prefs.isGroupSelected() && groupFile.isNotEmpty()) {
-                                viewModel.refreshSchedule(groupFile, getBaseUrlForInstitute(prefs.institute))
-                            }
-                        }
-                    }.show()
                 } else {
                     binding.errorText.visibility = android.view.View.GONE
-                }
                 }
             }
         }
@@ -289,13 +252,5 @@ class MainActivity : AppCompatActivity() {
             }
         }
         setTheme(themeResId)
-    }
-
-    private fun getBaseUrlForInstitute(institute: String): String {
-        return when (institute) {
-            PreferencesManager.INSTITUTE_CHTOTIB -> "https://www.chtotib.ru/schedule_gl/"
-            PreferencesManager.INSTITUTE_ZABGK -> "https://bbb.zabgc.ru/"
-            else -> "https://www.chtotib.ru/schedule_gl/"
-        }
     }
 }

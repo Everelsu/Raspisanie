@@ -10,7 +10,6 @@ import android.view.ViewGroup
 import android.view.ViewTreeObserver
 import android.view.animation.DecelerateInterpolator
 import android.widget.TextView
-import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.RecyclerView
 import com.example.raspisanie.R
 import com.example.raspisanie.data.DayProgressCalculator
@@ -114,25 +113,35 @@ class ScheduleAdapter(
                 
                 // Add break info if needed
                 if (previousLessonNumber != null) {
-                    val instituteLocal = prefs?.institute ?: PreferencesManager.INSTITUTE_CHTOTIB
-                    val breakText = LessonTimes.getBreakText(instituteLocal, previousLessonNumber, lessonNum)
+                    // Check for regular break
+                    val breakText = LessonTimes.getBreakText(previousLessonNumber, lessonNum)
                     if (breakText != null && prefs?.showBreaks == true) {
                         val breakView = LayoutInflater.from(holder.itemView.context)
                             .inflate(R.layout.item_break, holder.itemsContainer, false)
                         val breakTextView = breakView.findViewById<TextView>(R.id.breakText)
                         breakTextView.text = breakText
-                        if (isNothingTheme && context != null) applyFontToView(breakView)
-                        if (isHalloweenTheme && context != null) applyHalloweenToBreak(breakTextView)
+                        if (isNothingTheme && context != null) {
+                            applyFontToView(breakView)
+                        }
+                        if (isHalloweenTheme && context != null) {
+                            applyHalloweenToBreak(breakTextView)
+                        }
                         holder.itemsContainer.addView(breakView)
                     }
-                    val lunchText = LessonTimes.getLunchText(instituteLocal, previousLessonNumber)
+                    
+                    // Check for lunch
+                    val lunchText = LessonTimes.getLunchText(previousLessonNumber)
                     if (lunchText != null && prefs?.showLunch == true) {
                         val lunchView = LayoutInflater.from(holder.itemView.context)
                             .inflate(R.layout.item_break, holder.itemsContainer, false)
                         val lunchTextView = lunchView.findViewById<TextView>(R.id.breakText)
                         lunchTextView.text = lunchText
-                        if (isNothingTheme && context != null) applyFontToView(lunchView)
-                        if (isHalloweenTheme && context != null) applyHalloweenToBreak(lunchTextView)
+                        if (isNothingTheme && context != null) {
+                            applyFontToView(lunchView)
+                        }
+                        if (isHalloweenTheme && context != null) {
+                            applyHalloweenToBreak(lunchTextView)
+                        }
                         holder.itemsContainer.addView(lunchView)
                     }
                 }
@@ -152,8 +161,7 @@ class ScheduleAdapter(
                     lessonNumberView.text = lessonNum.toString()
                     
                     // Set lesson time
-                    val institute = prefs?.institute ?: PreferencesManager.INSTITUTE_CHTOTIB
-                    val timeText = LessonTimes.formatTime(institute, lessonNum)
+                    val timeText = LessonTimes.formatTime(lessonNum)
                     val showTime = prefs?.showTime ?: true
                     lessonTimeView.text = timeText
                     lessonTimeView.visibility = if (timeText.isNotEmpty() && showTime) View.VISIBLE else View.GONE
@@ -613,21 +621,8 @@ class ScheduleAdapter(
     override fun getItemCount(): Int = schedules.size
 
     fun updateSchedules(newSchedules: List<DaySchedule>) {
-        val oldList = schedules
-        val newList = newSchedules
-        val diffResult = DiffUtil.calculateDiff(object : DiffUtil.Callback() {
-            override fun getOldListSize(): Int = oldList.size
-            override fun getNewListSize(): Int = newList.size
-            override fun areItemsTheSame(oldItemPosition: Int, newItemPosition: Int): Boolean {
-                // Use unique key: date (dd.MM.yyyy)
-                return oldList[oldItemPosition].date == newList[newItemPosition].date
-            }
-            override fun areContentsTheSame(oldItemPosition: Int, newItemPosition: Int): Boolean {
-                return oldList[oldItemPosition] == newList[newItemPosition]
-            }
-        })
-        schedules = newList
-        diffResult.dispatchUpdatesTo(this)
+        schedules = newSchedules
+        notifyDataSetChanged()
     }
 
     private fun formatDayName(day: String): String {

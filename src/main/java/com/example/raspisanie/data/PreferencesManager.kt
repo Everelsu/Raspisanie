@@ -14,12 +14,10 @@ class PreferencesManager(context: Context) {
         private const val KEY_SHOW_TIME = "show_time"
         private const val KEY_SHOW_PROGRESS_LINE = "show_progress_line"
         private const val KEY_THEME = "theme"
+        private const val KEY_COLLEGE = "college"
         private const val KEY_SELECTED_GROUP = "selected_group"
         private const val KEY_SELECTED_GROUP_NAME = "selected_group_name"
         private const val KEY_FIRST_LAUNCH = "first_launch"
-        private const val KEY_INSTITUTE = "institute"
-        private const val KEY_FAVORITES = "favorite_groups"
-        
         
         const val THEME_SYSTEM = "system"
         const val THEME_LIGHT = "light"
@@ -27,11 +25,13 @@ class PreferencesManager(context: Context) {
         const val THEME_CUSTOM = "custom"
         const val THEME_NOTHING = "nothing"
         
-        // Ранее использовалась дефолтная группа, теперь по требованию — по умолчанию не выбрано
-        const val DEFAULT_GROUP_FILE = ""
-        const val DEFAULT_GROUP_NAME = ""
-        const val INSTITUTE_CHTOTIB = "chtotib"
-        const val INSTITUTE_ZABGK = "zabgk"
+        const val COLLEGE_CHTOTIB = "chtotib"
+        const val COLLEGE_ZABGC = "zabgc"
+        
+        // Default values - только для первого запуска
+        const val DEFAULT_COLLEGE = COLLEGE_CHTOTIB
+        const val DEFAULT_GROUP_FILE = "cg36.htm"
+        const val DEFAULT_GROUP_NAME = "ИСиП-23-1п"
     }
     
     var showBreaks: Boolean
@@ -54,6 +54,10 @@ class PreferencesManager(context: Context) {
         get() = prefs.getString(KEY_THEME, THEME_SYSTEM) ?: THEME_SYSTEM
         set(value) = prefs.edit().putString(KEY_THEME, value).apply()
     
+    var college: String
+        get() = prefs.getString(KEY_COLLEGE, DEFAULT_COLLEGE) ?: DEFAULT_COLLEGE
+        set(value) = prefs.edit().putString(KEY_COLLEGE, value).apply()
+    
     var selectedGroupFile: String
         get() = prefs.getString(KEY_SELECTED_GROUP, "") ?: ""
         set(value) = prefs.edit().putString(KEY_SELECTED_GROUP, value).apply()
@@ -61,57 +65,30 @@ class PreferencesManager(context: Context) {
     var selectedGroupName: String
         get() = prefs.getString(KEY_SELECTED_GROUP_NAME, "") ?: ""
         set(value) = prefs.edit().putString(KEY_SELECTED_GROUP_NAME, value).apply()
-
-    var institute: String
-        get() = prefs.getString(KEY_INSTITUTE, INSTITUTE_CHTOTIB) ?: INSTITUTE_CHTOTIB
-        set(value) = prefs.edit().putString(KEY_INSTITUTE, value).apply()
-
-    data class FavoriteGroup(val institute: String, val file: String, val name: String)
-
-    fun getFavoriteGroups(): List<FavoriteGroup> {
-        val set = prefs.getStringSet(KEY_FAVORITES, emptySet()) ?: emptySet()
-        return set.mapNotNull { token ->
-            val parts = token.split("|", limit = 3)
-            if (parts.size == 3) FavoriteGroup(parts[0], parts[1], parts[2]) else null
-        }
-    }
-
-    fun getFavoriteGroups(institute: String): List<FavoriteGroup> =
-        getFavoriteGroups().filter { it.institute == institute }
-
-    fun isFavorite(institute: String, file: String): Boolean =
-        getFavoriteGroups().any { it.institute == institute && it.file == file }
-
-    fun addFavorite(institute: String, file: String, name: String) {
-        val set = prefs.getStringSet(KEY_FAVORITES, emptySet())?.toMutableSet() ?: mutableSetOf()
-        set.add("$institute|$file|$name")
-        prefs.edit().putStringSet(KEY_FAVORITES, set).apply()
-    }
-
-    fun removeFavorite(institute: String, file: String) {
-        val set = prefs.getStringSet(KEY_FAVORITES, emptySet())?.toMutableSet() ?: mutableSetOf()
-        val toRemove = set.firstOrNull { it.startsWith("$institute|$file|") }
-        if (toRemove != null) {
-            set.remove(toRemove)
-            prefs.edit().putStringSet(KEY_FAVORITES, set).apply()
-        }
-    }
-
-    
     
     /**
      * Проверяет, был ли это первый запуск приложения.
-     * По умолчанию группа НЕ выбрана.
+     * При первом запуске устанавливает дефолтную группу.
      */
     fun checkFirstLaunch() {
         val isFirstLaunch = prefs.getBoolean(KEY_FIRST_LAUNCH, true)
         if (isFirstLaunch) {
-            // На первом запуске — ничего не выбираем
-            prefs.edit()
-                .putString(KEY_SELECTED_GROUP, DEFAULT_GROUP_FILE)
-                .putString(KEY_SELECTED_GROUP_NAME, DEFAULT_GROUP_NAME)
-                .putBoolean(KEY_FIRST_LAUNCH, false)
-                .apply()
+            // Проверяем напрямую в SharedPreferences, есть ли уже сохраненная группа
+            val savedGroupFile = prefs.getString(KEY_SELECTED_GROUP, "")
+            val savedGroupName = prefs.getString(KEY_SELECTED_GROUP_NAME, "")
+            
+            // Если группа не сохранена (первый запуск) - установить дефолтную
+            if (savedGroupFile.isNullOrEmpty() || savedGroupName.isNullOrEmpty()) {
+                prefs.edit()
+                    .putString(KEY_COLLEGE, DEFAULT_COLLEGE)
+                    .putString(KEY_SELECTED_GROUP, DEFAULT_GROUP_FILE)
+                    .putString(KEY_SELECTED_GROUP_NAME, DEFAULT_GROUP_NAME)
+                    .putBoolean(KEY_FIRST_LAUNCH, false)
+                    .apply()
+            } else {
+                // Группа уже выбрана, просто отмечаем что это не первый запуск
+                prefs.edit().putBoolean(KEY_FIRST_LAUNCH, false).apply()
+            }
         }
     }
     

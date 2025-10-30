@@ -3,5 +3,3 @@
     <item android:color="@color/nothing_switchTrackChecked" android:state_checked="true" />
     <item android:color="@color/nothing_switchTrackUnchecked" />
 </selector>
-
-
