@@ -8,6 +8,9 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.lifecycle.lifecycleScope
+import com.example.raspisanie.data.AppUpdateChecker
+import com.example.raspisanie.data.AppUpdateManager
+import com.example.raspisanie.data.AppVersionInfo
 import com.example.raspisanie.data.Group
 import com.example.raspisanie.data.GroupsListParser
 import com.example.raspisanie.data.PreferencesManager
@@ -39,9 +42,12 @@ class SettingsActivity : AppCompatActivity() {
         
         setupToolbar()
         setupSwitches()
+        setupAdditionalSettings()
         setupCollegeSelection()
         setupGroupSelection()
         setupThemeSelection()
+        setupAppAutoUpdate()
+        setupAppInfo()
         applyNothingFontIfNeeded()
         
         // Restore scroll position after layout
@@ -170,6 +176,94 @@ class SettingsActivity : AppCompatActivity() {
             // Перезагрузить активити для применения изменений
             setResult(RESULT_OK)
         }
+    }
+    
+    private fun setupAdditionalSettings() {
+        // Auto refresh
+        binding.switchAutoRefresh.isChecked = prefs.autoRefreshEnabled
+        binding.switchAutoRefresh.setOnCheckedChangeListener { _, isChecked ->
+            prefs.autoRefreshEnabled = isChecked
+            binding.spinnerRefreshInterval.isEnabled = isChecked
+            
+            // Update auto refresh
+            if (isChecked) {
+                com.example.raspisanie.data.AutoRefreshManager.setupAutoRefresh(this)
+            } else {
+                com.example.raspisanie.data.AutoRefreshManager.cancelAutoRefresh(this)
+            }
+        }
+        
+        // Refresh interval spinner
+        val intervals = listOf(
+            "15 минут" to PreferencesManager.REFRESH_INTERVAL_15,
+            "30 минут" to PreferencesManager.REFRESH_INTERVAL_30,
+            "1 час" to PreferencesManager.REFRESH_INTERVAL_60,
+            "2 часа" to PreferencesManager.REFRESH_INTERVAL_120
+        )
+        val intervalNames = intervals.map { it.first }
+        val intervalAdapter = ArrayAdapter(
+            this,
+            android.R.layout.simple_spinner_item,
+            intervalNames
+        ).apply {
+            setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        }
+        binding.spinnerRefreshInterval.adapter = intervalAdapter
+        binding.spinnerRefreshInterval.isEnabled = prefs.autoRefreshEnabled
+        
+        val currentIntervalIndex = intervals.indexOfFirst { it.second == prefs.autoRefreshInterval }
+        if (currentIntervalIndex >= 0) {
+            binding.spinnerRefreshInterval.setSelection(currentIntervalIndex)
+        }
+        
+        binding.spinnerRefreshInterval.onItemSelectedListener = object : android.widget.AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(parent: android.widget.AdapterView<*>?, view: android.view.View?, position: Int, id: Long) {
+                val selectedInterval = intervals[position].second
+                prefs.autoRefreshInterval = selectedInterval
+                if (prefs.autoRefreshEnabled) {
+                    com.example.raspisanie.data.AutoRefreshManager.setupAutoRefresh(this@SettingsActivity)
+                }
+            }
+            
+            override fun onNothingSelected(parent: android.widget.AdapterView<*>?) {}
+        }
+        
+        // Cache
+        binding.switchCache.isChecked = prefs.cacheEnabled
+        binding.switchCache.setOnCheckedChangeListener { _, isChecked ->
+            prefs.cacheEnabled = isChecked
+        }
+        
+        // Font size with SeekBar
+        val fontSizes = listOf(
+            PreferencesManager.FONT_SIZE_SMALL,
+            PreferencesManager.FONT_SIZE_NORMAL,
+            PreferencesManager.FONT_SIZE_LARGE,
+            PreferencesManager.FONT_SIZE_EXTRA_LARGE
+        )
+        val fontSizeLabels = listOf("Мелкий", "Обычный", "Крупный", "Очень крупный")
+        
+        // Set initial progress based on current font size
+        val currentFontSizeIndex = fontSizes.indexOfFirst { it == prefs.fontSize }.coerceAtLeast(0).coerceAtMost(3)
+        binding.seekBarFontSize.progress = currentFontSizeIndex
+        binding.fontSizeValue.text = fontSizeLabels[currentFontSizeIndex]
+        
+        // Update font size label and value when SeekBar changes
+        binding.seekBarFontSize.setOnSeekBarChangeListener(object : android.widget.SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(seekBar: android.widget.SeekBar?, progress: Int, fromUser: Boolean) {
+                if (fromUser && progress in 0..3) {
+                    val selectedFontSize = fontSizes[progress]
+                    binding.fontSizeValue.text = fontSizeLabels[progress]
+                    prefs.fontSize = selectedFontSize
+                    setResult(RESULT_OK)
+                }
+            }
+            
+            override fun onStartTrackingTouch(seekBar: android.widget.SeekBar?) {}
+            
+            override fun onStopTrackingTouch(seekBar: android.widget.SeekBar?) {}
+        })
+        
     }
 
     private fun setupGroupSelection() {
@@ -300,13 +394,14 @@ class SettingsActivity : AppCompatActivity() {
         val currentTheme = prefs.theme
         
         // Setup all theme cards
+        // Row 1: Dark & Light
         setupThemeCard(
-            R.id.themeSystem,
-            "Системная",
-            "Автоматический выбор",
-            R.drawable.theme_preview_system,
-            PreferencesManager.THEME_SYSTEM,
-            currentTheme == PreferencesManager.THEME_SYSTEM
+            R.id.themeDark,
+            "Темная",
+            "Черный фон",
+            R.drawable.theme_preview_dark,
+            PreferencesManager.THEME_DARK,
+            currentTheme == PreferencesManager.THEME_DARK
         )
         
         setupThemeCard(
@@ -318,13 +413,14 @@ class SettingsActivity : AppCompatActivity() {
             currentTheme == PreferencesManager.THEME_LIGHT
         )
         
+        // Row 2: Fiolet & Custom
         setupThemeCard(
-            R.id.themeDark,
-            "Темная",
-            "Черный фон",
-            R.drawable.theme_preview_dark,
-            PreferencesManager.THEME_DARK,
-            currentTheme == PreferencesManager.THEME_DARK
+            R.id.themeFiolet,
+            "Фиолетовая",
+            "ФиолетовААААААААЯ тема",
+            R.drawable.theme_preview_system,
+            PreferencesManager.THEME_SYSTEM,
+            currentTheme == PreferencesManager.THEME_SYSTEM
         )
         
         setupThemeCard(
@@ -400,6 +496,8 @@ class SettingsActivity : AppCompatActivity() {
         if (isSelected) {
             root.isSelected = true
             indicator?.isSelected = true
+            root.refreshDrawableState()
+            indicator?.refreshDrawableState()
         }
         
         // Set click listener - use cardView as main target
@@ -416,6 +514,8 @@ class SettingsActivity : AppCompatActivity() {
             // Select this one
             root.isSelected = true
             indicator?.isSelected = true
+            root.refreshDrawableState()
+            indicator?.refreshDrawableState()
             
             // Save theme
             prefs.theme = themeKey
@@ -433,42 +533,154 @@ class SettingsActivity : AppCompatActivity() {
     
     private fun deselectAllThemes() {
         listOf(
-            R.id.themeSystem,
-            R.id.themeLight,
             R.id.themeDark,
+            R.id.themeLight,
+            R.id.themeFiolet,
             R.id.themeCustom,
             R.id.themeNothing
         ).forEach { id ->
             val cardView = findViewById<androidx.cardview.widget.CardView>(id) ?: return@forEach
             val root = cardView.getChildAt(0) as? androidx.constraintlayout.widget.ConstraintLayout
             root?.isSelected = false
-            root?.findViewById<android.view.View>(R.id.radioIndicator)?.isSelected = false
+            root?.refreshDrawableState()
+            val indicator = root?.findViewById<android.view.View>(R.id.radioIndicator)
+            indicator?.isSelected = false
+            indicator?.refreshDrawableState()
         }
     }
 
+    private fun setupAppAutoUpdate() {
+        val switchAppAutoUpdate = findViewById<com.google.android.material.switchmaterial.SwitchMaterial>(R.id.switchAppAutoUpdate)
+        val btnCheckUpdates = findViewById<com.google.android.material.button.MaterialButton>(R.id.btnCheckUpdates)
+        
+        // Установить состояние переключателя
+        switchAppAutoUpdate?.isChecked = prefs.appAutoUpdateEnabled
+        
+        // Обработчик переключателя
+        switchAppAutoUpdate?.setOnCheckedChangeListener { _, isChecked ->
+            prefs.appAutoUpdateEnabled = isChecked
+            if (isChecked) {
+                // Запустить периодическую проверку обновлений
+                AppUpdateManager.setupAutoUpdateCheck(this)
+            } else {
+                // Отменить проверку обновлений
+                AppUpdateManager.cancelAutoUpdateCheck(this)
+            }
+        }
+        
+        // Обработчик кнопки проверки обновлений
+        btnCheckUpdates?.setOnClickListener {
+            checkForUpdates()
+        }
+    }
+    
+    private fun checkForUpdates() {
+        val btnCheckUpdates = findViewById<com.google.android.material.button.MaterialButton>(R.id.btnCheckUpdates)
+        btnCheckUpdates?.isEnabled = false
+        btnCheckUpdates?.text = "Проверка..."
+        
+        lifecycleScope.launch {
+            try {
+                val result = AppUpdateChecker.checkForUpdates(this@SettingsActivity)
+                
+                when (result) {
+                    is AppUpdateChecker.UpdateCheckResult.UpdateAvailable -> {
+                        // Показать диалог с предложением обновления
+                        showUpdateDialog(result.versionInfo)
+                        prefs.lastUpdateCheck = System.currentTimeMillis()
+                    }
+                    AppUpdateChecker.UpdateCheckResult.NoUpdate -> {
+                        android.widget.Toast.makeText(
+                            this@SettingsActivity,
+                            "У вас установлена последняя версия",
+                            android.widget.Toast.LENGTH_SHORT
+                        ).show()
+                        prefs.lastUpdateCheck = System.currentTimeMillis()
+                    }
+                    is AppUpdateChecker.UpdateCheckResult.Error -> {
+                        android.widget.Toast.makeText(
+                            this@SettingsActivity,
+                            "Ошибка проверки: ${result.message}",
+                            android.widget.Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                }
+            } catch (e: Exception) {
+                android.widget.Toast.makeText(
+                    this@SettingsActivity,
+                    "Ошибка при проверке обновлений",
+                    android.widget.Toast.LENGTH_SHORT
+                ).show()
+            } finally {
+                btnCheckUpdates?.isEnabled = true
+                btnCheckUpdates?.text = "Проверить обновления"
+            }
+        }
+    }
+    
+    private fun showUpdateDialog(versionInfo: AppVersionInfo) {
+        val builder = androidx.appcompat.app.AlertDialog.Builder(this)
+        builder.setTitle("Доступно обновление")
+        builder.setMessage("Версия ${versionInfo.versionName}\n\n${versionInfo.changelog ?: "Обновления и улучшения"}")
+        builder.setPositiveButton("Обновить") { _, _ ->
+            // Запустить установку обновления
+            if (versionInfo.downloadUrl != null) {
+                AppUpdateManager.downloadAndInstall(this, versionInfo.downloadUrl)
+            } else {
+                android.widget.Toast.makeText(this, "Ссылка на скачивание недоступна", android.widget.Toast.LENGTH_SHORT).show()
+            }
+        }
+        builder.setNegativeButton("Позже", null)
+        builder.show()
+    }
+    
+    private fun setupAppInfo() {
+        // Установить версию приложения
+        try {
+            val packageInfo = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                packageManager.getPackageInfo(packageName, android.content.pm.PackageManager.PackageInfoFlags.of(0))
+            } else {
+                @Suppress("DEPRECATION")
+                packageManager.getPackageInfo(packageName, 0)
+            }
+            val versionName = packageInfo.versionName ?: "unknown"
+            val versionText = findViewById<android.widget.TextView>(R.id.versionText)
+            versionText?.text = getString(R.string.version_format, versionName)
+        } catch (e: Exception) {
+            // Если не удалось получить версию, оставляем дефолтный текст
+        }
+        
+        // Установить имя автора
+        val authorName = findViewById<android.widget.TextView>(R.id.authorName)
+        authorName?.text = getString(R.string.author_name)
+        
+        // Установить обработчик клика на имя автора
+        authorName?.setOnClickListener {
+            openAuthorProfile()
+        }
+    }
+    
+    private fun openAuthorProfile() {
+        val profileUrl = getString(R.string.author_profile_url)
+        
+        try {
+            val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(profileUrl))
+            startActivity(intent)
+        } catch (e: Exception) {
+            android.widget.Toast.makeText(this, getString(R.string.cannot_open_profile), android.widget.Toast.LENGTH_SHORT).show()
+        }
+    }
+    
     private fun applyTheme(themeKey: String) {
         val themeResId = when (themeKey) {
+            PreferencesManager.THEME_SYSTEM -> R.style.Theme_Raspisanie_System
             PreferencesManager.THEME_LIGHT -> R.style.Theme_Raspisanie_Light
             PreferencesManager.THEME_DARK -> R.style.Theme_Raspisanie_Dark
             PreferencesManager.THEME_CUSTOM -> R.style.Theme_Raspisanie_Custom
             PreferencesManager.THEME_NOTHING -> R.style.Theme_Raspisanie_Nothing
-            PreferencesManager.THEME_SYSTEM -> {
-                // System theme - автоматически переключается между Light и Dark
-                val nightModeFlags = resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK
-                if (nightModeFlags == android.content.res.Configuration.UI_MODE_NIGHT_YES) {
-                    R.style.Theme_Raspisanie_Dark
-                } else {
-                    R.style.Theme_Raspisanie_Light
-                }
-            }
             else -> {
-                // Fallback to system
-                val nightModeFlags = resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK
-                if (nightModeFlags == android.content.res.Configuration.UI_MODE_NIGHT_YES) {
-                    R.style.Theme_Raspisanie_Dark
-                } else {
-                    R.style.Theme_Raspisanie_Light
-                }
+                // Fallback - просто светлая тема
+                R.style.Theme_Raspisanie_Light
             }
         }
         setTheme(themeResId)

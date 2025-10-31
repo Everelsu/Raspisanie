@@ -11,12 +11,17 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.ViewModelProvider
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
 import com.example.raspisanie.adapter.ScheduleAdapter
+import com.example.raspisanie.data.AutoRefreshManager
 import com.example.raspisanie.data.PreferencesManager
 import com.example.raspisanie.databinding.ActivityMainBinding
 import com.example.raspisanie.viewmodel.ScheduleViewModel
+import com.example.raspisanie.viewmodel.ScheduleViewModelFactory
+import com.example.raspisanie.widget.CurrentLessonWidgetProvider
+import com.example.raspisanie.widget.DayScheduleWidgetProvider
 import kotlinx.coroutines.launch
 
 class MainActivity : AppCompatActivity() {
@@ -25,7 +30,9 @@ class MainActivity : AppCompatActivity() {
     }
     
     private lateinit var binding: ActivityMainBinding
-    private val viewModel: ScheduleViewModel by viewModels()
+    private val viewModel: ScheduleViewModel by lazy {
+        ViewModelProvider(this, ScheduleViewModelFactory(applicationContext))[ScheduleViewModel::class.java]
+    }
     private lateinit var adapter: ScheduleAdapter
     private lateinit var prefs: PreferencesManager
     private var currentThemeKey: String = ""
@@ -62,10 +69,45 @@ class MainActivity : AppCompatActivity() {
         applyNothingFontIfNeeded()
         observeViewModel()
         
+        // Setup auto refresh
+        if (prefs.autoRefreshEnabled) {
+            AutoRefreshManager.setupAutoRefresh(this)
+        }
+        
+        // Setup app auto-update check
+        if (prefs.appAutoUpdateEnabled) {
+            com.example.raspisanie.data.AppUpdateManager.setupAutoUpdateCheck(this)
+        }
+        
+        // Update widgets on startup
+        updateWidgets()
+        
         // Загрузить расписание для выбранной группы при первом запуске
         // Только если группа выбрана
         if (viewModel.schedule.value.isEmpty() && prefs.isGroupSelected()) {
             viewModel.loadSchedule(prefs.selectedGroupFile, prefs.college)
+        }
+    }
+    
+    private fun updateWidgets() {
+        try {
+            val appWidgetManager = android.appwidget.AppWidgetManager.getInstance(this)
+            
+            val currentLessonWidgetIds = appWidgetManager.getAppWidgetIds(
+                android.content.ComponentName(this, CurrentLessonWidgetProvider::class.java)
+            )
+            for (widgetId in currentLessonWidgetIds) {
+                CurrentLessonWidgetProvider.updateAppWidget(this, appWidgetManager, widgetId)
+            }
+            
+            val dayScheduleWidgetIds = appWidgetManager.getAppWidgetIds(
+                android.content.ComponentName(this, DayScheduleWidgetProvider::class.java)
+            )
+            for (widgetId in dayScheduleWidgetIds) {
+                DayScheduleWidgetProvider.updateAppWidget(this, appWidgetManager, widgetId)
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Не удалось обновить виджеты: ${e.message}")
         }
     }
     
@@ -233,27 +275,14 @@ class MainActivity : AppCompatActivity() {
 
     private fun applyTheme(themeKey: String) {
         val themeResId = when (themeKey) {
+            PreferencesManager.THEME_SYSTEM -> R.style.Theme_Raspisanie_System
             PreferencesManager.THEME_LIGHT -> R.style.Theme_Raspisanie_Light
             PreferencesManager.THEME_DARK -> R.style.Theme_Raspisanie_Dark
             PreferencesManager.THEME_CUSTOM -> R.style.Theme_Raspisanie_Custom
             PreferencesManager.THEME_NOTHING -> R.style.Theme_Raspisanie_Nothing
-            PreferencesManager.THEME_SYSTEM -> {
-                // System theme - автоматически переключается между Light и Dark
-                val nightModeFlags = resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK
-                if (nightModeFlags == android.content.res.Configuration.UI_MODE_NIGHT_YES) {
-                    R.style.Theme_Raspisanie_Dark
-                } else {
-                    R.style.Theme_Raspisanie_Light
-                }
-            }
             else -> {
-                // Fallback to system
-                val nightModeFlags = resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK
-                if (nightModeFlags == android.content.res.Configuration.UI_MODE_NIGHT_YES) {
-                    R.style.Theme_Raspisanie_Dark
-                } else {
-                    R.style.Theme_Raspisanie_Light
-                }
+                // Fallback - просто светлая тема
+                R.style.Theme_Raspisanie_Light
             }
         }
         setTheme(themeResId)

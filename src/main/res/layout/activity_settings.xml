@@ -32,6 +32,7 @@
             android:orientation="vertical"
             android:padding="16dp">
 
+            <!-- ========== ОТОБРАЖЕНИЕ ========== -->
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
@@ -242,10 +243,11 @@
 
             </LinearLayout>
 
+            <!-- ========== ОСНОВНЫЕ НАСТРОЙКИ ========== -->
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Техникум"
+                android:text="Основные настройки"
                 style="@style/SettingsSectionTitle"
                 android:layout_marginTop="32dp"
                 android:layout_marginBottom="12dp" />
@@ -317,12 +319,277 @@
 
             </LinearLayout>
 
+            <!-- ========== ВНЕШНИЙ ВИД ========== -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Внешний вид"
+                style="@style/SettingsSectionTitle"
+                android:layout_marginTop="32dp"
+                android:layout_marginBottom="12dp" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:background="@drawable/settings_item_bg"
+                android:padding="16dp"
+                android:layout_marginBottom="8dp">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Размер шрифта"
+                    android:textSize="16sp"
+                    android:textColor="?android:textColorPrimary"
+                    android:layout_marginBottom="8dp" />
+
+                <TextView
+                    android:id="@+id/fontSizeValue"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Обычный"
+                    android:textSize="14sp"
+                    android:textColor="?android:textColorSecondary"
+                    android:layout_marginBottom="12dp"
+                    android:layout_gravity="end" />
+
+                <SeekBar
+                    android:id="@+id/seekBarFontSize"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:max="3"
+                    android:progress="1"
+                    android:progressTint="?attr/colorPrimary"
+                    android:thumbTint="?attr/colorPrimary" />
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:layout_marginTop="4dp">
+
+                    <TextView
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="Мелкий"
+                        android:textSize="11sp"
+                        android:textColor="?android:textColorSecondary"
+                        android:gravity="start" />
+
+                    <TextView
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="Обычный"
+                        android:textSize="11sp"
+                        android:textColor="?android:textColorSecondary"
+                        android:gravity="center" />
+
+                    <TextView
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="Крупный"
+                        android:textSize="11sp"
+                        android:textColor="?android:textColorSecondary"
+                        android:gravity="center" />
+
+                    <TextView
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="Очень крупный"
+                        android:textSize="11sp"
+                        android:textColor="?android:textColorSecondary"
+                        android:gravity="end" />
+
+                </LinearLayout>
+
+            </LinearLayout>
+
+            <!-- ========== ДАННЫЕ И СИНХРОНИЗАЦИЯ ========== -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Данные и синхронизация"
+                style="@style/SettingsSectionTitle"
+                android:layout_marginTop="32dp"
+                android:layout_marginBottom="12dp" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:background="@drawable/settings_item_bg"
+                android:padding="16dp"
+                android:layout_marginBottom="8dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical">
+
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:orientation="vertical"
+                        android:layout_marginEnd="16dp">
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Автообновление расписания"
+                            android:textSize="16sp"
+                            android:textColor="?android:textColorPrimary" />
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Автоматическое обновление расписания в фоне"
+                            android:textSize="13sp"
+                            android:textColor="?android:textColorSecondary"
+                            android:layout_marginTop="4dp" />
+
+                    </LinearLayout>
+
+                    <com.google.android.material.switchmaterial.SwitchMaterial
+                        android:id="@+id/switchAutoRefresh"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:thumbTint="?attr/switchThumbTint"
+                        android:trackTint="?attr/switchTrackTint" />
+
+                </LinearLayout>
+
+                <Spinner
+                    android:id="@+id/spinnerRefreshInterval"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
+                    android:minHeight="48dp"
+                    android:enabled="false" />
+
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:background="@drawable/settings_item_bg"
+                android:padding="16dp"
+                android:layout_marginBottom="8dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical">
+
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:orientation="vertical"
+                        android:layout_marginEnd="16dp">
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Кэширование"
+                            android:textSize="16sp"
+                            android:textColor="?android:textColorPrimary" />
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Сохранение расписания для офлайн-доступа. Расписание будет доступно без интернета."
+                            android:textSize="13sp"
+                            android:textColor="?android:textColorSecondary"
+                            android:layout_marginTop="4dp" />
+
+                    </LinearLayout>
+
+                    <com.google.android.material.switchmaterial.SwitchMaterial
+                        android:id="@+id/switchCache"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:thumbTint="?attr/switchThumbTint"
+                        android:trackTint="?attr/switchTrackTint" />
+
+                </LinearLayout>
+
+            </LinearLayout>
+
+            <!-- Автообновление приложения -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:background="@drawable/settings_item_bg"
+                android:padding="16dp"
+                android:layout_marginBottom="8dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical">
+
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:orientation="vertical"
+                        android:layout_marginEnd="16dp">
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Автообновление приложения"
+                            android:textSize="16sp"
+                            android:textColor="?android:textColorPrimary" />
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Автоматическая проверка и установка обновлений приложения"
+                            android:textSize="13sp"
+                            android:textColor="?android:textColorSecondary"
+                            android:layout_marginTop="4dp" />
+
+                    </LinearLayout>
+
+                    <com.google.android.material.switchmaterial.SwitchMaterial
+                        android:id="@+id/switchAppAutoUpdate"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:thumbTint="?attr/switchThumbTint"
+                        android:trackTint="?attr/switchTrackTint" />
+
+                </LinearLayout>
+
+                <!-- Кнопка проверки обновлений -->
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnCheckUpdates"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Проверить обновления"
+                    android:layout_marginTop="12dp"
+                    style="@style/Widget.Material3.Button.OutlinedButton" />
+
+            </LinearLayout>
+
+            <!-- ========== ТЕМА ОФОРМЛЕНИЯ ========== -->
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="Тема оформления"
                 style="@style/SettingsSectionTitle"
-                android:layout_marginTop="16dp"
+                android:layout_marginTop="32dp"
                 android:layout_marginBottom="16dp" />
 
             <!-- Themes Grid -->
@@ -332,7 +599,7 @@
                 android:layout_height="wrap_content"
                 android:orientation="vertical">
 
-                <!-- Row 1: System & Light -->
+                <!-- Row 1: Dark & Light -->
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
@@ -340,7 +607,7 @@
                     android:weightSum="2">
 
                     <androidx.cardview.widget.CardView
-                        android:id="@+id/themeSystem"
+                        android:id="@+id/themeDark"
                         android:layout_width="0dp"
                         android:layout_height="wrap_content"
                         android:layout_weight="1"
@@ -369,7 +636,7 @@
 
                 </LinearLayout>
 
-                <!-- Row 2: Dark & Custom -->
+                <!-- Row 2: Fiolet & Custom -->
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
@@ -378,7 +645,7 @@
                     android:layout_marginTop="8dp">
 
                     <androidx.cardview.widget.CardView
-                        android:id="@+id/themeDark"
+                        android:id="@+id/themeFiolet"
                         android:layout_width="0dp"
                         android:layout_height="wrap_content"
                         android:layout_weight="1"
@@ -421,6 +688,48 @@
                     <include layout="@layout/item_theme_content" />
 
                 </androidx.cardview.widget.CardView>
+
+            </LinearLayout>
+
+            <!-- ========== ИНФОРМАЦИЯ О ПРИЛОЖЕНИИ ========== -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:gravity="center"
+                android:layout_marginTop="32dp"
+                android:layout_marginBottom="24dp"
+                android:padding="16dp">
+
+                <TextView
+                    android:id="@+id/authorText"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/developed_by"
+                    android:textSize="14sp"
+                    android:textColor="?android:textColorSecondary"
+                    android:layout_marginBottom="4dp" />
+
+                <TextView
+                    android:id="@+id/authorName"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/author_name"
+                    android:textSize="16sp"
+                    android:textColor="?attr/colorPrimary"
+                    android:textStyle="bold"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:foreground="?android:attr/selectableItemBackground"
+                    android:layout_marginBottom="8dp" />
+
+                <TextView
+                    android:id="@+id/versionText"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/version_placeholder"
+                    android:textSize="12sp"
+                    android:textColor="?android:textColorSecondary" />
 
             </LinearLayout>
 

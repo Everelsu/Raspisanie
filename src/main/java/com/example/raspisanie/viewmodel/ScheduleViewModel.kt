@@ -7,8 +7,8 @@ import com.example.raspisanie.repository.ScheduleRepository
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 
-class ScheduleViewModel : ViewModel() {
-    private val repository = ScheduleRepository()
+class ScheduleViewModel(private val context: android.content.Context? = null) : ViewModel() {
+    private val repository = ScheduleRepository(context)
 
     val schedule: StateFlow<List<DaySchedule>> = repository.schedule
     val isLoading: StateFlow<Boolean> = repository.isLoading

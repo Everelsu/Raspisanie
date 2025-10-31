@@ -12,7 +12,7 @@ android {
         minSdk = 28
         targetSdk = 34
         versionCode = 2
-        versionName = "1.0.1"
+        versionName = "1.0.2"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -65,4 +65,10 @@ dependencies {
 
     // CardView
     implementation("androidx.cardview:cardview:1.0.0")
+    
+    // Gson for JSON serialization (for caching)
+    implementation("com.google.code.gson:gson:2.10.1")
+    
+    // WorkManager for auto refresh
+    implementation("androidx.work:work-runtime-ktx:2.9.0")
 }

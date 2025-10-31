@@ -57,7 +57,7 @@
     <color name="light_navigationBarColor">#FFFFFF</color>
     <color name="light_textColor">#000000</color>
     <color name="light_textColorPrimary">#000000</color>
-    <color name="light_textColorSecondary">#666666</color>
+    <color name="light_textColorSecondary">#757575</color>
     <color name="light_colorBackground">#FFFFFF</color>
     <color name="light_colorOnBackground">#000000</color>
     <!-- Lesson number colors (инвертированы от темной, обводка того же цвета что фон - не видна) -->
@@ -77,15 +77,15 @@
     <color name="dark_colorPrimaryVariant">#FFFFFF</color>
     <color name="dark_colorSurface">#000000</color>
     <color name="dark_colorOnSurface">#FFFFFF</color>
-    <color name="dark_settingsCardBg">#1A1A1A</color>
+    <color name="dark_settingsCardBg">#1E1E1E</color>
     <color name="dark_navigationBarColor">#000000</color>
     <color name="dark_textColor">#FFFFFF</color>
     <color name="dark_textColorPrimary">#FFFFFF</color>
-    <color name="dark_textColorSecondary">#999999</color>
+    <color name="dark_textColorSecondary">#AAAAAA</color>
     <color name="dark_colorBackground">#000000</color>
     <color name="dark_colorOnBackground">#FFFFFF</color>
     <!-- Lesson number colors -->
-    <color name="dark_lessonNumberBg">#1A1A1A</color>
+    <color name="dark_lessonNumberBg">#1E1E1E</color>
     <color name="dark_lessonNumberStroke">#333333</color>
     <color name="dark_lessonPassedFill">#424242</color>
     <!-- Switch colors -->
@@ -97,9 +97,9 @@
     <!-- ===== КАСТОМНАЯ ТЕМА (Темная основа с хеллоуин акцентами) ===== -->
     <!-- Основана на Dark теме, но primary цвет - оранжевый хеллоуин вместо белого -->
     <color name="custom_windowBackground">#000000</color>
-    <color name="custom_colorPrimary">#FF6B35</color>
+    <color name="custom_colorPrimary">#FF7B4A</color>
     <color name="custom_colorOnPrimary">#000000</color>
-    <color name="custom_colorPrimaryVariant">#FF8C42</color>
+    <color name="custom_colorPrimaryVariant">#FF9B5A</color>
     <color name="custom_colorSurface">#000000</color>
     <color name="custom_colorOnSurface">#FFFFFF</color>
     <color name="custom_settingsCardBg">#1A1A1A</color>
@@ -113,9 +113,9 @@
     <color name="custom_lessonNumberBg">#1A1A1A</color>
     <color name="custom_lessonNumberStroke">#333333</color>
     <!-- Switch colors (хеллоуин оранжевый) -->
-    <color name="custom_switchThumbChecked">#FF6B35</color>
+    <color name="custom_switchThumbChecked">#FF7B4A</color>
     <color name="custom_switchThumbUnchecked">#424242</color>
-    <color name="custom_switchTrackChecked">#66FF6B35</color>
+    <color name="custom_switchTrackChecked">#66FF7B4A</color>
     <color name="custom_switchTrackUnchecked">#33FFFFFF</color>
     
     <!-- ===== NOTHING ТЕМА (Красные акценты) ===== -->
@@ -159,4 +159,21 @@
     
     <!-- Основной цвет для Nothing темы (используется в MainActivity) -->
     <color name="primaryNothing">#FF3333</color>
+    
+    <!-- Мягкий фиолетовый для текста дня -->
+    <color name="dayNamePurple">#9E7CC1</color>
+    <color name="dayNamePurpleLight">#B794D4</color>
+    <color name="dayNamePurpleDark">#8A6FAF</color>
+    
+    <!-- ===== ФИОЛЕТОВАЯ ТЕМА (System/Material3) ===== -->
+    <!-- Для DayNight - использует стандартные Material3 цвета, но добавим цвета для switches -->
+    <!-- switch_ripple уже определён в res/color/switch_ripple.xml -->
+    
+    <!-- Lesson number colors для фиолетовой темы (зависят от светлого/тёмного режима) -->
+    <!-- В светлом режиме -->
+    <color name="system_lessonNumberBg_light">#F5F5F5</color>
+    <color name="system_lessonNumberStroke_light">#FFFFFF</color>
+    <!-- В тёмном режиме -->
+    <color name="system_lessonNumberBg_dark">#1E1E1E</color>
+    <color name="system_lessonNumberStroke_dark">#333333</color>
 </resources>

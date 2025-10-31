@@ -19,6 +19,26 @@ class PreferencesManager(context: Context) {
         private const val KEY_SELECTED_GROUP_NAME = "selected_group_name"
         private const val KEY_FAVORITE_GROUPS = "favorite_groups"
         private const val KEY_FIRST_LAUNCH = "first_launch"
+        private const val KEY_AUTO_REFRESH_ENABLED = "auto_refresh_enabled"
+        private const val KEY_AUTO_REFRESH_INTERVAL = "auto_refresh_interval"
+        private const val KEY_CACHE_ENABLED = "cache_enabled"
+        private const val KEY_FONT_SIZE = "font_size"
+        private const val KEY_COMPACT_VIEW = "compact_view"
+        private const val KEY_ANIMATIONS_ENABLED = "animations_enabled"
+        private const val KEY_APP_AUTO_UPDATE_ENABLED = "app_auto_update_enabled"
+        private const val KEY_LAST_UPDATE_CHECK = "last_update_check"
+        
+        // Font size options
+        const val FONT_SIZE_SMALL = "small"
+        const val FONT_SIZE_NORMAL = "normal"
+        const val FONT_SIZE_LARGE = "large"
+        const val FONT_SIZE_EXTRA_LARGE = "extra_large"
+        
+        // Auto refresh intervals (in minutes)
+        const val REFRESH_INTERVAL_15 = 15
+        const val REFRESH_INTERVAL_30 = 30
+        const val REFRESH_INTERVAL_60 = 60
+        const val REFRESH_INTERVAL_120 = 120
         
         const val THEME_SYSTEM = "system"
         const val THEME_LIGHT = "light"
@@ -136,5 +156,43 @@ class PreferencesManager(context: Context) {
     fun isFavoriteGroup(groupName: String): Boolean {
         return getFavoriteGroups().contains(groupName)
     }
+    
+    // Auto refresh settings
+    var autoRefreshEnabled: Boolean
+        get() = prefs.getBoolean(KEY_AUTO_REFRESH_ENABLED, false)
+        set(value) = prefs.edit().putBoolean(KEY_AUTO_REFRESH_ENABLED, value).apply()
+    
+    var autoRefreshInterval: Int
+        get() = prefs.getInt(KEY_AUTO_REFRESH_INTERVAL, REFRESH_INTERVAL_60)
+        set(value) = prefs.edit().putInt(KEY_AUTO_REFRESH_INTERVAL, value).apply()
+    
+    // Cache settings
+    var cacheEnabled: Boolean
+        get() = prefs.getBoolean(KEY_CACHE_ENABLED, true)
+        set(value) = prefs.edit().putBoolean(KEY_CACHE_ENABLED, value).apply()
+    
+    // Font size
+    var fontSize: String
+        get() = prefs.getString(KEY_FONT_SIZE, FONT_SIZE_NORMAL) ?: FONT_SIZE_NORMAL
+        set(value) = prefs.edit().putString(KEY_FONT_SIZE, value).apply()
+    
+    // View mode
+    var compactView: Boolean
+        get() = prefs.getBoolean(KEY_COMPACT_VIEW, false)
+        set(value) = prefs.edit().putBoolean(KEY_COMPACT_VIEW, value).apply()
+    
+    // Animations
+    var animationsEnabled: Boolean
+        get() = prefs.getBoolean(KEY_ANIMATIONS_ENABLED, true)
+        set(value) = prefs.edit().putBoolean(KEY_ANIMATIONS_ENABLED, value).apply()
+    
+    // App auto-update settings
+    var appAutoUpdateEnabled: Boolean
+        get() = prefs.getBoolean(KEY_APP_AUTO_UPDATE_ENABLED, false)
+        set(value) = prefs.edit().putBoolean(KEY_APP_AUTO_UPDATE_ENABLED, value).apply()
+    
+    var lastUpdateCheck: Long
+        get() = prefs.getLong(KEY_LAST_UPDATE_CHECK, 0)
+        set(value) = prefs.edit().putLong(KEY_LAST_UPDATE_CHECK, value).apply()
 }
 

@@ -20,6 +20,51 @@
         <item name="android:windowBackground">@color/background</item>
     </style>
 
+    <!-- System Theme - Material3 DayNight с фиолетовыми акцентами -->
+    <!-- Унифицирована под другие темы с той же структурой -->
+    <style name="Theme.Raspisanie.System" parent="Theme.Material3.DayNight.NoActionBar">
+        <!-- Фон окна - автоматически через DayNight -->
+        
+        <!-- Основной цвет - фиолетовый Material3 (#6750A4) - оставляем стандартный -->
+        
+        <!-- Material3 dynamic colors - сохраняем фиолетовые акценты -->
+        <!-- Цвета для кнопок и switches - используем стандартные Material3, но унифицируем стили -->
+        <item name="colorControlActivated">?attr/colorPrimary</item>
+        <item name="colorControlNormal">?android:textColorSecondary</item>
+        <item name="android:colorControlActivated">?attr/colorPrimary</item>
+        <item name="android:colorControlNormal">?android:textColorSecondary</item>
+        <!-- Button styles to match other themes -->
+        <item name="materialButtonStyle">@style/Widget.Raspisanie.Button</item>
+        <item name="buttonStyle">@style/Widget.Raspisanie.Button</item>
+        <!-- Switch colors - используем стандартные Material3 через DayNight (унифицировано) -->
+        <!-- Switch colors управляются автоматически через Material3 DayNight -->
+        <!-- Ripple colors - унифицированы с другими темами -->
+        <item name="colorControlHighlight">@color/switch_ripple</item>
+        <item name="android:colorControlHighlight">@color/switch_ripple</item>
+        
+        <!-- Фон карточек в настройках - через DayNight -->
+        <item name="settingsCardBg">?attr/colorSurface</item>
+        
+        <!-- Статус бар -->
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        
+        <!-- Навигационная панель -->
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        
+        <!-- Статус бар - автоматически через DayNight -->
+        
+        <!-- Шрифт -->
+        <item name="android:fontFamily">@font/inter</item>
+        
+        <!-- Цвет текста - через DayNight -->
+        
+        <!-- Lesson number colors - унифицированы с другими темами -->
+        <!-- Используем условные цвета для light/dark режимов через Material3 DayNight -->
+        <!-- В светлом режиме автоматически будут светлые цвета, в тёмном - тёмные -->
+        <item name="lessonNumberBg">?attr/colorSurfaceVariant</item>
+        <item name="lessonNumberStroke">?attr/colorOutline</item>
+    </style>
+
     <!-- Light Theme - Точная копия Dark темы с инвертированными цветами -->
     <style name="Theme.Raspisanie.Light" parent="Theme.Material3.DayNight.NoActionBar">
         <!-- Фон окна (инвертирован от темной: #000000 -> #FFFFFF) -->

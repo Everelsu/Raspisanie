@@ -29,6 +29,19 @@ class ScheduleAdapter(
     private val isHalloweenTheme: Boolean = prefs?.theme == PreferencesManager.THEME_CUSTOM
     private val isLightTheme: Boolean = prefs?.theme == PreferencesManager.THEME_LIGHT
     private val isDarkTheme: Boolean = prefs?.theme == PreferencesManager.THEME_DARK
+    
+    // Font size multiplier based on preference
+    private fun getFontSizeMultiplier(): Float {
+        return when (prefs?.fontSize) {
+            PreferencesManager.FONT_SIZE_SMALL -> 0.85f
+            PreferencesManager.FONT_SIZE_NORMAL -> 1.0f
+            PreferencesManager.FONT_SIZE_LARGE -> 1.15f
+            PreferencesManager.FONT_SIZE_EXTRA_LARGE -> 1.3f
+            else -> 1.0f
+        }
+    }
+    
+    private val animationsEnabled: Boolean = true // Always enabled
 
     inner class ScheduleViewHolder(view: View) : RecyclerView.ViewHolder(view) {
         val dayName: TextView = view.findViewById(R.id.dayName)
@@ -68,6 +81,13 @@ class ScheduleAdapter(
         holder.dayName.text = formatDayName(daySchedule.day)
         holder.dateText.text = formatDate(daySchedule.date)
         
+        // Apply font size
+        val fontSizeMultiplier = getFontSizeMultiplier()
+        val baseDayNameSize = if (isToday(daySchedule.date)) 26f else 24f
+        holder.dayName.textSize = baseDayNameSize * fontSizeMultiplier
+        holder.dateText.textSize = 14f * fontSizeMultiplier
+        
+        
         // Apply Nothing font if needed
         if (isNothingTheme && context != null) {
             try {
@@ -85,12 +105,10 @@ class ScheduleAdapter(
         // Add accent to today's card
         if (isToday) {
             holder.dayName.alpha = 1f
-            holder.dayName.textSize = 26f
             // Add subtle emphasis
             holder.itemView.elevation = 4f
         } else {
             holder.dayName.alpha = 0.85f
-            holder.dayName.textSize = 24f
             holder.itemView.elevation = 0f
         }
         
@@ -123,6 +141,12 @@ class ScheduleAdapter(
                             .inflate(R.layout.item_break, holder.itemsContainer, false)
                         val breakTextView = breakView.findViewById<TextView>(R.id.breakText)
                         breakTextView.text = breakText
+                        
+                        // Apply font size
+                        val fontSizeMultiplier = getFontSizeMultiplier()
+                        breakTextView.textSize = 13f * fontSizeMultiplier
+                        
+                        
                         if (isNothingTheme && context != null) {
                             applyFontToView(breakView)
                         }
@@ -130,6 +154,11 @@ class ScheduleAdapter(
                             applyHalloweenToBreak(breakTextView)
                         }
                         holder.itemsContainer.addView(breakView)
+                        
+                        // Animate break appearance if enabled
+                        if (animationsEnabled) {
+                            animateItemAppearance(breakView)
+                        }
                     }
                     
                     // Check for lunch
@@ -139,6 +168,12 @@ class ScheduleAdapter(
                             .inflate(R.layout.item_break, holder.itemsContainer, false)
                         val lunchTextView = lunchView.findViewById<TextView>(R.id.breakText)
                         lunchTextView.text = lunchText
+                        
+                        // Apply font size
+                        val fontSizeMultiplier = getFontSizeMultiplier()
+                        lunchTextView.textSize = 13f * fontSizeMultiplier
+                        
+                        
                         if (isNothingTheme && context != null) {
                             applyFontToView(lunchView)
                         }
@@ -146,6 +181,11 @@ class ScheduleAdapter(
                             applyHalloweenToBreak(lunchTextView)
                         }
                         holder.itemsContainer.addView(lunchView)
+                        
+                        // Animate lunch appearance if enabled
+                        if (animationsEnabled) {
+                            animateItemAppearance(lunchView)
+                        }
                     }
                 }
                 
@@ -162,6 +202,14 @@ class ScheduleAdapter(
                     val lessonProgressOverlay = lessonView.findViewById<View>(R.id.lessonProgressOverlay)
 
                     lessonNumberView.text = lessonNum.toString()
+                    
+                    // Apply font size to lesson views
+                    val fontSizeMultiplier = getFontSizeMultiplier()
+                    lessonNumberView.textSize = 16f * fontSizeMultiplier
+                    subjectView.textSize = 16f * fontSizeMultiplier
+                    lessonTimeView.textSize = 11f * fontSizeMultiplier
+                    detailsView.textSize = 13f * fontSizeMultiplier
+                    
                     
                     // Set lesson time
                     val college = prefs?.college ?: PreferencesManager.COLLEGE_CHTOTIB
@@ -195,8 +243,10 @@ class ScheduleAdapter(
                     // Add subtle accent to lesson number
                     addLessonNumberAccent(lessonNumberView, lessonNum)
                     
-                    // Animate item appearance
-                    animateItemAppearance(lessonView)
+                    // Animate item appearance (if enabled)
+                    if (animationsEnabled) {
+                        animateItemAppearance(lessonView)
+                    }
                     
                     // Update circle state if today - wait for layout first
                     if (isToday) {
@@ -211,7 +261,9 @@ class ScheduleAdapter(
                 
                 // Add break/lunch progress if today
                 if (isToday && previousLessonNumber != null) {
-                    animateBreakProgress(holder.itemsContainer, previousLessonNumber, lessonNum)
+                    if (animationsEnabled) {
+                        animateBreakProgress(holder.itemsContainer, previousLessonNumber, lessonNum)
+                    }
                 }
                 
                 previousLessonNumber = lessonNum
@@ -254,7 +306,9 @@ class ScheduleAdapter(
             when {
                 isHalloweenTheme -> holder.dayName.setTextColor(context?.getColor(R.color.custom_colorPrimary) ?: holder.dayName.textColors?.defaultColor ?: 0xFFFFFFFF.toInt())
                 isNothingTheme -> holder.dayName.setTextColor(context?.getColor(R.color.nothing_colorPrimary) ?: 0xFFFF3333.toInt())
-                else -> {} // Use default theme color
+                isDarkTheme -> holder.dayName.setTextColor(context?.getColor(R.color.dayNamePurple) ?: 0xFF9E7CC1.toInt())
+                isLightTheme -> holder.dayName.setTextColor(context?.getColor(R.color.dayNamePurpleLight) ?: 0xFFB794D4.toInt())
+                else -> holder.dayName.setTextColor(context?.getColor(R.color.dayNamePurple) ?: 0xFF9E7CC1.toInt()) // Мягкий фиолетовый для всех остальных тем
             }
         }
     }
@@ -609,17 +663,23 @@ class ScheduleAdapter(
     }
     
     private fun animateItemAppearance(view: View) {
+        if (!animationsEnabled) {
+            view.alpha = 1f
+            view.translationY = 0f
+            return
+        }
+        
         view.alpha = 0f
-        view.translationY = 10f
+        view.translationY = 20f
         
         view.post {
             ValueAnimator.ofFloat(0f, 1f).apply {
-                duration = 300
+                duration = 400
                 interpolator = DecelerateInterpolator()
                 addUpdateListener { animator ->
                     val progress = animator.animatedValue as Float
                     view.alpha = progress
-                    view.translationY = 10f * (1 - progress)
+                    view.translationY = 20f * (1 - progress)
                 }
                 start()
             }
