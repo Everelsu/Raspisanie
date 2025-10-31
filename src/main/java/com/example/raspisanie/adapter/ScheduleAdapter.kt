@@ -27,6 +27,8 @@ class ScheduleAdapter(
     private val prefs: PreferencesManager? = context?.let { PreferencesManager(it) }
     private val isNothingTheme: Boolean = prefs?.theme == PreferencesManager.THEME_NOTHING
     private val isHalloweenTheme: Boolean = prefs?.theme == PreferencesManager.THEME_CUSTOM
+    private val isLightTheme: Boolean = prefs?.theme == PreferencesManager.THEME_LIGHT
+    private val isDarkTheme: Boolean = prefs?.theme == PreferencesManager.THEME_DARK
 
     inner class ScheduleViewHolder(view: View) : RecyclerView.ViewHolder(view) {
         val dayName: TextView = view.findViewById(R.id.dayName)
@@ -113,8 +115,9 @@ class ScheduleAdapter(
                 
                 // Add break info if needed
                 if (previousLessonNumber != null) {
+                    val college = prefs?.college ?: PreferencesManager.COLLEGE_CHTOTIB
                     // Check for regular break
-                    val breakText = LessonTimes.getBreakText(previousLessonNumber, lessonNum)
+                    val breakText = LessonTimes.getBreakText(previousLessonNumber, lessonNum, college)
                     if (breakText != null && prefs?.showBreaks == true) {
                         val breakView = LayoutInflater.from(holder.itemView.context)
                             .inflate(R.layout.item_break, holder.itemsContainer, false)
@@ -130,7 +133,7 @@ class ScheduleAdapter(
                     }
                     
                     // Check for lunch
-                    val lunchText = LessonTimes.getLunchText(previousLessonNumber)
+                    val lunchText = LessonTimes.getLunchText(previousLessonNumber, college)
                     if (lunchText != null && prefs?.showLunch == true) {
                         val lunchView = LayoutInflater.from(holder.itemView.context)
                             .inflate(R.layout.item_break, holder.itemsContainer, false)
@@ -161,7 +164,8 @@ class ScheduleAdapter(
                     lessonNumberView.text = lessonNum.toString()
                     
                     // Set lesson time
-                    val timeText = LessonTimes.formatTime(lessonNum)
+                    val college = prefs?.college ?: PreferencesManager.COLLEGE_CHTOTIB
+                    val timeText = LessonTimes.formatTime(lessonNum, college)
                     val showTime = prefs?.showTime ?: true
                     lessonTimeView.text = timeText
                     lessonTimeView.visibility = if (timeText.isNotEmpty() && showTime) View.VISIBLE else View.GONE
@@ -231,9 +235,11 @@ class ScheduleAdapter(
                     }
                 }
                 
-                // Apply Halloween theme to progress line
-                if (isHalloweenTheme) {
-                    holder.progressIndicator.setBackgroundResource(R.drawable.progress_indicator_halloween)
+                // Apply theme-specific progress line
+                when {
+                    isNothingTheme -> holder.progressIndicator.setBackgroundResource(R.drawable.progress_indicator_nothing)
+                    isHalloweenTheme -> holder.progressIndicator.setBackgroundResource(R.drawable.progress_indicator_halloween)
+                    else -> holder.progressIndicator.setBackgroundResource(R.drawable.progress_indicator)
                 }
             } else {
                 holder.progressIndicator.visibility = View.GONE
@@ -244,9 +250,11 @@ class ScheduleAdapter(
                 holder.progressHandler = null
             }
             
-            // Apply Halloween theme to day name
-            if (isHalloweenTheme) {
-                holder.dayName.setTextColor(context?.getColor(R.color.custom_colorPrimary) ?: holder.dayName.textColors?.defaultColor ?: 0xFFFFFFFF.toInt())
+            // Apply theme-specific color to day name
+            when {
+                isHalloweenTheme -> holder.dayName.setTextColor(context?.getColor(R.color.custom_colorPrimary) ?: holder.dayName.textColors?.defaultColor ?: 0xFFFFFFFF.toInt())
+                isNothingTheme -> holder.dayName.setTextColor(context?.getColor(R.color.nothing_colorPrimary) ?: 0xFFFF3333.toInt())
+                else -> {} // Use default theme color
             }
         }
     }
@@ -302,7 +310,8 @@ class ScheduleAdapter(
     
     private fun updateProgressIndicator(holder: ScheduleViewHolder, lessonNumbers: List<Int>) {
         val currentMinutes = DayProgressCalculator.getCurrentTimeInMinutes()
-        val progress = DayProgressCalculator.getDayProgress(currentMinutes, lessonNumbers)
+        val college = prefs?.college ?: PreferencesManager.COLLEGE_CHTOTIB
+        val progress = DayProgressCalculator.getDayProgress(currentMinutes, lessonNumbers, college)
         
         // Get height of itemsContainer
         val containerHeight = holder.itemsContainer.height
@@ -387,7 +396,8 @@ class ScheduleAdapter(
                 val containerHeight = holder.itemsContainer.height
                 if (containerHeight > 0) {
                     val currentMinutes = DayProgressCalculator.getCurrentTimeInMinutes()
-                    val progress = DayProgressCalculator.getDayProgress(currentMinutes, lessonNumbers)
+                    val college = prefs?.college ?: PreferencesManager.COLLEGE_CHTOTIB
+        val progress = DayProgressCalculator.getDayProgress(currentMinutes, lessonNumbers, college)
                     updateProgressHeight(holder, containerHeight, progress)
                 } else {
                     updateProgressIndicator(holder, lessonNumbers)
@@ -416,7 +426,8 @@ class ScheduleAdapter(
     
     private fun updateCircleState(lessonNumberView: TextView, progressOverlay: View, lessonNumber: Int) {
         val currentMinutes = DayProgressCalculator.getCurrentTimeInMinutes()
-        val lessonTime = LessonTimes.getTime(lessonNumber) ?: return
+        val college = prefs?.college ?: PreferencesManager.COLLEGE_CHTOTIB
+        val lessonTime = LessonTimes.getTime(lessonNumber, college) ?: return
         
         val lessonStartMinutes = parseTimeToMinutes(lessonTime.startTime)
         val lessonEndMinutes = parseTimeToMinutes(lessonTime.endTime)
@@ -437,16 +448,22 @@ class ScheduleAdapter(
                 // Lesson passed - filled circle with white text
                 progressOverlay.visibility = View.VISIBLE
                 
-                // Apply Halloween orange fill if Halloween theme
-                if (isHalloweenTheme) {
-                    progressOverlay.setBackgroundResource(R.drawable.lesson_progress_fill_halloween)
+                // Apply theme-specific progress fill
+                when {
+                    isNothingTheme -> progressOverlay.setBackgroundResource(R.drawable.lesson_progress_fill_nothing)
+                    isHalloweenTheme -> progressOverlay.setBackgroundResource(R.drawable.lesson_progress_fill_halloween)
+                    isLightTheme -> progressOverlay.setBackgroundResource(R.drawable.lesson_progress_fill_light)
+                    isDarkTheme -> progressOverlay.setBackgroundResource(R.drawable.lesson_progress_fill_dark)
+                    else -> progressOverlay.setBackgroundResource(R.drawable.lesson_progress_fill)
                 }
                 
-                // White text on filled circle
-                val typedArrayWhite = context.theme.obtainStyledAttributes(intArrayOf(android.R.attr.textColorPrimary))
-                val whiteColor = typedArrayWhite.getColor(0, context.getColor(android.R.color.white))
-                typedArrayWhite.recycle()
-                lessonNumberView.setTextColor(whiteColor)
+                // Text color based on theme: black for light, white for dark
+                val textColorForPassed = if (isLightTheme) {
+                    context.getColor(android.R.color.black)
+                } else {
+                    context.getColor(android.R.color.white)
+                }
+                lessonNumberView.setTextColor(textColorForPassed)
                 lessonNumberView.textSize = 16f
                 lessonNumberView.scaleX = 1.0f
                 lessonNumberView.scaleY = 1.0f
@@ -530,8 +547,9 @@ class ScheduleAdapter(
     }
     
     private fun animateBreakProgress(container: ViewGroup, beforeLesson: Int, afterLesson: Int) {
-        val breakText = LessonTimes.getBreakText(beforeLesson, afterLesson)
-        val lunchText = LessonTimes.getLunchText(beforeLesson)
+        val college = prefs?.college ?: PreferencesManager.COLLEGE_CHTOTIB
+        val breakText = LessonTimes.getBreakText(beforeLesson, afterLesson, college)
+        val lunchText = LessonTimes.getLunchText(beforeLesson, college)
         
         val currentMinutes = DayProgressCalculator.getCurrentTimeInMinutes()
         val isDuringBreak = breakText != null && checkBreakTime(beforeLesson, afterLesson, currentMinutes)
@@ -553,8 +571,9 @@ class ScheduleAdapter(
     }
     
     private fun checkBreakTime(beforeLesson: Int, afterLesson: Int, currentMinutes: Int): Boolean {
-        val beforeTime = LessonTimes.getTime(beforeLesson)
-        val afterTime = LessonTimes.getTime(afterLesson)
+        val college = prefs?.college ?: PreferencesManager.COLLEGE_CHTOTIB
+        val beforeTime = LessonTimes.getTime(beforeLesson, college)
+        val afterTime = LessonTimes.getTime(afterLesson, college)
         if (beforeTime == null || afterTime == null) return false
 
         val beforeEnd = parseTimeToMinutes(beforeTime.endTime)
@@ -563,11 +582,18 @@ class ScheduleAdapter(
     }
 
     private fun checkLunchTime(afterLesson: Int, currentMinutes: Int): Boolean {
-        return when (afterLesson) {
-            3 -> currentMinutes in 671..735 // 11:11 - 12:15
-            6 -> currentMinutes in 935..965 // 15:35 - 16:05
-            else -> false
-        }
+        val college = prefs?.college ?: PreferencesManager.COLLEGE_CHTOTIB
+        val lunchText = LessonTimes.getLunchText(afterLesson, college)
+        if (lunchText == null) return false
+        
+        // Parse lunch time from text (format: "Обед: HH:mm - HH:mm")
+        val regex = Regex("\\d{1,2}:\\d{2}")
+        val times = regex.findAll(lunchText).map { it.value }.toList()
+        if (times.size != 2) return false
+        
+        val startMinutes = parseTimeToMinutes(times[0])
+        val endMinutes = parseTimeToMinutes(times[1])
+        return currentMinutes in startMinutes..endMinutes
     }
     
     private fun addLessonNumberAccent(lessonNumberView: TextView, lessonNum: Int) {
@@ -705,8 +731,14 @@ class ScheduleAdapter(
         // Only set if it's not a passed lesson
         lessonNumberView.elevation = 3f
         
-        // Apply orange to progress overlay fill
-        lessonProgressOverlay.setBackgroundResource(R.drawable.lesson_progress_fill_halloween)
+        // Apply theme-specific progress overlay fill
+        when {
+            isNothingTheme -> lessonProgressOverlay.setBackgroundResource(R.drawable.lesson_progress_fill_nothing)
+            isHalloweenTheme -> lessonProgressOverlay.setBackgroundResource(R.drawable.lesson_progress_fill_halloween)
+            isLightTheme -> lessonProgressOverlay.setBackgroundResource(R.drawable.lesson_progress_fill_light)
+            isDarkTheme -> lessonProgressOverlay.setBackgroundResource(R.drawable.lesson_progress_fill_dark)
+            else -> lessonProgressOverlay.setBackgroundResource(R.drawable.lesson_progress_fill)
+        }
     }
     
     private fun applyHalloweenToBreak(breakTextView: TextView) {

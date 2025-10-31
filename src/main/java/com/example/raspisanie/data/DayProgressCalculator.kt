@@ -39,8 +39,8 @@ object DayProgressCalculator {
     /**
      * Получить прогресс занятия (0.0 - 1.0)
      */
-    fun getLessonProgress(lessonNumber: Int, currentMinutes: Int): Float {
-        val time = LessonTimes.getTime(lessonNumber) ?: return 0f
+    fun getLessonProgress(lessonNumber: Int, currentMinutes: Int, college: String = PreferencesManager.COLLEGE_CHTOTIB): Float {
+        val time = LessonTimes.getTime(lessonNumber, college) ?: return 0f
         val start = parseTime(time.startTime)
         val end = parseTime(time.endTime)
         
@@ -55,8 +55,8 @@ object DayProgressCalculator {
     /**
      * Проверить, прошло ли занятие
      */
-    fun isLessonPassed(lessonNumber: Int, currentMinutes: Int): Boolean {
-        val time = LessonTimes.getTime(lessonNumber) ?: return false
+    fun isLessonPassed(lessonNumber: Int, currentMinutes: Int, college: String = PreferencesManager.COLLEGE_CHTOTIB): Boolean {
+        val time = LessonTimes.getTime(lessonNumber, college) ?: return false
         val end = parseTime(time.endTime)
         return currentMinutes > end
     }
@@ -64,8 +64,8 @@ object DayProgressCalculator {
     /**
      * Проверить, идет ли сейчас занятие
      */
-    fun isLessonActive(lessonNumber: Int, currentMinutes: Int): Boolean {
-        val time = LessonTimes.getTime(lessonNumber) ?: return false
+    fun isLessonActive(lessonNumber: Int, currentMinutes: Int, college: String = PreferencesManager.COLLEGE_CHTOTIB): Boolean {
+        val time = LessonTimes.getTime(lessonNumber, college) ?: return false
         return isTimeInRange(currentMinutes, time.startTime, time.endTime)
     }
     
@@ -73,7 +73,7 @@ object DayProgressCalculator {
      * Получить прогресс дня (0.0 - 1.0) от начала первой пары до конца последней
      * @param lessonNumbers список номеров пар, которые есть в расписании дня (например [1, 2, 3])
      */
-    fun getDayProgress(currentMinutes: Int, lessonNumbers: List<Int>? = null): Float {
+    fun getDayProgress(currentMinutes: Int, lessonNumbers: List<Int>? = null, college: String = PreferencesManager.COLLEGE_CHTOTIB): Float {
         val lessonsToConsider = lessonNumbers?.sorted() ?: (1..8).toList()
         
         if (lessonsToConsider.isEmpty()) return 0f
@@ -81,8 +81,8 @@ object DayProgressCalculator {
         val firstLessonNum = lessonsToConsider.first()
         val lastLessonNum = lessonsToConsider.last()
         
-        val firstLesson = LessonTimes.getTime(firstLessonNum)
-        val lastLesson = LessonTimes.getTime(lastLessonNum)
+        val firstLesson = LessonTimes.getTime(firstLessonNum, college)
+        val lastLesson = LessonTimes.getTime(lastLessonNum, college)
         
         if (firstLesson == null || lastLesson == null) return 0f
         

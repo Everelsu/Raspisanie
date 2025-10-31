@@ -63,6 +63,7 @@
     <!-- Lesson number colors (инвертированы от темной, обводка того же цвета что фон - не видна) -->
     <color name="light_lessonNumberBg">#F5F5F5</color>
     <color name="light_lessonNumberStroke">#FFFFFF</color>
+    <color name="light_lessonPassedFill">#E0E0E0</color>
     <!-- Switch colors -->
     <color name="light_switchThumbChecked">#000000</color>
     <color name="light_switchThumbUnchecked">#FFFFFF</color>
@@ -86,6 +87,7 @@
     <!-- Lesson number colors -->
     <color name="dark_lessonNumberBg">#1A1A1A</color>
     <color name="dark_lessonNumberStroke">#333333</color>
+    <color name="dark_lessonPassedFill">#424242</color>
     <!-- Switch colors -->
     <color name="dark_switchThumbChecked">#FFFFFF</color>
     <color name="dark_switchThumbUnchecked">#424242</color>

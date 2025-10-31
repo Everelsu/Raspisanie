@@ -8,6 +8,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.lifecycle.lifecycleScope
+import com.example.raspisanie.data.Group
 import com.example.raspisanie.data.GroupsListParser
 import com.example.raspisanie.data.PreferencesManager
 import com.example.raspisanie.databinding.ActivitySettingsBinding
@@ -186,28 +187,36 @@ class SettingsActivity : AppCompatActivity() {
         lifecycleScope.launch {
             try {
                 val groups = groupsParser.fetchGroupsList(prefs.college)
-                val groupNames = groups.map { it.name }.sorted()
+                val favorites = prefs.getFavoriteGroups()
                 
-                // Добавить "Не выбрано" в начало списка
-                val itemsWithNone = mutableListOf(getString(R.string.no_group_selected))
-                itemsWithNone.addAll(groupNames)
+                // Разделить на избранные и обычные
+                val favoriteGroups = mutableListOf<Group>()
+                val regularGroups = mutableListOf<Group>()
+                
+                for (group in groups.sortedBy { it.name }) {
+                    if (favorites.contains(group.name)) {
+                        favoriteGroups.add(group)
+                    } else {
+                        regularGroups.add(group)
+                    }
+                }
+                
+                // Сначала избранные, потом обычные
+                val sortedGroups = favoriteGroups + regularGroups
+                val groupNames = sortedGroups.map { it.name }
                 
                 val adapter = ArrayAdapter(
                     this@SettingsActivity,
                     android.R.layout.simple_spinner_item,
-                    itemsWithNone
+                    groupNames
                 ).apply {
                     setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
                 }
                 
                 spinner.adapter = adapter
                 
-                // Выбрать текущую группу в списке или "Не выбрано"
-                val currentIndex = if (prefs.isGroupSelected()) {
-                    itemsWithNone.indexOf(prefs.selectedGroupName)
-                } else {
-                    0 // "Не выбрано"
-                }
+                // Выбрать текущую группу в списке
+                val currentIndex = groupNames.indexOf(prefs.selectedGroupName)
                 if (currentIndex >= 0) {
                     spinner.setSelection(currentIndex)
                 }
@@ -215,50 +224,32 @@ class SettingsActivity : AppCompatActivity() {
                 // Обработчик выбора группы
                 spinner.onItemSelectedListener = object : android.widget.AdapterView.OnItemSelectedListener {
                     override fun onItemSelected(parent: android.widget.AdapterView<*>?, view: android.view.View?, position: Int, id: Long) {
-                        val selectedItem = itemsWithNone[position]
+                        val selectedGroup = sortedGroups[position]
+                        val wasChanged = selectedGroup.fileName != prefs.selectedGroupFile
                         
-                        // Если выбрано "Не выбрано"
-                        if (position == 0) {
-                            if (prefs.isGroupSelected()) {
-                                // Очистить выбор
-                                prefs.selectedGroupName = ""
-                                prefs.selectedGroupFile = ""
-                                binding.selectedGroupName.text = getString(R.string.no_group_selected)
-                                
-                                Toast.makeText(
-                                    this@SettingsActivity,
-                                    "Группа не выбрана",
-                                    Toast.LENGTH_SHORT
-                                ).show()
-                                
-                                setResult(RESULT_OK)
-                            }
-                        } else {
-                            // Выбрана реальная группа
-                            val selectedGroup = groups.firstOrNull { it.name == selectedItem }
-                            
-                            if (selectedGroup != null) {
-                                val wasChanged = selectedGroup.fileName != prefs.selectedGroupFile
-                                
-                                prefs.selectedGroupName = selectedGroup.name
-                                prefs.selectedGroupFile = selectedGroup.fileName
-                                binding.selectedGroupName.text = selectedGroup.name
-                                
-                                if (wasChanged) {
-                                    Toast.makeText(
-                                        this@SettingsActivity,
-                                        "Группа изменена: ${selectedGroup.name}",
-                                        Toast.LENGTH_SHORT
-                                    ).show()
-                                }
-                                
-                                setResult(RESULT_OK)
-                            }
+                        prefs.selectedGroupName = selectedGroup.name
+                        prefs.selectedGroupFile = selectedGroup.fileName
+                        binding.selectedGroupName.text = selectedGroup.name
+                        
+                        // Обновить кнопку избранного
+                        updateFavoriteButton(selectedGroup.name)
+                        
+                        if (wasChanged) {
+                            setResult(RESULT_OK)
+                            Toast.makeText(
+                                this@SettingsActivity,
+                                "Группа изменена: ${selectedGroup.name}",
+                                Toast.LENGTH_SHORT
+                            ).show()
                         }
                     }
                     
                     override fun onNothingSelected(parent: android.widget.AdapterView<*>?) {}
                 }
+                
+                // Настроить кнопку избранного
+                setupFavoriteButton()
+                
             } catch (e: Exception) {
                 // Если не удалось загрузить список групп
                 android.util.Log.e("SettingsActivity", "Ошибка загрузки групп", e)
@@ -269,6 +260,39 @@ class SettingsActivity : AppCompatActivity() {
                     "${getString(R.string.no_group_selected)} (ошибка загрузки списка)"
                 }
             }
+        }
+    }
+    
+    private fun setupFavoriteButton() {
+        if (prefs.isGroupSelected()) {
+            updateFavoriteButton(prefs.selectedGroupName)
+        }
+        
+        binding.btnAddToFavorites.setOnClickListener {
+            if (prefs.isGroupSelected()) {
+                val groupName = prefs.selectedGroupName
+                val isFavorite = prefs.isFavoriteGroup(groupName)
+                
+                if (isFavorite) {
+                    prefs.removeFavoriteGroup(groupName)
+                    Toast.makeText(this, "Удалено из избранного", Toast.LENGTH_SHORT).show()
+                } else {
+                    prefs.addFavoriteGroup(groupName)
+                    Toast.makeText(this, "Добавлено в избранное", Toast.LENGTH_SHORT).show()
+                }
+                
+                // Перезагрузить список групп
+                setupGroupSelection()
+            }
+        }
+    }
+    
+    private fun updateFavoriteButton(groupName: String) {
+        val isFavorite = prefs.isFavoriteGroup(groupName)
+        binding.btnAddToFavorites.text = if (isFavorite) {
+            "⭐ В избранном"
+        } else {
+            "⭐ Добавить в избранное"
         }
     }
 
@@ -305,8 +329,8 @@ class SettingsActivity : AppCompatActivity() {
         
         setupThemeCard(
             R.id.themeCustom,
-            "Кастомная",
-            "Фиолетовый акцент",
+            "Хэллоуин",
+            "Оранжевый акцент хе-хе",
             R.drawable.theme_preview_custom,
             PreferencesManager.THEME_CUSTOM,
             currentTheme == PreferencesManager.THEME_CUSTOM
@@ -314,7 +338,7 @@ class SettingsActivity : AppCompatActivity() {
         
         setupThemeCard(
             R.id.themeNothing,
-            "Nothing (Эксклюзив)",
+            "Nothing theme",
             "Фирменный стиль Nothing",
             R.drawable.theme_preview_nothing,
             PreferencesManager.THEME_NOTHING,

@@ -282,37 +282,38 @@
                 android:padding="16dp"
                 android:layout_marginBottom="8dp">
 
-                <LinearLayout
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Выберите группу"
+                    android:textSize="16sp"
+                    android:textColor="?android:textColorPrimary"
+                    android:layout_marginBottom="8dp" />
+
+                <TextView
+                    android:id="@+id/selectedGroupName"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="ИСиП-23-1п"
+                    android:textSize="14sp"
+                    android:textColor="?android:textColorSecondary"
+                    android:layout_marginBottom="12dp" />
+
+                <androidx.appcompat.widget.AppCompatSpinner
+                    android:id="@+id/groupSpinner"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:orientation="vertical"
-                    android:layout_marginEnd="16dp">
+                    android:prompt="@string/select_group"
+                    android:minHeight="48dp" />
 
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="Выберите группу"
-                        android:textSize="16sp"
-                        android:textColor="?android:textColorPrimary"
-                        android:layout_marginBottom="8dp" />
-
-                    <TextView
-                        android:id="@+id/selectedGroupName"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="ИСиП-23-1п"
-                        android:textSize="14sp"
-                        android:textColor="?android:textColorSecondary"
-                        android:layout_marginBottom="12dp" />
-
-                    <androidx.appcompat.widget.AppCompatSpinner
-                        android:id="@+id/groupSpinner"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:prompt="@string/select_group"
-                        android:minHeight="48dp" />
-
-                </LinearLayout>
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnAddToFavorites"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
+                    android:text="⭐ Добавить в избранное"
+                    android:textSize="14sp"
+                    style="@style/Widget.Material3.Button.OutlinedButton" />
 
             </LinearLayout>
 

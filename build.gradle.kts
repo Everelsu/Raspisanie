@@ -9,7 +9,7 @@ android {
 
     defaultConfig {
         applicationId = "com.example.raspisanie"
-        minSdk = 31
+        minSdk = 28
         targetSdk = 34
         versionCode = 2
         versionName = "1.0.1"
@@ -35,6 +35,7 @@ android {
     }
     buildFeatures {
         viewBinding = true
+        dataBinding = false
     }
 }
 

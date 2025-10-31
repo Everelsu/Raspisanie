@@ -32,21 +32,68 @@ class GroupsListParser {
                 .timeout(20000)
                 .userAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
                 .followRedirects(true)
+                .parser(org.jsoup.parser.Parser.htmlParser())
                 .get()
             
             Log.d(TAG, "HTML загружен, размер: ${doc.html().length} символов")
 
             val groups = mutableListOf<Group>()
             
-            // Find the table with groups list - it has groups with links like "cg36.htm"
-            // The table structure: rows with group names and links
-            val tables = doc.select("table")
+            // Find the table with class "inf" which contains groups list
+            val table = doc.select("table.inf").firstOrNull()
             
-            for (table in tables) {
+            if (table == null) {
+                Log.e(TAG, "Таблица со списком групп не найдена!")
+                // Fallback: try to find any table
+                val tables = doc.select("table")
+                for (table in tables) {
+                    val rows = table.select("tr")
+                    for (row in rows) {
+                        // Look for links that contain "cg" and ".htm" in href
+                        val links = row.select("a[href*=cg][href*=htm], a.z0[href*=cg]")
+                        
+                        for (link in links) {
+                            val href = link.attr("href")
+                            val groupName = link.text().trim()
+                            
+                            // Extract filename from href (could be "cg36.htm" or relative path)
+                            val fileName = if (href.contains("/")) {
+                                href.substringAfterLast("/")
+                            } else {
+                                href
+                            }.substringBefore("?") // Remove query params if any
+                            
+                            if (groupName.isNotEmpty() && fileName.isNotEmpty() && fileName.startsWith("cg") && fileName.endsWith(".htm")) {
+                                groups.add(
+                                    Group(
+                                        name = groupName,
+                                        url = "$baseUrl$fileName",
+                                        fileName = fileName
+                                    )
+                                )
+                                Log.d(TAG, "Найдена группа: $groupName -> $fileName")
+                            }
+                        }
+                    }
+                }
+            } else {
+                // Use the inf table
                 val rows = table.select("tr")
                 for (row in rows) {
-                    // Look for links that contain "cg" and ".htm" in href
-                    val links = row.select("a[href*=cg][href*=htm]")
+                    // Skip header rows (contain "№ п.п" or "День" or "Пара" in header cells)
+                    val headerCells = row.select("td.hd")
+                    if (headerCells.isNotEmpty()) {
+                        val headerText = row.text().lowercase()
+                        if (headerText.contains("№ п.п") || 
+                            headerText.contains("днев") || 
+                            headerText.contains("пара") ||
+                            headerText.contains("группа")) {
+                            continue
+                        }
+                    }
+                    
+                    // Look for links that contain "cg" and ".htm" in href, or links with class "z0"
+                    val links = row.select("a[href*=cg][href*=htm], a.z0[href*=cg], a[href^=cg]")
                     
                     for (link in links) {
                         val href = link.attr("href")

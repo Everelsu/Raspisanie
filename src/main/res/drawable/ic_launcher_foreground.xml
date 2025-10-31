@@ -5,51 +5,37 @@
     android:viewportWidth="108"
     android:viewportHeight="108">
     
-    <!-- Minimalist schedule icon - simple list with numbered items -->
+    <!-- Calendar/Schedule icon -->
     
-    <!-- Background circle/rounded rectangle for contrast -->
+    <!-- Large circle container (lower) -->
     <path
         android:fillColor="#FFFFFF"
-        android:pathData="M20,20 L88,20 Q92,20 92,24 L92,84 Q92,88 88,88 L20,88 Q16,88 16,84 L16,24 Q16,20 20,20 Z" />
+        android:pathData="M54,54 m -32,0 a 32,32 0 1,1 64,0 a 32,32 0 1,1 -64,0" />
     
-    <!-- Lesson items (simple lines like a schedule list) -->
+    <!-- Lesson circles inside (arranged vertically, centered) -->
     <!-- Item 1 -->
     <path
-        android:fillColor="#000000"
-        android:strokeWidth="3"
-        android:strokeColor="#000000"
-        android:pathData="M30,32 L78,32" />
+        android:fillColor="#666666"
+        android:pathData="M38,34 m -4,0 a 4,4 0 1,1 8,0 a 4,4 0 1,1 -8,0" />
     
     <!-- Item 2 -->
     <path
-        android:fillColor="#000000"
-        android:strokeWidth="3"
-        android:strokeColor="#000000"
-        android:pathData="M30,44 L78,44" />
+        android:fillColor="#666666"
+        android:pathData="M32,44 m -4,0 a 4,4 0 1,1 8,0 a 4,4 0 1,1 -8,0" />
     
-    <!-- Item 3 (highlighted) -->
+    <!-- Item 3 (current - highlighted in orange) -->
     <path
         android:fillColor="#FF6B35"
-        android:strokeWidth="4"
-        android:strokeColor="#FF6B35"
-        android:pathData="M30,56 L78,56" />
-    <!-- Dot indicator for current -->
-    <path
-        android:fillColor="#FF6B35"
-        android:pathData="M82,56 m -3,0 a 3,3 0 1,1 6,0 a 3,3 0 1,1 -6,0" />
+        android:pathData="M28,54 m -5,0 a 5,5 0 1,1 10,0 a 5,5 0 1,1 -10,0" />
     
     <!-- Item 4 -->
     <path
-        android:fillColor="#000000"
-        android:strokeWidth="3"
-        android:strokeColor="#000000"
-        android:pathData="M30,68 L78,68" />
+        android:fillColor="#666666"
+        android:pathData="M32,64 m -4,0 a 4,4 0 1,1 8,0 a 4,4 0 1,1 -8,0" />
     
     <!-- Item 5 -->
     <path
-        android:fillColor="#000000"
-        android:strokeWidth="3"
-        android:strokeColor="#000000"
-        android:pathData="M30,80 L78,80" />
+        android:fillColor="#666666"
+        android:pathData="M38,74 m -4,0 a 4,4 0 1,1 8,0 a 4,4 0 1,1 -8,0" />
     
 </vector>

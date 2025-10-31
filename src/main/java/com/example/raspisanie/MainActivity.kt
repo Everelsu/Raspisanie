@@ -80,8 +80,13 @@ class MainActivity : AppCompatActivity() {
                 }
             } catch (e: Exception) {
                 // Fallback to inter if ndot not available
-                binding.root.post {
-                    applyFontRecursive(binding.root, resources.getFont(R.font.inter_regular))
+                try {
+                    val fallbackFont = resources.getFont(R.font.inter_regular)
+                    binding.root.post {
+                        applyFontRecursive(binding.root, fallbackFont)
+                    }
+                } catch (e2: Exception) {
+                    // Ignore font loading errors
                 }
             }
         }

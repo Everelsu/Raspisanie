@@ -164,6 +164,13 @@
         <item name="colorOnPrimary">@color/custom_colorOnPrimary</item>
         <item name="colorPrimaryVariant">@color/custom_colorPrimaryVariant</item>
         
+        <!-- Material3 dynamic colors - убираем фиолетовый -->
+        <item name="colorSecondary">@color/custom_colorPrimary</item>
+        <item name="colorTertiary">@color/custom_colorPrimary</item>
+        <item name="colorPrimaryContainer">@color/custom_colorPrimary</item>
+        <item name="colorSecondaryContainer">@color/custom_colorPrimary</item>
+        <item name="colorTertiaryContainer">@color/custom_colorPrimary</item>
+        
         <!-- Цвет поверхности (темный как в Dark) -->
         <item name="colorSurface">@color/custom_colorSurface</item>
         <item name="colorOnSurface">@color/custom_colorOnSurface</item>
@@ -223,9 +230,13 @@
         <item name="colorOnPrimary">@color/nothing_colorOnPrimary</item>
         <item name="colorPrimaryVariant">@color/nothing_colorPrimaryVariant</item>
         
-        <!-- Вторичный цвет -->
+        <!-- Material3 dynamic colors - убираем фиолетовый -->
         <item name="colorSecondary">@color/nothing_colorSecondary</item>
         <item name="colorOnSecondary">@color/nothing_colorOnSecondary</item>
+        <item name="colorTertiary">@color/nothing_colorSecondary</item>
+        <item name="colorPrimaryContainer">@color/nothing_colorPrimary</item>
+        <item name="colorSecondaryContainer">@color/nothing_colorSecondary</item>
+        <item name="colorTertiaryContainer">@color/nothing_colorSecondary</item>
         
         <!-- Цвет поверхности -->
         <item name="colorSurface">@color/nothing_colorSurface</item>

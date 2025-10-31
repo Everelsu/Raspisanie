@@ -17,6 +17,7 @@ class PreferencesManager(context: Context) {
         private const val KEY_COLLEGE = "college"
         private const val KEY_SELECTED_GROUP = "selected_group"
         private const val KEY_SELECTED_GROUP_NAME = "selected_group_name"
+        private const val KEY_FAVORITE_GROUPS = "favorite_groups"
         private const val KEY_FIRST_LAUNCH = "first_launch"
         
         const val THEME_SYSTEM = "system"
@@ -97,6 +98,43 @@ class PreferencesManager(context: Context) {
      */
     fun isGroupSelected(): Boolean {
         return selectedGroupFile.isNotEmpty() && selectedGroupName.isNotEmpty()
+    }
+    
+    /**
+     * Получить список избранных групп
+     */
+    fun getFavoriteGroups(): Set<String> {
+        val favoritesString = prefs.getString(KEY_FAVORITE_GROUPS, "") ?: ""
+        return if (favoritesString.isEmpty()) {
+            emptySet()
+        } else {
+            favoritesString.split(",").toSet()
+        }
+    }
+    
+    /**
+     * Добавить группу в избранное
+     */
+    fun addFavoriteGroup(groupName: String) {
+        val favorites = getFavoriteGroups().toMutableSet()
+        favorites.add(groupName)
+        prefs.edit().putString(KEY_FAVORITE_GROUPS, favorites.joinToString(",")).apply()
+    }
+    
+    /**
+     * Удалить группу из избранного
+     */
+    fun removeFavoriteGroup(groupName: String) {
+        val favorites = getFavoriteGroups().toMutableSet()
+        favorites.remove(groupName)
+        prefs.edit().putString(KEY_FAVORITE_GROUPS, favorites.joinToString(",")).apply()
+    }
+    
+    /**
+     * Проверить, является ли группа избранной
+     */
+    fun isFavoriteGroup(groupName: String): Boolean {
+        return getFavoriteGroups().contains(groupName)
     }
 }
 
