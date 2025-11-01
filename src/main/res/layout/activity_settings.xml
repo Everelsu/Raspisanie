@@ -46,8 +46,7 @@
                 android:layout_height="wrap_content"
                 android:orientation="vertical"
                 android:background="@drawable/settings_item_bg"
-                android:padding="16dp"
-                android:layout_marginBottom="8dp">
+                android:padding="16dp">
 
                 <LinearLayout
                     android:layout_width="match_parent"
@@ -95,7 +94,8 @@
                 android:layout_height="wrap_content"
                 android:orientation="vertical"
                 android:background="@drawable/settings_item_bg"
-                android:padding="16dp">
+                android:padding="16dp"
+                android:layout_marginTop="8dp">
 
                 <LinearLayout
                     android:layout_width="match_parent"
@@ -244,21 +244,21 @@
             </LinearLayout>
 
             <!-- ========== ОСНОВНЫЕ НАСТРОЙКИ ========== -->
+
             <TextView
+                style="@style/SettingsSectionTitle"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Основные настройки"
-                style="@style/SettingsSectionTitle"
                 android:layout_marginTop="32dp"
-                android:layout_marginBottom="12dp" />
+                android:layout_marginBottom="12dp"
+                android:text="Техникум" />
 
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="vertical"
                 android:background="@drawable/settings_item_bg"
-                android:padding="16dp"
-                android:layout_marginBottom="16dp">
+                android:padding="16dp">
 
                 <androidx.appcompat.widget.AppCompatSpinner
                     android:id="@+id/collegeSpinner"
@@ -273,7 +273,7 @@
                 android:layout_height="wrap_content"
                 android:text="Группа"
                 style="@style/SettingsSectionTitle"
-                android:layout_marginTop="16dp"
+                android:layout_marginTop="24dp"
                 android:layout_marginBottom="12dp" />
 
             <LinearLayout
@@ -281,8 +281,7 @@
                 android:layout_height="wrap_content"
                 android:orientation="vertical"
                 android:background="@drawable/settings_item_bg"
-                android:padding="16dp"
-                android:layout_marginBottom="8dp">
+                android:padding="16dp">
 
                 <TextView
                     android:layout_width="wrap_content"
@@ -333,26 +332,33 @@
                 android:layout_height="wrap_content"
                 android:orientation="vertical"
                 android:background="@drawable/settings_item_bg"
-                android:padding="16dp"
-                android:layout_marginBottom="8dp">
+                android:padding="16dp">
 
-                <TextView
-                    android:layout_width="wrap_content"
+                <LinearLayout
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="Размер шрифта"
-                    android:textSize="16sp"
-                    android:textColor="?android:textColorPrimary"
-                    android:layout_marginBottom="8dp" />
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:layout_marginBottom="12dp">
 
-                <TextView
-                    android:id="@+id/fontSizeValue"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="Обычный"
-                    android:textSize="14sp"
-                    android:textColor="?android:textColorSecondary"
-                    android:layout_marginBottom="12dp"
-                    android:layout_gravity="end" />
+                    <TextView
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="Размер шрифта"
+                        android:textSize="16sp"
+                        android:textColor="?android:textColorPrimary" />
+
+                    <TextView
+                        android:id="@+id/fontSizeValue"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Обычный"
+                        android:textSize="14sp"
+                        android:textColor="?android:textColorSecondary"
+                        android:textStyle="bold" />
+
+                </LinearLayout>
 
                 <SeekBar
                     android:id="@+id/seekBarFontSize"
@@ -361,13 +367,13 @@
                     android:max="3"
                     android:progress="1"
                     android:progressTint="?attr/colorPrimary"
-                    android:thumbTint="?attr/colorPrimary" />
+                    android:thumbTint="?attr/colorPrimary"
+                    android:layout_marginBottom="4dp" />
 
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:orientation="horizontal"
-                    android:layout_marginTop="4dp">
+                    android:orientation="horizontal">
 
                     <TextView
                         android:layout_width="0dp"
@@ -423,8 +429,7 @@
                 android:layout_height="wrap_content"
                 android:orientation="vertical"
                 android:background="@drawable/settings_item_bg"
-                android:padding="16dp"
-                android:layout_marginBottom="8dp">
+                android:padding="16dp">
 
                 <LinearLayout
                     android:layout_width="match_parent"
@@ -481,7 +486,7 @@
                 android:orientation="vertical"
                 android:background="@drawable/settings_item_bg"
                 android:padding="16dp"
-                android:layout_marginBottom="8dp">
+                android:layout_marginTop="8dp">
 
                 <LinearLayout
                     android:layout_width="match_parent"
@@ -531,7 +536,7 @@
                 android:orientation="vertical"
                 android:background="@drawable/settings_item_bg"
                 android:padding="16dp"
-                android:layout_marginBottom="8dp">
+                android:layout_marginTop="8dp">
 
                 <LinearLayout
                     android:layout_width="match_parent"

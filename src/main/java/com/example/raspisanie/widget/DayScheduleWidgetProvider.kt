@@ -6,16 +6,10 @@ import android.content.Context
 import android.content.Intent
 import android.widget.RemoteViews
 import com.example.raspisanie.R
-import com.example.raspisanie.data.LessonTimes
-import com.example.raspisanie.data.PreferencesManager
-import com.example.raspisanie.data.ScheduleCache
-import com.example.raspisanie.data.DaySchedule
+import com.example.raspisanie.data.*
 import java.text.SimpleDateFormat
 import java.util.*
 
-/**
- * Виджет с расписанием на день
- */
 class DayScheduleWidgetProvider : AppWidgetProvider() {
     
     override fun onUpdate(
@@ -31,8 +25,7 @@ class DayScheduleWidgetProvider : AppWidgetProvider() {
     override fun onReceive(context: Context, intent: Intent) {
         super.onReceive(context, intent)
         
-        if (intent.action == AppWidgetManager.ACTION_APPWIDGET_UPDATE ||
-            intent.action == "android.appwidget.action.APPWIDGET_UPDATE") {
+        if (intent.action == AppWidgetManager.ACTION_APPWIDGET_UPDATE) {
             val appWidgetManager = AppWidgetManager.getInstance(context)
             val appWidgetIds = appWidgetManager.getAppWidgetIds(
                 android.content.ComponentName(context, DayScheduleWidgetProvider::class.java)
@@ -49,98 +42,120 @@ class DayScheduleWidgetProvider : AppWidgetProvider() {
             appWidgetManager: AppWidgetManager,
             appWidgetId: Int
         ) {
-            val prefs = PreferencesManager(context)
-            val cache = ScheduleCache(context)
-            
-            // Get today's schedule
-            val todaySchedule = getTodaySchedule(context, prefs, cache)
-            
-            val views = RemoteViews(context.packageName, R.layout.widget_day_schedule)
-            
-            if (todaySchedule != null && prefs.isGroupSelected()) {
-                // Show date
-                views.setTextViewText(R.id.widget_date, todaySchedule.date)
+            try {
+                val prefs = PreferencesManager(context)
+                val views = RemoteViews(context.packageName, R.layout.widget_day_schedule)
                 
-                // Show lessons
-                if (todaySchedule.items.isNotEmpty()) {
-                    views.setViewVisibility(R.id.widget_empty, android.view.View.GONE)
-                    
-                    // Clear container and add lessons
-                    views.removeAllViews(R.id.widget_lessons_container)
-                    
-                    val lessons = todaySchedule.items.sortedBy { it.lessonNumber }
-                    var index = 0
-                    for (lesson in lessons) {
-                        // Create lesson item layout
-                        val lessonRemoteView = RemoteViews(context.packageName, android.R.layout.simple_list_item_2)
-                        
-                        val time = LessonTimes.formatTime(lesson.lessonNumber, prefs.college)
-                        val subject = lesson.subject ?: "Занятие"
-                        val details = "${lesson.classroom ?: ""}${if (lesson.classroom != null && lesson.teacher != null) " • " else ""}${lesson.teacher ?: ""}"
-                        
-                        lessonRemoteView.setTextViewText(android.R.id.text1, "${lesson.lessonNumber}. $subject")
-                        lessonRemoteView.setTextViewTextSize(android.R.id.text1, android.util.TypedValue.COMPLEX_UNIT_SP, 14f)
-                        lessonRemoteView.setTextViewText(android.R.id.text2, "$time${if (details.isNotEmpty()) " • $details" else ""}")
-                        lessonRemoteView.setTextViewTextSize(android.R.id.text2, android.util.TypedValue.COMPLEX_UNIT_SP, 11f)
-                        
-                        views.addView(R.id.widget_lessons_container, lessonRemoteView)
-                        index++
-                        if (index >= 5) break // Limit to 5 lessons for widget
-                    }
-                } else {
+                // Apply theme colors
+                applyThemeColors(context, views, prefs.theme)
+                
+                if (!prefs.isGroupSelected()) {
                     views.setViewVisibility(R.id.widget_empty, android.view.View.VISIBLE)
-                    views.setTextViewText(R.id.widget_empty, "Нет пар на сегодня")
-                }
-            } else {
-                views.setViewVisibility(R.id.widget_empty, android.view.View.VISIBLE)
-                views.setTextViewText(
-                    R.id.widget_empty,
-                    if (!prefs.isGroupSelected()) "Выберите группу" else "Нет расписания"
+                    views.setTextViewText(R.id.widget_empty, "Выберите группу")
+                } else {
+                    val todaySchedule = getTodaySchedule(context, prefs)
+                    
+                    if (todaySchedule == null) {
+                        views.setViewVisibility(R.id.widget_empty, android.view.View.VISIBLE)
+                        views.setTextViewText(R.id.widget_empty, "Нет расписания")
+                    } else {
+                        if (todaySchedule.items.isEmpty()) {
+                            views.setViewVisibility(R.id.widget_empty, android.view.View.VISIBLE)
+                            views.setViewVisibility(R.id.widget_lessons_list, android.view.View.GONE)
+                            views.setTextViewText(R.id.widget_empty, "Нет пар")
+                        } else {
+                            views.setViewVisibility(R.id.widget_empty, android.view.View.GONE)
+                            views.setViewVisibility(R.id.widget_lessons_list, android.view.View.VISIBLE)
+                            
+                            // Setup remote list adapter for scrollable list
+                            val serviceIntent = Intent(context, ScheduleWidgetService::class.java).apply {
+                                putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId)
+                            }
+                            views.setRemoteAdapter(R.id.widget_lessons_list, serviceIntent)
+                                
+                            // Notify widget that data has changed
+                            appWidgetManager.notifyAppWidgetViewDataChanged(appWidgetId, R.id.widget_lessons_list)
+                            
+                            // Hide navigation since we have scrolling
+                            views.setViewVisibility(R.id.widget_navigation, android.view.View.GONE)
+                            }
+                        }
+                    }
+                
+                val intent = android.content.Intent(context, com.example.raspisanie.MainActivity::class.java)
+                val pendingIntent = android.app.PendingIntent.getActivity(
+                    context, 0, intent,
+                    android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE
                 )
+                views.setOnClickPendingIntent(R.id.widget_root, pendingIntent)
+                
+                appWidgetManager.updateAppWidget(appWidgetId, views)
+                
+            } catch (e: Exception) {
+                android.util.Log.e(TAG, "Error updating widget", e)
             }
-            
-            // Set click intent to open app
-            val intent = android.content.Intent(context, com.example.raspisanie.MainActivity::class.java)
-            val pendingIntent = android.app.PendingIntent.getActivity(
-                context, 0, intent,
-                android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE
-            )
-            views.setOnClickPendingIntent(R.id.widget_root, pendingIntent)
-            
-            appWidgetManager.updateAppWidget(appWidgetId, views)
         }
         
-        private fun getTodaySchedule(
-            context: Context,
-            prefs: PreferencesManager,
-            cache: ScheduleCache
-        ): DaySchedule? {
+        private fun applyThemeColors(context: Context, views: RemoteViews, theme: String) {
+            val (textPrimary, textSecondary, backgroundDrawable) = getThemeColors(context, theme)
+            
+            // Apply background drawable
+            views.setInt(R.id.widget_root, "setBackgroundResource", backgroundDrawable)
+            
+            views.setTextColor(R.id.widget_day_title, textPrimary)
+            views.setTextColor(R.id.widget_empty, textSecondary)
+        }
+        
+        private fun getThemeColors(context: Context, theme: String): Array<Int> {
+            return when (theme) {
+                PreferencesManager.THEME_LIGHT -> arrayOf(
+                    context.getColor(R.color.light_textColorPrimary),
+                    context.getColor(R.color.light_textColorSecondary),
+                    R.drawable.widget_background_light
+                )
+                PreferencesManager.THEME_DARK -> arrayOf(
+                    context.getColor(R.color.dark_textColorPrimary),
+                    context.getColor(R.color.dark_textColorSecondary),
+                    R.drawable.widget_background_dark
+                )
+                PreferencesManager.THEME_PURPLE -> arrayOf(
+                    context.getColor(R.color.system_textColorPrimary), // White "Расписание"
+                    context.getColor(R.color.system_textColorSecondary), // Gray empty message
+                    R.drawable.widget_background_system
+                )
+                PreferencesManager.THEME_HALLOWEEN -> arrayOf(
+                    context.getColor(R.color.custom_textColorPrimary), // White "Расписание"
+                    context.getColor(R.color.custom_textColorSecondary), // Gray empty message
+                    R.drawable.widget_background_custom
+                )
+                PreferencesManager.THEME_NOTHING -> arrayOf(
+                    context.getColor(R.color.nothing_textColorPrimary), // White "Расписание"
+                    context.getColor(R.color.nothing_textColorPrimary), // White empty
+                    R.drawable.widget_background_nothing
+                )
+                else -> { // Fallback to Purple theme
+                    arrayOf(
+                        context.getColor(R.color.system_textColorPrimary),
+                        context.getColor(R.color.system_textColorSecondary),
+                        R.drawable.widget_background_system
+                    )
+                }
+            }
+        }
+        
+        private fun getTodaySchedule(context: Context, prefs: PreferencesManager): DaySchedule? {
             if (!prefs.isGroupSelected()) return null
             
-            // Try to get from cache
-            if (prefs.cacheEnabled) {
-                val cached = cache.getCachedSchedule(prefs.selectedGroupFile, prefs.college)
-                if (cached != null && cached.isNotEmpty()) {
-                    return findTodayInSchedule(cached)
-                }
-            }
+            val cache = ScheduleCache(context)
+            if (!prefs.cacheEnabled) return null
             
-            return null
-        }
-        
-        private fun findTodayInSchedule(schedules: List<DaySchedule>): DaySchedule? {
-            val today = SimpleDateFormat("dd.MM.yyyy", Locale.getDefault())
-                .format(Date())
-            return schedules.firstOrNull { it.date == today } ?: schedules.firstOrNull()
-        }
-        
-        private fun buildLessonsText(daySchedule: DaySchedule, college: String): String {
-            val lessons = daySchedule.items.sortedBy { it.lessonNumber }
-            return lessons.joinToString("\n") { lesson ->
-                val time = LessonTimes.formatTime(lesson.lessonNumber, college)
-                "${lesson.lessonNumber}. ${lesson.subject ?: "Занятие"} ($time)"
-            }
+            val cached = cache.getCachedSchedule(prefs.selectedGroupFile, prefs.college)
+            if (cached == null || cached.isEmpty()) return null
+            
+            val today = SimpleDateFormat("dd.MM.yyyy", Locale.getDefault()).format(Date())
+            return cached.firstOrNull { it.date == today }
         }
     }
 }
+
 

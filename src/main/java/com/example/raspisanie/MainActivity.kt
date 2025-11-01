@@ -82,6 +82,9 @@ class MainActivity : AppCompatActivity() {
         // Update widgets on startup
         updateWidgets()
         
+        // Очистить старые APK файлы обновлений
+        com.example.raspisanie.data.AppUpdateManager.cleanupOldApkFiles(this)
+        
         // Загрузить расписание для выбранной группы при первом запуске
         // Только если группа выбрана
         if (viewModel.schedule.value.isEmpty() && prefs.isGroupSelected()) {
@@ -110,7 +113,6 @@ class MainActivity : AppCompatActivity() {
             Log.w(TAG, "Не удалось обновить виджеты: ${e.message}")
         }
     }
-    
     
     private fun applyNothingFontIfNeeded() {
         if (prefs.theme == PreferencesManager.THEME_NOTHING) {
@@ -220,7 +222,8 @@ class MainActivity : AppCompatActivity() {
             PreferencesManager.THEME_LIGHT -> resources.getColor(android.R.color.black, theme)
             PreferencesManager.THEME_DARK -> resources.getColor(android.R.color.white, theme)
             PreferencesManager.THEME_NOTHING -> resources.getColor(R.color.primaryNothing, theme)
-            PreferencesManager.THEME_CUSTOM -> resources.getColor(R.color.custom_colorPrimary, theme) // Halloween orange
+            PreferencesManager.THEME_PURPLE -> resources.getColor(R.color.system_colorPrimary, theme) // Purple
+            PreferencesManager.THEME_HALLOWEEN -> resources.getColor(R.color.custom_colorPrimary, theme) // Halloween orange
             else -> resources.getColor(android.R.color.black, theme)
         }
         binding.swipeRefresh.setColorSchemeColors(refreshColor)
@@ -236,6 +239,9 @@ class MainActivity : AppCompatActivity() {
                     binding.errorText.visibility = android.view.View.GONE
                     binding.recyclerView.visibility = android.view.View.VISIBLE
                     Log.d(TAG, "Расписание отображается, всего дней: ${schedules.size}")
+                    
+                    // Update widgets when schedule changes
+                    updateWidgets()
                 } else {
                     binding.recyclerView.visibility = android.view.View.GONE
                     if (viewModel.error.value == null) {
@@ -275,14 +281,15 @@ class MainActivity : AppCompatActivity() {
 
     private fun applyTheme(themeKey: String) {
         val themeResId = when (themeKey) {
-            PreferencesManager.THEME_SYSTEM -> R.style.Theme_Raspisanie_System
             PreferencesManager.THEME_LIGHT -> R.style.Theme_Raspisanie_Light
             PreferencesManager.THEME_DARK -> R.style.Theme_Raspisanie_Dark
-            PreferencesManager.THEME_CUSTOM -> R.style.Theme_Raspisanie_Custom
+            PreferencesManager.THEME_PURPLE -> R.style.Theme_Raspisanie_System
+            PreferencesManager.THEME_HALLOWEEN -> R.style.Theme_Raspisanie_Custom
             PreferencesManager.THEME_NOTHING -> R.style.Theme_Raspisanie_Nothing
+            PreferencesManager.THEME_SYSTEM -> R.style.Theme_Raspisanie_System
             else -> {
-                // Fallback - просто светлая тема
-                R.style.Theme_Raspisanie_Light
+                // Fallback - просто фиолетовая тема
+                R.style.Theme_Raspisanie_System
             }
         }
         setTheme(themeResId)

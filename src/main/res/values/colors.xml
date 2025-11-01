@@ -64,6 +64,10 @@
     <color name="light_lessonNumberBg">#F5F5F5</color>
     <color name="light_lessonNumberStroke">#FFFFFF</color>
     <color name="light_lessonPassedFill">#E0E0E0</color>
+    <!-- Gradient colors for light theme -->
+    <color name="light_lessonNumberBgGradientStart">#F0F0F0</color>
+    <color name="light_lessonNumberBgGradientCenter">#E8E8E8</color>
+    <color name="light_lessonNumberBgGradientEnd">#E0E0E0</color>
     <!-- Switch colors -->
     <color name="light_switchThumbChecked">#000000</color>
     <color name="light_switchThumbUnchecked">#FFFFFF</color>
@@ -88,6 +92,10 @@
     <color name="dark_lessonNumberBg">#1E1E1E</color>
     <color name="dark_lessonNumberStroke">#333333</color>
     <color name="dark_lessonPassedFill">#424242</color>
+    <!-- Gradient colors for dark theme -->
+    <color name="dark_lessonNumberBgGradientStart">#2A2A2A</color>
+    <color name="dark_lessonNumberBgGradientCenter">#1E1E1E</color>
+    <color name="dark_lessonNumberBgGradientEnd">#0F0F0F</color>
     <!-- Switch colors -->
     <color name="dark_switchThumbChecked">#FFFFFF</color>
     <color name="dark_switchThumbUnchecked">#424242</color>
@@ -96,22 +104,26 @@
     
     <!-- ===== КАСТОМНАЯ ТЕМА (Темная основа с хеллоуин акцентами) ===== -->
     <!-- Основана на Dark теме, но primary цвет - оранжевый хеллоуин вместо белого -->
-    <color name="custom_windowBackground">#000000</color>
+    <color name="custom_windowBackground">#1A0A00</color> <!-- Dark orange-black background -->
     <color name="custom_colorPrimary">#FF7B4A</color>
     <color name="custom_colorOnPrimary">#000000</color>
     <color name="custom_colorPrimaryVariant">#FF9B5A</color>
-    <color name="custom_colorSurface">#000000</color>
+    <color name="custom_colorSurface">#2A1510</color> <!-- Medium orange-black surface -->
     <color name="custom_colorOnSurface">#FFFFFF</color>
-    <color name="custom_settingsCardBg">#1A1A1A</color>
+    <color name="custom_settingsCardBg">#2A1510</color> <!-- Medium orange-black -->
     <color name="custom_navigationBarColor">#000000</color>
     <color name="custom_textColor">#FFFFFF</color>
     <color name="custom_textColorPrimary">#FFFFFF</color>
-    <color name="custom_textColorSecondary">#999999</color>
-    <color name="custom_colorBackground">#000000</color>
+    <color name="custom_textColorSecondary">#FFAA7F</color> <!-- Light orange for secondary -->
+    <color name="custom_colorBackground">#1A0A00</color> <!-- Dark orange-black -->
     <color name="custom_colorOnBackground">#FFFFFF</color>
     <!-- Lesson number colors (как в темной) -->
     <color name="custom_lessonNumberBg">#1A1A1A</color>
     <color name="custom_lessonNumberStroke">#333333</color>
+    <!-- Gradient colors for Halloween theme -->
+    <color name="custom_lessonNumberBgGradientStart">#3D2515</color>
+    <color name="custom_lessonNumberBgGradientCenter">#2A1510</color>
+    <color name="custom_lessonNumberBgGradientEnd">#1A0A00</color>
     <!-- Switch colors (хеллоуин оранжевый) -->
     <color name="custom_switchThumbChecked">#FF7B4A</color>
     <color name="custom_switchThumbUnchecked">#424242</color>
@@ -119,20 +131,20 @@
     <color name="custom_switchTrackUnchecked">#33FFFFFF</color>
     
     <!-- ===== NOTHING ТЕМА (Красные акценты) ===== -->
-    <color name="nothing_windowBackground">#000000</color>
+    <color name="nothing_windowBackground">#0F0000</color> <!-- Dark red-black background -->
     <color name="nothing_colorPrimary">#FF3333</color>
     <color name="nothing_colorOnPrimary">#000000</color>
     <color name="nothing_colorPrimaryVariant">#FF0000</color>
     <color name="nothing_colorSecondary">#FF3333</color>
     <color name="nothing_colorOnSecondary">#000000</color>
-    <color name="nothing_colorSurface">#0F0F0F</color>
+    <color name="nothing_colorSurface">#1A0A0A</color> <!-- Medium red-black surface -->
     <color name="nothing_colorOnSurface">#FFFFFF</color>
-    <color name="nothing_settingsCardBg">#111111</color>
+    <color name="nothing_settingsCardBg">#1A0A0A</color> <!-- Medium red-black -->
     <color name="nothing_navigationBarColor">#000000</color>
     <color name="nothing_textColor">#FFFFFF</color>
     <color name="nothing_textColorPrimary">#FFFFFF</color>
-    <color name="nothing_textColorSecondary">#666666</color>
-    <color name="nothing_colorBackground">#000000</color>
+    <color name="nothing_textColorSecondary">#FF6666</color> <!-- Light red for secondary -->
+    <color name="nothing_colorBackground">#0F0000</color> <!-- Dark red-black -->
     <color name="nothing_colorOnBackground">#FFFFFF</color>
     <color name="nothing_actionMenuTextColor">#FF3333</color>
     <color name="nothing_colorControlNormal">#FF3333</color>
@@ -140,6 +152,10 @@
     <!-- Lesson number colors (как в темной) -->
     <color name="nothing_lessonNumberBg">#1A1A1A</color>
     <color name="nothing_lessonNumberStroke">#333333</color>
+    <!-- Gradient colors for Nothing theme -->
+    <color name="nothing_lessonNumberBgGradientStart">#2A0F0F</color>
+    <color name="nothing_lessonNumberBgGradientCenter">#1A0A0A</color>
+    <color name="nothing_lessonNumberBgGradientEnd">#0F0000</color>
     <!-- Switch colors -->
     <color name="nothing_switchThumbChecked">#FF3333</color>
     <color name="nothing_switchThumbUnchecked">#424242</color>
@@ -168,6 +184,13 @@
     <!-- ===== ФИОЛЕТОВАЯ ТЕМА (System/Material3) ===== -->
     <!-- Для DayNight - использует стандартные Material3 цвета, но добавим цвета для switches -->
     <!-- switch_ripple уже определён в res/color/switch_ripple.xml -->
+    <color name="system_windowBackground">#20122E</color> <!-- Dark purple background -->
+    <color name="system_textColor">#FFFFFF</color>
+    <color name="system_textColorPrimary">#FFFFFF</color>
+    <color name="system_textColorSecondary">#B794D4</color> <!-- Light purple for secondary -->
+    <color name="system_colorPrimary">#6750A4</color> <!-- Material3 purple -->
+    <color name="system_colorOnPrimary">#FFFFFF</color>
+    <color name="system_colorSurface">#2A1C40</color> <!-- Medium purple surface -->
     
     <!-- Lesson number colors для фиолетовой темы (зависят от светлого/тёмного режима) -->
     <!-- В светлом режиме -->
@@ -176,4 +199,8 @@
     <!-- В тёмном режиме -->
     <color name="system_lessonNumberBg_dark">#1E1E1E</color>
     <color name="system_lessonNumberStroke_dark">#333333</color>
+    <!-- Gradient colors for Purple theme -->
+    <color name="system_lessonNumberBgGradientStart">#3D2A55</color>
+    <color name="system_lessonNumberBgGradientCenter">#2A1C40</color>
+    <color name="system_lessonNumberBgGradientEnd">#1A1030</color>
 </resources>

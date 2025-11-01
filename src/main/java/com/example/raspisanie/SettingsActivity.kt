@@ -21,6 +21,7 @@ class SettingsActivity : AppCompatActivity() {
     private lateinit var binding: ActivitySettingsBinding
     private lateinit var prefs: PreferencesManager
     private var savedScrollPosition: Int = 0
+    private var isFavoriteButtonSetup = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         prefs = PreferencesManager(this)
@@ -45,6 +46,7 @@ class SettingsActivity : AppCompatActivity() {
         setupAdditionalSettings()
         setupCollegeSelection()
         setupGroupSelection()
+        setupFavoriteButton()
         setupThemeSelection()
         setupAppAutoUpdate()
         setupAppInfo()
@@ -295,8 +297,13 @@ class SettingsActivity : AppCompatActivity() {
                     }
                 }
                 
-                // Сначала избранные, потом обычные
-                val sortedGroups = favoriteGroups + regularGroups
+                // Сначала "Не выбрано", потом избранные, потом обычные
+                val noGroupSelected = Group(
+                    name = getString(R.string.no_group_selected),
+                    url = "",
+                    fileName = ""
+                )
+                val sortedGroups = listOf(noGroupSelected) + favoriteGroups + regularGroups
                 val groupNames = sortedGroups.map { it.name }
                 
                 val adapter = ArrayAdapter(
@@ -310,7 +317,11 @@ class SettingsActivity : AppCompatActivity() {
                 spinner.adapter = adapter
                 
                 // Выбрать текущую группу в списке
-                val currentIndex = groupNames.indexOf(prefs.selectedGroupName)
+                val currentIndex = if (prefs.isGroupSelected()) {
+                    groupNames.indexOf(prefs.selectedGroupName)
+                } else {
+                    0 // "Не выбрано" по умолчанию
+                }
                 if (currentIndex >= 0) {
                     spinner.setSelection(currentIndex)
                 }
@@ -321,18 +332,30 @@ class SettingsActivity : AppCompatActivity() {
                         val selectedGroup = sortedGroups[position]
                         val wasChanged = selectedGroup.fileName != prefs.selectedGroupFile
                         
-                        prefs.selectedGroupName = selectedGroup.name
-                        prefs.selectedGroupFile = selectedGroup.fileName
-                        binding.selectedGroupName.text = selectedGroup.name
+                        if (selectedGroup.fileName.isEmpty()) {
+                            // "Не выбрано" - очистить выбранную группу
+                            prefs.selectedGroupName = ""
+                            prefs.selectedGroupFile = ""
+                            binding.selectedGroupName.text = getString(R.string.no_group_selected)
+                        } else {
+                            prefs.selectedGroupName = selectedGroup.name
+                            prefs.selectedGroupFile = selectedGroup.fileName
+                            binding.selectedGroupName.text = selectedGroup.name
+                        }
                         
                         // Обновить кнопку избранного
                         updateFavoriteButton(selectedGroup.name)
                         
                         if (wasChanged) {
                             setResult(RESULT_OK)
+                            val message = if (selectedGroup.fileName.isEmpty()) {
+                                "Группа не выбрана"
+                            } else {
+                                "Группа изменена: ${selectedGroup.name}"
+                            }
                             Toast.makeText(
                                 this@SettingsActivity,
-                                "Группа изменена: ${selectedGroup.name}",
+                                message,
                                 Toast.LENGTH_SHORT
                             ).show()
                         }
@@ -340,9 +363,6 @@ class SettingsActivity : AppCompatActivity() {
                     
                     override fun onNothingSelected(parent: android.widget.AdapterView<*>?) {}
                 }
-                
-                // Настроить кнопку избранного
-                setupFavoriteButton()
                 
             } catch (e: Exception) {
                 // Если не удалось загрузить список групп
@@ -362,22 +382,28 @@ class SettingsActivity : AppCompatActivity() {
             updateFavoriteButton(prefs.selectedGroupName)
         }
         
-        binding.btnAddToFavorites.setOnClickListener {
-            if (prefs.isGroupSelected()) {
-                val groupName = prefs.selectedGroupName
-                val isFavorite = prefs.isFavoriteGroup(groupName)
-                
-                if (isFavorite) {
-                    prefs.removeFavoriteGroup(groupName)
-                    Toast.makeText(this, "Удалено из избранного", Toast.LENGTH_SHORT).show()
-                } else {
-                    prefs.addFavoriteGroup(groupName)
-                    Toast.makeText(this, "Добавлено в избранное", Toast.LENGTH_SHORT).show()
+        if (!isFavoriteButtonSetup) {
+            binding.btnAddToFavorites.setOnClickListener {
+                if (prefs.isGroupSelected()) {
+                    val groupName = prefs.selectedGroupName
+                    val isFavorite = prefs.isFavoriteGroup(groupName)
+                    
+                    if (isFavorite) {
+                        prefs.removeFavoriteGroup(groupName)
+                        Toast.makeText(this, "Удалено из избранного", Toast.LENGTH_SHORT).show()
+                    } else {
+                        prefs.addFavoriteGroup(groupName)
+                        Toast.makeText(this, "Добавлено в избранное", Toast.LENGTH_SHORT).show()
+                    }
+                    
+                    updateFavoriteButton(groupName)
+                    
+                    // Перезагрузить список групп
+                    binding.selectedGroupName.text = prefs.selectedGroupName
+                    setupGroupSelection()
                 }
-                
-                // Перезагрузить список групп
-                setupGroupSelection()
             }
+            isFavoriteButtonSetup = true
         }
     }
     
@@ -413,14 +439,14 @@ class SettingsActivity : AppCompatActivity() {
             currentTheme == PreferencesManager.THEME_LIGHT
         )
         
-        // Row 2: Fiolet & Custom
+        // Row 2: Purple & Halloween
         setupThemeCard(
             R.id.themeFiolet,
             "Фиолетовая",
-            "ФиолетовААААААААЯ тема",
+            "ФиолетовАААЯ тема",
             R.drawable.theme_preview_system,
-            PreferencesManager.THEME_SYSTEM,
-            currentTheme == PreferencesManager.THEME_SYSTEM
+            PreferencesManager.THEME_PURPLE,
+            currentTheme == PreferencesManager.THEME_PURPLE
         )
         
         setupThemeCard(
@@ -428,14 +454,14 @@ class SettingsActivity : AppCompatActivity() {
             "Хэллоуин",
             "Оранжевый акцент хе-хе",
             R.drawable.theme_preview_custom,
-            PreferencesManager.THEME_CUSTOM,
-            currentTheme == PreferencesManager.THEME_CUSTOM
+            PreferencesManager.THEME_HALLOWEEN,
+            currentTheme == PreferencesManager.THEME_HALLOWEEN
         )
         
         setupThemeCard(
             R.id.themeNothing,
-            "Nothing theme",
-            "Фирменный стиль Nothing",
+            "RedDot",
+            "Красный с NDot шрифтом",
             R.drawable.theme_preview_nothing,
             PreferencesManager.THEME_NOTHING,
             currentTheme == PreferencesManager.THEME_NOTHING
@@ -466,10 +492,11 @@ class SettingsActivity : AppCompatActivity() {
         val textPrimaryColor = when (prefs.theme) {
             PreferencesManager.THEME_LIGHT -> resources.getColor(R.color.light_textColorPrimary, theme)
             PreferencesManager.THEME_DARK -> resources.getColor(R.color.dark_textColorPrimary, theme)
-            PreferencesManager.THEME_CUSTOM -> resources.getColor(R.color.custom_textColorPrimary, theme)
+            PreferencesManager.THEME_PURPLE -> resources.getColor(R.color.system_textColorPrimary, theme)
+            PreferencesManager.THEME_HALLOWEEN -> resources.getColor(R.color.custom_textColorPrimary, theme)
             PreferencesManager.THEME_NOTHING -> resources.getColor(R.color.nothing_textColorPrimary, theme)
             else -> {
-                // For system theme, use TypedArray to get the attribute
+                // Fallback theme, use TypedArray to get the attribute
                 val typedArray = theme.obtainStyledAttributes(intArrayOf(android.R.attr.textColorPrimary))
                 val color = typedArray.getColor(0, resources.getColor(R.color.textPrimary, theme))
                 typedArray.recycle()
@@ -479,10 +506,11 @@ class SettingsActivity : AppCompatActivity() {
         val textSecondaryColor = when (prefs.theme) {
             PreferencesManager.THEME_LIGHT -> resources.getColor(R.color.light_textColorSecondary, theme)
             PreferencesManager.THEME_DARK -> resources.getColor(R.color.dark_textColorSecondary, theme)
-            PreferencesManager.THEME_CUSTOM -> resources.getColor(R.color.custom_textColorSecondary, theme)
+            PreferencesManager.THEME_PURPLE -> resources.getColor(R.color.system_textColorSecondary, theme)
+            PreferencesManager.THEME_HALLOWEEN -> resources.getColor(R.color.custom_textColorSecondary, theme)
             PreferencesManager.THEME_NOTHING -> resources.getColor(R.color.nothing_textColorSecondary, theme)
             else -> {
-                // For system theme, use TypedArray to get the attribute
+                // Fallback theme, use TypedArray to get the attribute
                 val typedArray = theme.obtainStyledAttributes(intArrayOf(android.R.attr.textColorSecondary))
                 val color = typedArray.getColor(0, resources.getColor(R.color.textSecondary, theme))
                 typedArray.recycle()
@@ -507,15 +535,6 @@ class SettingsActivity : AppCompatActivity() {
             scrollView?.let {
                 savedScrollPosition = it.scrollY
             }
-            
-            // Deselect all
-            deselectAllThemes()
-            
-            // Select this one
-            root.isSelected = true
-            indicator?.isSelected = true
-            root.refreshDrawableState()
-            indicator?.refreshDrawableState()
             
             // Save theme
             prefs.theme = themeKey
@@ -673,14 +692,15 @@ class SettingsActivity : AppCompatActivity() {
     
     private fun applyTheme(themeKey: String) {
         val themeResId = when (themeKey) {
-            PreferencesManager.THEME_SYSTEM -> R.style.Theme_Raspisanie_System
             PreferencesManager.THEME_LIGHT -> R.style.Theme_Raspisanie_Light
             PreferencesManager.THEME_DARK -> R.style.Theme_Raspisanie_Dark
-            PreferencesManager.THEME_CUSTOM -> R.style.Theme_Raspisanie_Custom
+            PreferencesManager.THEME_PURPLE -> R.style.Theme_Raspisanie_System
+            PreferencesManager.THEME_HALLOWEEN -> R.style.Theme_Raspisanie_Custom
             PreferencesManager.THEME_NOTHING -> R.style.Theme_Raspisanie_Nothing
+            PreferencesManager.THEME_SYSTEM -> R.style.Theme_Raspisanie_System
             else -> {
-                // Fallback - просто светлая тема
-                R.style.Theme_Raspisanie_Light
+                // Fallback - просто фиолетовая тема
+                R.style.Theme_Raspisanie_System
             }
         }
         setTheme(themeResId)

@@ -3,29 +3,20 @@
     android:id="@+id/widget_root"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
+    android:minHeight="110dp"
     android:orientation="vertical"
     android:padding="16dp"
+    android:gravity="center"
     android:background="@drawable/widget_background"
     android:clickable="true"
     android:focusable="true">
-
-    <TextView
-        android:id="@+id/widget_title"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="Текущая пара"
-        android:textSize="10sp"
-        android:textColor="?android:textColorSecondary"
-        android:textStyle="bold"
-        android:textAllCaps="true"
-        android:letterSpacing="0.05"
-        android:layout_marginBottom="12dp" />
 
     <LinearLayout
         android:id="@+id/widget_lesson_info"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
+        android:gravity="center"
         android:visibility="gone">
 
         <TextView
@@ -33,65 +24,47 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="Предмет"
-            android:textSize="18sp"
+            android:textSize="15sp"
             android:textStyle="bold"
-            android:textColor="?android:textColorPrimary"
+            android:textColor="#000000"
             android:maxLines="2"
             android:ellipsize="end"
-            android:lineSpacingMultiplier="1.2"
-            android:layout_marginBottom="8dp" />
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:gravity="center_vertical"
-            android:layout_marginBottom="4dp">
+            android:gravity="center"
+            android:lineSpacingExtra="2dp"
+            android:layout_marginBottom="10dp" />
 
             <TextView
                 android:id="@+id/widget_time"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="8:15 - 9:15"
+            android:text="8:00 - 9:30"
                 android:textSize="13sp"
-                android:textColor="?android:textColorPrimary"
-                android:textStyle="bold"
-                android:background="@drawable/widget_time_badge"
-                android:paddingHorizontal="8dp"
-                android:paddingVertical="4dp"
-                android:layout_marginEnd="8dp" />
+            android:textColor="#757575"
+            android:layout_gravity="center_horizontal"
+            android:layout_marginBottom="8dp" />
 
             <TextView
-                android:id="@+id/widget_classroom"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="Аудитория 111"
-                android:textSize="13sp"
-                android:textColor="?android:textColorSecondary"
-                android:maxLines="1"
-                android:ellipsize="end" />
-        </LinearLayout>
-
-        <TextView
-            android:id="@+id/widget_teacher"
+            android:id="@+id/widget_details"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Преподаватель"
+            android:text="Аудитория 101"
             android:textSize="12sp"
-            android:textColor="?android:textColorSecondary"
-            android:maxLines="1"
-            android:ellipsize="end" />
+            android:textColor="#757575"
+            android:maxLines="2"
+            android:ellipsize="end"
+            android:gravity="center"
+            android:lineSpacingExtra="2dp" />
     </LinearLayout>
 
     <TextView
         android:id="@+id/widget_no_lesson"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="Нет текущей пары"
+        android:text="Нет пар"
         android:textSize="14sp"
-        android:textColor="?android:textColorSecondary"
+        android:textColor="#757575"
         android:gravity="center"
-        android:padding="16dp"
+        android:minHeight="110dp"
         android:visibility="gone" />
 
 </LinearLayout>

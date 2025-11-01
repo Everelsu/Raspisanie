@@ -23,7 +23,15 @@
     <!-- System Theme - Material3 DayNight с фиолетовыми акцентами -->
     <!-- Унифицирована под другие темы с той же структурой -->
     <style name="Theme.Raspisanie.System" parent="Theme.Material3.DayNight.NoActionBar">
-        <!-- Фон окна - автоматически через DayNight -->
+        <!-- Фон окна (фиолетовый) -->
+        <item name="android:windowBackground">@color/system_windowBackground</item>
+        
+        <!-- Цвет фона для обычного контента -->
+        <item name="android:colorBackground">@color/system_windowBackground</item>
+        
+        <!-- Цвет поверхности (для карточек и т.п.) -->
+        <item name="colorSurface">@color/system_colorSurface</item>
+        <item name="colorOnSurface">@color/system_textColorPrimary</item>
         
         <!-- Основной цвет - фиолетовый Material3 (#6750A4) - оставляем стандартный -->
         

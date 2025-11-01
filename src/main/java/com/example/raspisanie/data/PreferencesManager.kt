@@ -27,6 +27,7 @@ class PreferencesManager(context: Context) {
         private const val KEY_ANIMATIONS_ENABLED = "animations_enabled"
         private const val KEY_APP_AUTO_UPDATE_ENABLED = "app_auto_update_enabled"
         private const val KEY_LAST_UPDATE_CHECK = "last_update_check"
+        private const val KEY_LAST_UPDATE_DOWNLOAD_ID = "last_update_download_id"
         
         // Font size options
         const val FONT_SIZE_SMALL = "small"
@@ -40,11 +41,14 @@ class PreferencesManager(context: Context) {
         const val REFRESH_INTERVAL_60 = 60
         const val REFRESH_INTERVAL_120 = 120
         
-        const val THEME_SYSTEM = "system"
         const val THEME_LIGHT = "light"
         const val THEME_DARK = "dark"
-        const val THEME_CUSTOM = "custom"
+        const val THEME_PURPLE = "purple"
+        const val THEME_HALLOWEEN = "halloween"
         const val THEME_NOTHING = "nothing"
+        
+        @Deprecated("Use THEME_PURPLE instead")
+        const val THEME_SYSTEM = "system"
         
         const val COLLEGE_CHTOTIB = "chtotib"
         const val COLLEGE_ZABGC = "zabgc"
@@ -72,7 +76,7 @@ class PreferencesManager(context: Context) {
         set(value) = prefs.edit().putBoolean(KEY_SHOW_PROGRESS_LINE, value).apply()
     
     var theme: String
-        get() = prefs.getString(KEY_THEME, THEME_SYSTEM) ?: THEME_SYSTEM
+        get() = prefs.getString(KEY_THEME, THEME_PURPLE) ?: THEME_PURPLE
         set(value) = prefs.edit().putString(KEY_THEME, value).apply()
     
     var college: String
@@ -194,5 +198,9 @@ class PreferencesManager(context: Context) {
     var lastUpdateCheck: Long
         get() = prefs.getLong(KEY_LAST_UPDATE_CHECK, 0)
         set(value) = prefs.edit().putLong(KEY_LAST_UPDATE_CHECK, value).apply()
+    
+    var lastUpdateDownloadId: Long
+        get() = prefs.getLong(KEY_LAST_UPDATE_DOWNLOAD_ID, -1)
+        set(value) = prefs.edit().putLong(KEY_LAST_UPDATE_DOWNLOAD_ID, value).apply()
 }
 

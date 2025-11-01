@@ -5,8 +5,8 @@
     <string name="loading_groups">Загрузка групп...</string>
     <string name="no_group_selected">Не выбрано</string>
     
-    <string name="widget_current_lesson_description">Компактный виджет с текущей парой</string>
-    <string name="widget_day_schedule_description">Виджет с расписанием на день</string>
+    <string name="widget_current_lesson_description">Текущая пара</string>
+    <string name="widget_day_schedule_description">Расписание на день</string>
     
     <!-- Информация об авторе и версии -->
     <string name="developed_by">Разработано</string>

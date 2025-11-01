@@ -66,6 +66,78 @@ object AppUpdateManager {
     }
     
     /**
+     * Очистка старых APK файлов обновлений
+     */
+    fun cleanupOldApkFiles(context: Context) {
+        try {
+            val fileName = "raspisanie_update.apk"
+            
+            // Места, где может находиться APK
+            val locations = mutableListOf<File?>(
+                Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
+                context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS),
+                context.getExternalFilesDir(null)?.let { File(it, "downloads") }
+            )
+            
+            // Также проверить сохранённый путь
+            val prefs = PreferencesManager(context)
+            val pendingCleanupPath = context.getSharedPreferences("schedule_prefs", Context.MODE_PRIVATE)
+                .getString("pending_apk_cleanup", null)
+            
+            pendingCleanupPath?.let {
+                locations.add(File(it).parentFile)
+            }
+            
+            var deletedCount = 0
+            locations.forEach { dir ->
+                dir?.let {
+                    val file = File(it, fileName)
+                    if (file.exists()) {
+                        try {
+                            if (file.delete()) {
+                                Log.d(TAG, "Удалён старый APK: ${file.absolutePath}")
+                                deletedCount++
+                            }
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Ошибка при удалении ${file.absolutePath}", e)
+                        }
+                    }
+                }
+            }
+            
+            // Очистить сохранённый путь
+            if (pendingCleanupPath != null) {
+                context.getSharedPreferences("schedule_prefs", Context.MODE_PRIVATE)
+                    .edit()
+                    .remove("pending_apk_cleanup")
+                    .apply()
+            }
+            
+            // Удалить все файлы с похожим именем (например, raspisanie_update (1).apk)
+            locations.forEach { dir ->
+                dir?.listFiles()?.forEach { file ->
+                    if (file.name.startsWith("raspisanie_update") && file.name.endsWith(".apk", ignoreCase = true)) {
+                        try {
+                            if (file.delete()) {
+                                Log.d(TAG, "Удалён старый APK: ${file.absolutePath}")
+                                deletedCount++
+                            }
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Ошибка при удалении ${file.absolutePath}", e)
+                        }
+                    }
+                }
+            }
+            
+            if (deletedCount > 0) {
+                Log.d(TAG, "Очищено $deletedCount старых APK файлов")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Ошибка при очистке APK файлов", e)
+        }
+    }
+    
+    /**
      * Скачать и установить обновление
      */
     fun downloadAndInstall(context: Context, downloadUrl: String) {
@@ -107,9 +179,13 @@ object AppUpdateManager {
             
             val downloadId = downloadManager.enqueue(request)
             
+            // Сохранить downloadId для отслеживания
+            val prefs = PreferencesManager(context)
+            prefs.lastUpdateDownloadId = downloadId
+            
             android.widget.Toast.makeText(
                 context,
-                "Начато скачивание обновления. После завершения загрузки откройте файл для установки.",
+                "Начато скачивание обновления. После завершения загрузки будет запущена установка.",
                 android.widget.Toast.LENGTH_LONG
             ).show()
             

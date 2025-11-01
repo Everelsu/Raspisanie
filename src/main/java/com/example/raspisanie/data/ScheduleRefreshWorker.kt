@@ -40,29 +40,22 @@ class ScheduleRefreshWorker(
                 useCache = false // Force refresh when auto-refreshing
             )
             
-            // Update widgets
+            // Update widgets after refresh
             try {
                 val appWidgetManager = android.appwidget.AppWidgetManager.getInstance(applicationContext)
+                
                 val currentLessonWidgetIds = appWidgetManager.getAppWidgetIds(
                     android.content.ComponentName(applicationContext, CurrentLessonWidgetProvider::class.java)
                 )
-                if (currentLessonWidgetIds.isNotEmpty()) {
-                    CurrentLessonWidgetProvider.updateAppWidget(
-                        applicationContext,
-                        appWidgetManager,
-                        currentLessonWidgetIds[0]
-                    )
+                for (widgetId in currentLessonWidgetIds) {
+                    CurrentLessonWidgetProvider.updateAppWidget(applicationContext, appWidgetManager, widgetId)
                 }
                 
                 val dayScheduleWidgetIds = appWidgetManager.getAppWidgetIds(
                     android.content.ComponentName(applicationContext, DayScheduleWidgetProvider::class.java)
                 )
-                if (dayScheduleWidgetIds.isNotEmpty()) {
-                    DayScheduleWidgetProvider.updateAppWidget(
-                        applicationContext,
-                        appWidgetManager,
-                        dayScheduleWidgetIds[0]
-                    )
+                for (widgetId in dayScheduleWidgetIds) {
+                    DayScheduleWidgetProvider.updateAppWidget(applicationContext, appWidgetManager, widgetId)
                 }
             } catch (e: Exception) {
                 Log.w(TAG, "Не удалось обновить виджеты: ${e.message}")

@@ -26,9 +26,10 @@ class ScheduleAdapter(
     
     private val prefs: PreferencesManager? = context?.let { PreferencesManager(it) }
     private val isNothingTheme: Boolean = prefs?.theme == PreferencesManager.THEME_NOTHING
-    private val isHalloweenTheme: Boolean = prefs?.theme == PreferencesManager.THEME_CUSTOM
+    private val isHalloweenTheme: Boolean = prefs?.theme == PreferencesManager.THEME_HALLOWEEN
     private val isLightTheme: Boolean = prefs?.theme == PreferencesManager.THEME_LIGHT
     private val isDarkTheme: Boolean = prefs?.theme == PreferencesManager.THEME_DARK
+    private val isPurpleTheme: Boolean = prefs?.theme == PreferencesManager.THEME_PURPLE
     
     // Font size multiplier based on preference
     private fun getFontSizeMultiplier(): Float {
@@ -49,6 +50,7 @@ class ScheduleAdapter(
         val itemsContainer: ViewGroup = view.findViewById(R.id.itemsContainer)
         val itemsWrapper: ViewGroup = view.findViewById(R.id.itemsWrapper)
         val progressIndicator: View = view.findViewById(R.id.progressIndicator)
+        val cardBackground: View = view.findViewById(R.id.cardBackground)
         
         // Cache for progress line state to avoid recalculation on scroll
         var progressLineSetup: Boolean = false
@@ -87,6 +89,18 @@ class ScheduleAdapter(
         holder.dayName.textSize = baseDayNameSize * fontSizeMultiplier
         holder.dateText.textSize = 14f * fontSizeMultiplier
         
+        // Apply theme-specific gradient background to card
+        if (context != null) {
+            val bgResId = when (prefs?.theme) {
+                PreferencesManager.THEME_LIGHT -> R.drawable.card_background_light
+                PreferencesManager.THEME_DARK -> R.drawable.card_background_dark
+                PreferencesManager.THEME_PURPLE -> R.drawable.card_background_purple
+                PreferencesManager.THEME_HALLOWEEN -> R.drawable.card_background_halloween
+                PreferencesManager.THEME_NOTHING -> R.drawable.card_background_nothing
+                else -> R.drawable.card_background_dark
+            }
+            holder.cardBackground.setBackgroundResource(bgResId)
+        }
         
         // Apply Nothing font if needed
         if (isNothingTheme && context != null) {
@@ -200,6 +214,7 @@ class ScheduleAdapter(
                     val detailsView = lessonView.findViewById<TextView>(R.id.details)
                     val subgroupIndicator = lessonView.findViewById<TextView>(R.id.subgroupIndicator)
                     val lessonProgressOverlay = lessonView.findViewById<View>(R.id.lessonProgressOverlay)
+                    val circleBackground = lessonView.findViewById<View>(R.id.circleBackground)
 
                     lessonNumberView.text = lessonNum.toString()
                     
@@ -210,6 +225,18 @@ class ScheduleAdapter(
                     lessonTimeView.textSize = 11f * fontSizeMultiplier
                     detailsView.textSize = 13f * fontSizeMultiplier
                     
+                    // Apply theme-specific gradient background to circle
+                    if (context != null) {
+                        val bgResId = when (prefs?.theme) {
+                            PreferencesManager.THEME_LIGHT -> R.drawable.widget_lesson_number_bg_light
+                            PreferencesManager.THEME_DARK -> R.drawable.widget_lesson_number_bg_dark
+                            PreferencesManager.THEME_PURPLE -> R.drawable.widget_lesson_number_bg_purple
+                            PreferencesManager.THEME_HALLOWEEN -> R.drawable.widget_lesson_number_bg_halloween
+                            PreferencesManager.THEME_NOTHING -> R.drawable.widget_lesson_number_bg_nothing
+                            else -> R.drawable.widget_lesson_number_bg_dark
+                        }
+                        circleBackground.setBackgroundResource(bgResId)
+                    }
                     
                     // Set lesson time
                     val college = prefs?.college ?: PreferencesManager.COLLEGE_CHTOTIB
@@ -306,9 +333,10 @@ class ScheduleAdapter(
             when {
                 isHalloweenTheme -> holder.dayName.setTextColor(context?.getColor(R.color.custom_colorPrimary) ?: holder.dayName.textColors?.defaultColor ?: 0xFFFFFFFF.toInt())
                 isNothingTheme -> holder.dayName.setTextColor(context?.getColor(R.color.nothing_colorPrimary) ?: 0xFFFF3333.toInt())
-                isDarkTheme -> holder.dayName.setTextColor(context?.getColor(R.color.dayNamePurple) ?: 0xFF9E7CC1.toInt())
-                isLightTheme -> holder.dayName.setTextColor(context?.getColor(R.color.dayNamePurpleLight) ?: 0xFFB794D4.toInt())
-                else -> holder.dayName.setTextColor(context?.getColor(R.color.dayNamePurple) ?: 0xFF9E7CC1.toInt()) // Мягкий фиолетовый для всех остальных тем
+                isLightTheme -> holder.dayName.setTextColor(context?.getColor(R.color.light_colorPrimary) ?: 0xFF000000.toInt()) // Черный для светлой темы
+                isDarkTheme -> holder.dayName.setTextColor(context?.getColor(R.color.dark_colorPrimary) ?: 0xFFFFFFFF.toInt()) // Белый для темной темы
+                isPurpleTheme -> holder.dayName.setTextColor(context?.getColor(R.color.dayNamePurple) ?: 0xFF9E7CC1.toInt()) // Фиолетовый для фиолетовой темы
+                else -> holder.dayName.setTextColor(context?.getColor(R.color.dayNamePurple) ?: 0xFF9E7CC1.toInt()) // Фиолетовый по умолчанию
             }
         }
     }

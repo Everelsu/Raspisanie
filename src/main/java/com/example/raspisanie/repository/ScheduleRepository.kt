@@ -48,9 +48,6 @@ class ScheduleRepository(private val context: Context? = null) {
                             cache.cacheSchedule(newSchedule, groupFile, college)
                             _schedule.value = newSchedule
                             Log.d(TAG, "Расписание обновлено в фоне: ${newSchedule.size} дней")
-                            
-                            // Update widgets
-                            updateWidgets()
                         }
                     } catch (e: Exception) {
                         Log.w(TAG, "Не удалось обновить расписание в фоне: ${e.message}")
@@ -75,9 +72,6 @@ class ScheduleRepository(private val context: Context? = null) {
                 _error.value = "Расписание не найдено. Проверьте подключение к интернету."
             }
             
-            // Update widgets
-            updateWidgets()
-            
         } catch (e: java.net.UnknownHostException) {
             Log.e(TAG, "Ошибка сети: нет подключения к интернету", e)
             
@@ -88,7 +82,6 @@ class ScheduleRepository(private val context: Context? = null) {
                     Log.d(TAG, "Использую кэш из-за ошибки сети: ${cachedSchedule.size} дней")
                     _schedule.value = cachedSchedule
                     _error.value = "Нет подключения к интернету. Показано закэшированное расписание."
-                    updateWidgets()
                     return
                 }
             }
@@ -104,7 +97,6 @@ class ScheduleRepository(private val context: Context? = null) {
                     Log.d(TAG, "Использую кэш из-за таймаута: ${cachedSchedule.size} дней")
                     _schedule.value = cachedSchedule
                     _error.value = "Таймаут подключения. Показано закэшированное расписание."
-                    updateWidgets()
                     return
                 }
             }
@@ -120,7 +112,6 @@ class ScheduleRepository(private val context: Context? = null) {
                     Log.d(TAG, "Использую кэш из-за ошибки: ${cachedSchedule.size} дней")
                     _schedule.value = cachedSchedule
                     _error.value = "Ошибка загрузки. Показано закэшированное расписание."
-                    updateWidgets()
                     return
                 }
             }
@@ -131,18 +122,4 @@ class ScheduleRepository(private val context: Context? = null) {
         }
     }
     
-    private fun updateWidgets() {
-        if (context == null) return
-        try {
-            val intent = android.content.Intent(context, com.example.raspisanie.widget.CurrentLessonWidgetProvider::class.java)
-            intent.action = android.appwidget.AppWidgetManager.ACTION_APPWIDGET_UPDATE
-            context.sendBroadcast(intent)
-            
-            val intent2 = android.content.Intent(context, com.example.raspisanie.widget.DayScheduleWidgetProvider::class.java)
-            intent2.action = android.appwidget.AppWidgetManager.ACTION_APPWIDGET_UPDATE
-            context.sendBroadcast(intent2)
-        } catch (e: Exception) {
-            Log.w(TAG, "Не удалось обновить виджеты: ${e.message}")
-        }
-    }
 }

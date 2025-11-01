@@ -1,41 +1,43 @@
-<?xml version="1.0" encoding="utf-8"?>
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    
-    <!-- Calendar/Schedule icon -->
-    
-    <!-- Large circle container (lower) -->
+
+    <!-- Чёрный круг -->
+    <path
+        android:fillColor="#000000"
+        android:pathData="M54,54m-48,0a48,48 0 1,1 96,0a48,48 0 1,1 -96,0" />
+
+    <!-- Внешний белый контур -->
+    <path
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="4"
+        android:fillColor="@android:color/transparent"
+        android:pathData="M54,54m-36,0a36,36 0 1,1 72,0a36,36 0 1,1 -72,0" />
+
+    <!-- Основная таблица расписания (3 строки × 3 столбца) -->
     <path
         android:fillColor="#FFFFFF"
-        android:pathData="M54,54 m -32,0 a 32,32 0 1,1 64,0 a 32,32 0 1,1 -64,0" />
-    
-    <!-- Lesson circles inside (arranged vertically, centered) -->
-    <!-- Item 1 -->
+        android:pathData="M33,36h42v36h-42z" />
+
+    <!-- Вырезаем внутренние линии, делим таблицу -->
     <path
-        android:fillColor="#666666"
-        android:pathData="M38,34 m -4,0 a 4,4 0 1,1 8,0 a 4,4 0 1,1 -8,0" />
-    
-    <!-- Item 2 -->
+        android:fillColor="#000000"
+        android:pathData="M33,48h42v3h-42z" />
     <path
-        android:fillColor="#666666"
-        android:pathData="M32,44 m -4,0 a 4,4 0 1,1 8,0 a 4,4 0 1,1 -8,0" />
-    
-    <!-- Item 3 (current - highlighted in orange) -->
+        android:fillColor="#000000"
+        android:pathData="M33,57h42v3h-42z" />
     <path
-        android:fillColor="#FF6B35"
-        android:pathData="M28,54 m -5,0 a 5,5 0 1,1 10,0 a 5,5 0 1,1 -10,0" />
-    
-    <!-- Item 4 -->
+        android:fillColor="#000000"
+        android:pathData="M47,36h3v36h-3z" />
     <path
-        android:fillColor="#666666"
-        android:pathData="M32,64 m -4,0 a 4,4 0 1,1 8,0 a 4,4 0 1,1 -8,0" />
-    
-    <!-- Item 5 -->
+        android:fillColor="#000000"
+        android:pathData="M63,36h3v36h-3z" />
+
+    <!-- Маленький круг в верхнем центре (символ текущего дня / отметка) -->
     <path
-        android:fillColor="#666666"
-        android:pathData="M38,74 m -4,0 a 4,4 0 1,1 8,0 a 4,4 0 1,1 -8,0" />
-    
+        android:fillColor="#FFFFFF"
+        android:pathData="M35,27m-4,3a4,4 0 1,1 8,0a4,4 0 1,1 -8,0" />
+
 </vector>

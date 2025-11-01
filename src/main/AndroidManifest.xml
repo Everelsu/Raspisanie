@@ -55,6 +55,21 @@
                 android:resource="@xml/widget_day_schedule_info" />
         </receiver>
         
+        <!-- Widget service for scrollable list -->
+        <service
+            android:name=".widget.ScheduleWidgetService"
+            android:permission="android.permission.BIND_REMOTEVIEWS"
+            android:exported="false" />
+        
+        <!-- BroadcastReceiver для автоматической установки обновлений -->
+        <receiver
+            android:name=".data.DownloadCompleteReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.DOWNLOAD_COMPLETE" />
+            </intent-filter>
+        </receiver>
+        
         <!-- FileProvider для установки APK -->
         <provider
             android:name="androidx.core.content.FileProvider"
