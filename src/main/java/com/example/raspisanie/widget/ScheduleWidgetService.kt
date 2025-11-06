@@ -9,6 +9,9 @@ import com.example.raspisanie.R
 import com.example.raspisanie.data.*
 import java.text.SimpleDateFormat
 import java.util.*
+import java.util.concurrent.locks.ReentrantReadWriteLock
+import kotlin.concurrent.read
+import kotlin.concurrent.write
 
 class ScheduleWidgetService : RemoteViewsService() {
     override fun onGetViewFactory(intent: Intent): RemoteViewsFactory {
@@ -22,59 +25,97 @@ class ScheduleWidgetService : RemoteViewsService() {
         private var lessons: List<ScheduleItem> = emptyList()
         private var themeColors: Array<Int> = arrayOf(0, 0, 0)
         private var lessonNumberBg: Int = R.drawable.widget_lesson_number_bg_dark
+        
+        // Thread-safe date formatter
+        private val dateFormatter = ThreadLocal.withInitial {
+            SimpleDateFormat("dd.MM.yyyy", Locale.getDefault())
+        }
+        
+        // Lock for thread-safe data access
+        private val dataLock = ReentrantReadWriteLock()
 
         override fun onCreate() {}
 
         override fun onDataSetChanged() {
-            val prefs = PreferencesManager(context)
-            val todaySchedule = getTodaySchedule(context, prefs)
-            lessons = todaySchedule?.items?.sortedBy { it.lessonNumber } ?: emptyList()
-            themeColors = getThemeColors(context, prefs.theme)
-            lessonNumberBg = getLessonNumberBg(prefs.theme)
+            dataLock.write {
+                try {
+                    val prefs = PreferencesManager(context)
+                    val todaySchedule = getTodaySchedule(context, prefs)
+                    lessons = todaySchedule?.items?.sortedBy { it.lessonNumber } ?: emptyList()
+                    themeColors = getThemeColors(context, prefs.theme)
+                    lessonNumberBg = getLessonNumberBg(prefs.theme)
+                } catch (e: Exception) {
+                    android.util.Log.e("ScheduleWidgetService", "Error in onDataSetChanged", e)
+                    lessons = emptyList()
+                }
+            }
         }
 
         override fun onDestroy() {}
 
-        override fun getCount(): Int = lessons.size
+        override fun getCount(): Int = dataLock.read { lessons.size }
 
         override fun getViewAt(position: Int): RemoteViews {
-            val lesson = lessons[position]
-            val lessonView = RemoteViews(context.packageName, R.layout.widget_lesson_item)
-
-            val subject = lesson.subject ?: "Занятие"
-            val prefs = PreferencesManager(context)
-            val time = LessonTimes.formatTime(lesson.lessonNumber, prefs.college)
-
-            lessonView.setTextViewText(R.id.lesson_number, lesson.lessonNumber.toString())
-            lessonView.setTextViewText(R.id.lesson_subject, subject)
-
-            val details = buildString {
-                append(time)
-                if (lesson.classroom != null) {
-                    append(" • ")
-                    append("Ауд. ${lesson.classroom}")
+            val (lesson, colors, bg) = dataLock.read {
+                if (position < 0 || position >= lessons.size) {
+                    return@read Triple<ScheduleItem?, Array<Int>?, Int?>(null, null, null)
                 }
-                if (lesson.teacher != null) {
-                    if (length > 0) append(" • ")
-                    append(lesson.teacher)
-                }
+                Triple(lessons[position], themeColors, lessonNumberBg)
             }
-            lessonView.setTextViewText(R.id.lesson_details, details)
+            
+            if (lesson == null || colors == null || bg == null) {
+                // Return empty view if data is invalid
+                return RemoteViews(context.packageName, R.layout.widget_lesson_item)
+            }
+            
+            return try {
+                val lessonView = RemoteViews(context.packageName, R.layout.widget_lesson_item)
 
-            // Apply colors and background
-            lessonView.setTextColor(R.id.lesson_number, themeColors[0]) // Number color
-            lessonView.setTextColor(R.id.lesson_subject, themeColors[1]) // Subject color
-            lessonView.setTextColor(R.id.lesson_details, themeColors[2]) // Details color
-            lessonView.setInt(R.id.lesson_number, "setBackgroundResource", lessonNumberBg)
+                val subject = lesson.subject?.takeIf { it.isNotBlank() } ?: "Занятие"
+                val prefs = PreferencesManager(context)
+                val time = LessonTimes.formatTime(lesson.lessonNumber, prefs.college) ?: ""
 
-            return lessonView
+                lessonView.setTextViewText(R.id.lesson_number, lesson.lessonNumber.toString())
+                lessonView.setTextViewText(R.id.lesson_subject, subject)
+
+                val details = buildString {
+                    if (time.isNotBlank()) {
+                        append(time)
+                    }
+                    if (lesson.classroom != null && lesson.classroom.isNotBlank()) {
+                        if (length > 0) append(" • ")
+                        append("Ауд. ${lesson.classroom}")
+                    }
+                    if (lesson.teacher != null && lesson.teacher.isNotBlank()) {
+                        if (length > 0) append(" • ")
+                        append(lesson.teacher)
+                    }
+                }
+                lessonView.setTextViewText(R.id.lesson_details, details.ifEmpty { "—" })
+
+                // Apply colors and background
+                if (colors.size >= 3) {
+                    lessonView.setTextColor(R.id.lesson_number, colors[0]) // Number color
+                    lessonView.setTextColor(R.id.lesson_subject, colors[1]) // Subject color
+                    lessonView.setTextColor(R.id.lesson_details, colors[2]) // Details color
+                }
+                lessonView.setInt(R.id.lesson_number, "setBackgroundResource", bg)
+
+                lessonView
+            } catch (e: Exception) {
+                android.util.Log.e("ScheduleWidgetService", "Error in getViewAt for position $position", e)
+                RemoteViews(context.packageName, R.layout.widget_lesson_item)
+            }
         }
 
         override fun getLoadingView(): RemoteViews? = null
 
         override fun getViewTypeCount(): Int = 1
 
-        override fun getItemId(position: Int): Long = position.toLong()
+        override fun getItemId(position: Int): Long = dataLock.read {
+            if (position < 0 || position >= lessons.size) return@read -1L
+            lessons[position].hashCode().toLong()
+        }
 
         override fun hasStableIds(): Boolean = true
 
@@ -87,8 +128,13 @@ class ScheduleWidgetService : RemoteViewsService() {
             val cached = cache.getCachedSchedule(prefs.selectedGroupFile, prefs.college)
             if (cached == null || cached.isEmpty()) return null
 
-            val today = SimpleDateFormat("dd.MM.yyyy", Locale.getDefault()).format(Date())
-            return cached.firstOrNull { it.date == today }
+            try {
+                val today = dateFormatter.get()?.format(Date()) ?: return null
+                return cached.firstOrNull { it.date == today }
+            } catch (e: Exception) {
+                android.util.Log.e("ScheduleWidgetService", "Error formatting date", e)
+                return null
+            }
         }
 
         private fun getThemeColors(context: Context, theme: String): Array<Int> {
@@ -118,6 +164,16 @@ class ScheduleWidgetService : RemoteViewsService() {
                     context.getColor(R.color.nothing_textColorPrimary), // White subject
                     context.getColor(R.color.nothing_textColorSecondary) // Gray details
                 )
+                PreferencesManager.THEME_GREEN -> arrayOf(
+                    context.getColor(R.color.green_colorPrimary), // Green number
+                    context.getColor(R.color.green_textColorPrimary), // White subject
+                    context.getColor(R.color.green_textColorSecondary) // Light green details
+                )
+                PreferencesManager.THEME_NEW_YEAR -> arrayOf(
+                    context.getColor(R.color.newyear_colorPrimary), // Green number
+                    context.getColor(R.color.newyear_textColorPrimary), // White subject
+                    context.getColor(R.color.newyear_textColorSecondary) // Light gray details
+                )
                 else -> {
                     // Fallback to Purple theme
                     arrayOf(
@@ -136,6 +192,8 @@ class ScheduleWidgetService : RemoteViewsService() {
                 PreferencesManager.THEME_PURPLE -> R.drawable.widget_lesson_number_bg_purple
                 PreferencesManager.THEME_HALLOWEEN -> R.drawable.widget_lesson_number_bg_halloween
                 PreferencesManager.THEME_NOTHING -> R.drawable.widget_lesson_number_bg_nothing
+                PreferencesManager.THEME_GREEN -> R.drawable.widget_lesson_number_bg_green
+                PreferencesManager.THEME_NEW_YEAR -> R.drawable.widget_lesson_number_bg_newyear
                 else -> R.drawable.widget_lesson_number_bg_dark
             }
         }

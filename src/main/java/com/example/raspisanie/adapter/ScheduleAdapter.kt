@@ -25,11 +25,15 @@ class ScheduleAdapter(
 ) : RecyclerView.Adapter<ScheduleAdapter.ScheduleViewHolder>() {
     
     private val prefs: PreferencesManager? = context?.let { PreferencesManager(it) }
-    private val isNothingTheme: Boolean = prefs?.theme == PreferencesManager.THEME_NOTHING
-    private val isHalloweenTheme: Boolean = prefs?.theme == PreferencesManager.THEME_HALLOWEEN
-    private val isLightTheme: Boolean = prefs?.theme == PreferencesManager.THEME_LIGHT
-    private val isDarkTheme: Boolean = prefs?.theme == PreferencesManager.THEME_DARK
-    private val isPurpleTheme: Boolean = prefs?.theme == PreferencesManager.THEME_PURPLE
+    
+    // Получать настройки динамически при каждом обращении для актуальности
+    private val isNothingTheme: Boolean get() = prefs?.theme == PreferencesManager.THEME_NOTHING
+    private val isHalloweenTheme: Boolean get() = prefs?.theme == PreferencesManager.THEME_HALLOWEEN
+    private val isLightTheme: Boolean get() = prefs?.theme == PreferencesManager.THEME_LIGHT
+    private val isDarkTheme: Boolean get() = prefs?.theme == PreferencesManager.THEME_DARK
+    private val isPurpleTheme: Boolean get() = prefs?.theme == PreferencesManager.THEME_PURPLE
+    private val isGreenTheme: Boolean get() = prefs?.theme == PreferencesManager.THEME_GREEN
+    private val isNewYearTheme: Boolean get() = prefs?.theme == PreferencesManager.THEME_NEW_YEAR
     
     // Font size multiplier based on preference
     private fun getFontSizeMultiplier(): Float {
@@ -80,6 +84,12 @@ class ScheduleAdapter(
     override fun onBindViewHolder(holder: ScheduleViewHolder, position: Int) {
         val daySchedule = schedules[position]
         
+        // Сбросить состояние прогресса при перепривязке (на случай изменения настроек)
+        holder.progressLineSetup = false
+        holder.currentLessonNumbers = null
+        holder.progressHandler?.removeCallbacksAndMessages(null)
+        holder.progressHandler = null
+        
         holder.dayName.text = formatDayName(daySchedule.day)
         holder.dateText.text = formatDate(daySchedule.date)
         
@@ -97,6 +107,8 @@ class ScheduleAdapter(
                 PreferencesManager.THEME_PURPLE -> R.drawable.card_background_purple
                 PreferencesManager.THEME_HALLOWEEN -> R.drawable.card_background_halloween
                 PreferencesManager.THEME_NOTHING -> R.drawable.card_background_nothing
+                PreferencesManager.THEME_GREEN -> R.drawable.card_background_green
+                PreferencesManager.THEME_NEW_YEAR -> R.drawable.card_background_newyear
                 else -> R.drawable.card_background_dark
             }
             holder.cardBackground.setBackgroundResource(bgResId)
@@ -233,6 +245,8 @@ class ScheduleAdapter(
                             PreferencesManager.THEME_PURPLE -> R.drawable.widget_lesson_number_bg_purple
                             PreferencesManager.THEME_HALLOWEEN -> R.drawable.widget_lesson_number_bg_halloween
                             PreferencesManager.THEME_NOTHING -> R.drawable.widget_lesson_number_bg_nothing
+                            PreferencesManager.THEME_GREEN -> R.drawable.widget_lesson_number_bg_green
+                            PreferencesManager.THEME_NEW_YEAR -> R.drawable.widget_lesson_number_bg_newyear
                             else -> R.drawable.widget_lesson_number_bg_dark
                         }
                         circleBackground.setBackgroundResource(bgResId)
@@ -299,27 +313,22 @@ class ScheduleAdapter(
             // Setup day progress indicator
             if (isToday && prefs?.showProgressLine == true) {
                 val lessonNumbers = daySchedule.items.map { it.lessonNumber }.distinct().sorted()
-                // Only setup if lesson numbers changed or not setup yet (compare lists)
-                val numbersChanged = holder.currentLessonNumbers?.let { 
-                    it.size != lessonNumbers.size || it != lessonNumbers 
-                } ?: true
                 
-                if (!holder.progressLineSetup || numbersChanged) {
-                    holder.currentLessonNumbers = lessonNumbers
-                    setupDayProgress(holder, lessonNumbers)
-                } else {
-                    // Just update the progress without full setup
-                    if (holder.itemsContainer.height > 0) {
-                        updateProgressIndicator(holder, lessonNumbers)
-                    }
-                }
+                // Всегда пересчитываем прогресс при перепривязке или изменении настроек
+                holder.currentLessonNumbers = lessonNumbers
                 
-                // Apply theme-specific progress line
+                // Apply theme-specific progress line (важно делать до setup)
                 when {
                     isNothingTheme -> holder.progressIndicator.setBackgroundResource(R.drawable.progress_indicator_nothing)
                     isHalloweenTheme -> holder.progressIndicator.setBackgroundResource(R.drawable.progress_indicator_halloween)
+                    isGreenTheme -> holder.progressIndicator.setBackgroundResource(R.drawable.progress_indicator_green)
+                    isNewYearTheme -> holder.progressIndicator.setBackgroundResource(R.drawable.progress_indicator_newyear)
                     else -> holder.progressIndicator.setBackgroundResource(R.drawable.progress_indicator)
                 }
+                
+                // Всегда заново настраиваем прогресс для корректного обновления
+                holder.progressIndicator.visibility = View.VISIBLE
+                setupDayProgress(holder, lessonNumbers)
             } else {
                 holder.progressIndicator.visibility = View.GONE
                 holder.progressLineSetup = false
@@ -333,6 +342,8 @@ class ScheduleAdapter(
             when {
                 isHalloweenTheme -> holder.dayName.setTextColor(context?.getColor(R.color.custom_colorPrimary) ?: holder.dayName.textColors?.defaultColor ?: 0xFFFFFFFF.toInt())
                 isNothingTheme -> holder.dayName.setTextColor(context?.getColor(R.color.nothing_colorPrimary) ?: 0xFFFF3333.toInt())
+                isGreenTheme -> holder.dayName.setTextColor(context?.getColor(R.color.green_colorPrimary) ?: 0xFF4CAF50.toInt())
+                isNewYearTheme -> holder.dayName.setTextColor(context?.getColor(R.color.newyear_colorPrimary) ?: 0xFF2E7D32.toInt())
                 isLightTheme -> holder.dayName.setTextColor(context?.getColor(R.color.light_colorPrimary) ?: 0xFF000000.toInt()) // Черный для светлой темы
                 isDarkTheme -> holder.dayName.setTextColor(context?.getColor(R.color.dark_colorPrimary) ?: 0xFFFFFFFF.toInt()) // Белый для темной темы
                 isPurpleTheme -> holder.dayName.setTextColor(context?.getColor(R.color.dayNamePurple) ?: 0xFF9E7CC1.toInt()) // Фиолетовый для фиолетовой темы
@@ -350,15 +361,39 @@ class ScheduleAdapter(
         // Cancel any existing handlers
         holder.progressHandler?.removeCallbacksAndMessages(null)
         
+        // ЖЕСТКАЯ ИНИЦИАЛИЗАЦИЯ: сброс всех параметров
         holder.progressIndicator.visibility = View.VISIBLE
+        holder.progressIndicator.alpha = 1f
+        holder.progressIndicator.scaleY = 1f
+        holder.progressIndicator.scaleX = 1f
+        holder.progressIndicator.rotation = 0f
+        holder.progressIndicator.translationX = 0f
+        holder.progressIndicator.translationY = 0f
+        
+        // Reset animation state for fresh calculation
+        holder.progressIndicator.clearAnimation()
+        holder.progressIndicator.animate().cancel()
+        
+        // ЖЕСТКОЕ позиционирование: убеждаемся что margin top = 0
+        val params = holder.progressIndicator.layoutParams as? ViewGroup.MarginLayoutParams
+        params?.let {
+            it.topMargin = 0
+            it.bottomMargin = 0
+            holder.progressIndicator.layoutParams = it
+        }
         
         // Store lesson numbers in holder tag
         holder.itemView.tag = lessonNumbers
         
+        android.util.Log.d("ScheduleAdapter", "🔧 setupDayProgress: начинаю установку для ${lessonNumbers.size} уроков")
+        
         // Check if container already has height (fast path - skip ViewTreeObserver)
         val containerHeight = holder.itemsContainer.height
-        if (containerHeight > 0) {
+        val wrapperHeight = holder.itemsWrapper.height
+        
+        if (containerHeight > 0 && wrapperHeight > 0) {
             // Already measured, update immediately
+            android.util.Log.d("ScheduleAdapter", "✅ Быстрый путь: containerHeight=$containerHeight, wrapperHeight=$wrapperHeight")
             updateProgressIndicator(holder, lessonNumbers)
             holder.progressLineSetup = true
             // Start periodic updates
@@ -367,20 +402,33 @@ class ScheduleAdapter(
             // Use post() instead of ViewTreeObserver for better performance
             holder.itemView.post {
                 // Double-check after posting
-                if (holder.itemsContainer.height > 0) {
+                val postedContainerHeight = holder.itemsContainer.height
+                val postedWrapperHeight = holder.itemsWrapper.height
+                
+                android.util.Log.d("ScheduleAdapter", "📐 После post: containerHeight=$postedContainerHeight, wrapperHeight=$postedWrapperHeight")
+                
+                if (postedContainerHeight > 0 && postedWrapperHeight > 0) {
                     updateProgressIndicator(holder, lessonNumbers)
                     holder.progressLineSetup = true
                     // Start periodic updates
                     updateDayProgress(holder, lessonNumbers)
                 } else {
                     // Fallback to ViewTreeObserver only if post() didn't work
+                    android.util.Log.w("ScheduleAdapter", "⚠️ Используем ViewTreeObserver как fallback")
                     val listener = object : ViewTreeObserver.OnGlobalLayoutListener {
                         override fun onGlobalLayout() {
                             holder.itemView.viewTreeObserver.removeOnGlobalLayoutListener(this)
-                            if (holder.itemsContainer.height > 0) {
+                            val measuredContainerHeight = holder.itemsContainer.height
+                            val measuredWrapperHeight = holder.itemsWrapper.height
+                            
+                            android.util.Log.d("ScheduleAdapter", "📏 ViewTreeObserver: containerHeight=$measuredContainerHeight, wrapperHeight=$measuredWrapperHeight")
+                            
+                            if (measuredContainerHeight > 0 && measuredWrapperHeight > 0) {
                                 updateProgressIndicator(holder, lessonNumbers)
                                 holder.progressLineSetup = true
                                 updateDayProgress(holder, lessonNumbers)
+                            } else {
+                                android.util.Log.e("ScheduleAdapter", "❌ ViewTreeObserver: размеры не определены!")
                             }
                         }
                     }
@@ -391,12 +439,22 @@ class ScheduleAdapter(
     }
     
     private fun updateProgressIndicator(holder: ScheduleViewHolder, lessonNumbers: List<Int>) {
+        // ЖЕСТКАЯ ВАЛИДАЦИЯ: проверяем что ViewHolder еще привязан
+        if (!holder.itemView.isAttachedToWindow) {
+            android.util.Log.w("ScheduleAdapter", "⚠️ ViewHolder не привязан к окну, пропускаем обновление")
+            return
+        }
+        
         val currentMinutes = DayProgressCalculator.getCurrentTimeInMinutes()
         val college = prefs?.college ?: PreferencesManager.COLLEGE_CHTOTIB
         val progress = DayProgressCalculator.getDayProgress(currentMinutes, lessonNumbers, college)
         
-        // Get height of itemsContainer
-        val containerHeight = holder.itemsContainer.height
+        // ЖЕСТКОЕ получение высоты: используем реальную высоту контейнера И wrapper
+        var containerHeight = holder.itemsContainer.height
+        val wrapperHeight = holder.itemsWrapper.height
+        
+        // ОТЛАДКА
+        android.util.Log.d("ScheduleAdapter", "🔍 updateProgressIndicator: progress=$progress, containerHeight=$containerHeight, wrapperHeight=$wrapperHeight")
         
         if (containerHeight <= 0) {
             // Fallback: measure if not laid out yet
@@ -404,43 +462,129 @@ class ScheduleAdapter(
                 View.MeasureSpec.makeMeasureSpec(holder.itemsContainer.width, View.MeasureSpec.EXACTLY),
                 View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED)
             )
-            val measuredHeight = holder.itemsContainer.measuredHeight
-            if (measuredHeight <= 0) return
-            updateProgressHeight(holder, measuredHeight, progress)
-            return
+            containerHeight = holder.itemsContainer.measuredHeight
+            android.util.Log.d("ScheduleAdapter", "📏 Измерено: containerHeight=$containerHeight")
+            
+            if (containerHeight <= 0) {
+                android.util.Log.w("ScheduleAdapter", "⚠️ containerHeight <= 0 после измерения, пропускаем")
+                return
+            }
         }
         
-        updateProgressHeight(holder, containerHeight, progress)
+        // ЖЕСТКОЕ ограничение: используем минимальную из двух высот (container и wrapper)
+        val finalHeight = if (wrapperHeight > 0 && wrapperHeight < containerHeight) {
+            android.util.Log.d("ScheduleAdapter", "📐 Используем wrapperHeight как ограничитель: $wrapperHeight < $containerHeight")
+            wrapperHeight
+        } else {
+            containerHeight
+        }
+        
+        updateProgressHeight(holder, finalHeight, progress)
+        
+        // ФИНАЛЬНАЯ ПРОВЕРКА: убеждаемся что линия не вышла за границы
+        holder.itemView.postDelayed({
+            val actualIndicatorHeight = holder.progressIndicator.height
+            val actualIndicatorTop = holder.progressIndicator.top
+            val actualWrapperHeight = holder.itemsWrapper.height
+            val actualWrapperTop = holder.itemsWrapper.top
+            
+            if (actualIndicatorHeight > actualWrapperHeight && actualWrapperHeight > 0) {
+                android.util.Log.e("ScheduleAdapter", "🚨 ФИНАЛЬНАЯ ПРОВЕРКА ПРОВАЛЕНА: actualIndicatorHeight ($actualIndicatorHeight) > actualWrapperHeight ($actualWrapperHeight)")
+                android.util.Log.e("ScheduleAdapter", "   actualIndicatorTop=$actualIndicatorTop, actualWrapperTop=$actualWrapperTop")
+                // Немедленное исправление
+                val emergencyParams = holder.progressIndicator.layoutParams as? ViewGroup.MarginLayoutParams
+                emergencyParams?.height = actualWrapperHeight
+                emergencyParams?.topMargin = 0
+                holder.progressIndicator.layoutParams = emergencyParams
+            }
+        }, 100) // Небольшая задержка для проверки после layout
     }
     
     private fun updateProgressHeight(holder: ScheduleViewHolder, containerHeight: Int, progress: Float) {
+        // ЖЕСТКАЯ ВАЛИДАЦИЯ входных данных
+        if (containerHeight <= 0) {
+            android.util.Log.w("ScheduleAdapter", "⚠️ containerHeight <= 0: $containerHeight, пропускаем обновление")
+            holder.progressIndicator.visibility = View.GONE
+            return
+        }
+        
         // Ensure progress is within bounds (0.0 to 1.0)
         val clampedProgress = progress.coerceIn(0f, 1f)
         
-        // Calculate progress height - simply proportion of container height
-        val progressHeight = (containerHeight * clampedProgress).toInt().coerceIn(0, containerHeight)
+        // ЖЕСТКИЙ расчет высоты - НИКОГДА не превышаем контейнер
+        var progressHeight = (containerHeight * clampedProgress).toInt()
+        progressHeight = progressHeight.coerceIn(0, containerHeight) // Двойная проверка
         
-        // Update layout params - simple and direct
-        val params = holder.progressIndicator.layoutParams as? ViewGroup.MarginLayoutParams
-            ?: ViewGroup.MarginLayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            ).also {
-                holder.progressIndicator.layoutParams = it
+        // ДОПОЛНИТЕЛЬНАЯ ПРОВЕРКА: высота не должна быть больше контейнера НИ ПРИ КАКИХ ОБСТОЯТЕЛЬСТВАХ
+        if (progressHeight > containerHeight) {
+            android.util.Log.e("ScheduleAdapter", "🚨 ОШИБКА: progressHeight ($progressHeight) > containerHeight ($containerHeight)! Исправляю...")
+            progressHeight = containerHeight
+        }
+        
+        // ЖЕСТКОЕ ограничение: не более чем 99.9% от высоты контейнера (запас безопасности)
+        val maxAllowedHeight = (containerHeight * 0.999f).toInt()
+        progressHeight = progressHeight.coerceAtMost(maxAllowedHeight)
+        
+        // ОТЛАДОЧНОЕ ЛОГИРОВАНИЕ
+        android.util.Log.d("ScheduleAdapter", "📊 Прогресс: clampedProgress=$clampedProgress, containerHeight=$containerHeight, progressHeight=$progressHeight")
+        
+        // Update layout params - ЖЕСТКИЕ ограничения
+        val params = holder.progressIndicator.layoutParams
+        if (params == null || params !is ViewGroup.MarginLayoutParams) {
+            val newParams = ViewGroup.MarginLayoutParams(
+                2.dpToPx(), // Fixed width: 2dp
+                progressHeight // Уже проверено выше
+            ).apply {
+                topMargin = 0 // ЖЕСТКО: начинаем с самого верха
+                marginStart = 17.dpToPx() // Fixed start margin
+                bottomMargin = 0 // ЖЕСТКО: без отступов снизу
+                marginEnd = 0
             }
+            holder.progressIndicator.layoutParams = newParams
+            android.util.Log.d("ScheduleAdapter", "✅ Создан новый layout params: height=$progressHeight")
+        } else {
+            // ЖЕСТКОЕ обновление параметров
+            params.topMargin = 0 // Всегда начинаем сверху
+            params.height = progressHeight // Уже валидировано
+            params.width = 2.dpToPx() // Фиксированная ширина
+            params.bottomMargin = 0 // Нет отступа снизу
+            params.marginEnd = 0
+            if (params.marginStart != 17.dpToPx()) {
+                params.marginStart = 17.dpToPx()
+            }
+            holder.progressIndicator.layoutParams = params
+            android.util.Log.d("ScheduleAdapter", "✅ Обновлен layout params: height=$progressHeight, topMargin=${params.topMargin}")
+        }
         
-        // Simple: start from top (margin = 0), height = progress
-        params.topMargin = 0
-        params.height = progressHeight
-        holder.progressIndicator.layoutParams = params
+        // ЖЕСТКОЕ позиционирование: убеждаемся что линия привязана к верху контейнера
+        // Ограничение высоты через layout params уже применено выше
+        holder.progressIndicator.layoutParams = holder.progressIndicator.layoutParams // Принудительное обновление
         
-        // Ensure behind items
+        // Ensure behind items (но не влияет на размеры)
         holder.progressIndicator.elevation = -1f
+        
+        // ВАЛИДАЦИЯ: проверяем что линия не выходит за границы
+        holder.itemView.post {
+            val actualHeight = holder.progressIndicator.height
+            val wrapperHeight = holder.itemsWrapper.height
+            if (actualHeight > wrapperHeight && wrapperHeight > 0) {
+                android.util.Log.e("ScheduleAdapter", "🚨 КРИТИЧЕСКАЯ ОШИБКА: actualHeight ($actualHeight) > wrapperHeight ($wrapperHeight)! Исправляю немедленно!")
+                val fixedParams = holder.progressIndicator.layoutParams as? ViewGroup.MarginLayoutParams
+                fixedParams?.height = wrapperHeight.coerceAtMost(containerHeight)
+                holder.progressIndicator.layoutParams = fixedParams
+            }
+        }
         
         // Animate on first setup only (check if already visible)
         if ((holder.progressIndicator.scaleY == 0f || holder.progressIndicator.alpha == 0f) && !holder.progressLineSetup) {
             animateProgressLine(holder.progressIndicator)
         }
+    }
+    
+    // Helper function to convert dp to pixels
+    private fun Int.dpToPx(): Int {
+        val density = context?.resources?.displayMetrics?.density ?: 1f
+        return (this * density + 0.5f).toInt()
     }
     
     private fun animateProgressLine(view: View) {
@@ -468,19 +612,44 @@ class ScheduleAdapter(
         holder.progressHandler = handler
         
         handler.postDelayed({
-                // Check if ViewHolder is still bound to the same item and attached
-            if (holder.itemView.isAttachedToWindow && 
-                holder.progressIndicator.visibility == View.VISIBLE &&
-                holder.currentLessonNumbers?.size == lessonNumbers.size &&
+            // ЖЕСТКАЯ ПРОВЕРКА: ViewHolder еще привязан и валиден
+            if (!holder.itemView.isAttachedToWindow) {
+                android.util.Log.w("ScheduleAdapter", "⚠️ ViewHolder отвязан, отменяю обновление")
+                return@postDelayed
+            }
+            
+            if (holder.progressIndicator.visibility != View.VISIBLE) {
+                android.util.Log.w("ScheduleAdapter", "⚠️ Прогресс невидим, отменяю обновление")
+                return@postDelayed
+            }
+            
+            // Check if ViewHolder is still bound to the same item and attached
+            if (holder.currentLessonNumbers?.size == lessonNumbers.size &&
                 holder.currentLessonNumbers == lessonNumbers) {
                 
-                // Get actual layout height
+                // ЖЕСТКОЕ получение высоты: проверяем оба контейнера
                 val containerHeight = holder.itemsContainer.height
-                if (containerHeight > 0) {
+                val wrapperHeight = holder.itemsWrapper.height
+                
+                // Используем минимальную высоту для безопасности
+                val safeHeight = when {
+                    containerHeight > 0 && wrapperHeight > 0 -> minOf(containerHeight, wrapperHeight)
+                    containerHeight > 0 -> containerHeight
+                    wrapperHeight > 0 -> wrapperHeight
+                    else -> {
+                        android.util.Log.w("ScheduleAdapter", "⚠️ Высоты не определены, пропускаю обновление")
+                        updateProgressIndicator(holder, lessonNumbers) // Попытка пересчитать
+                        return@postDelayed
+                    }
+                }
+                
+                if (safeHeight > 0) {
                     val currentMinutes = DayProgressCalculator.getCurrentTimeInMinutes()
                     val college = prefs?.college ?: PreferencesManager.COLLEGE_CHTOTIB
-        val progress = DayProgressCalculator.getDayProgress(currentMinutes, lessonNumbers, college)
-                    updateProgressHeight(holder, containerHeight, progress)
+                    val progress = DayProgressCalculator.getDayProgress(currentMinutes, lessonNumbers, college)
+                    
+                    android.util.Log.d("ScheduleAdapter", "🔄 Обновление прогресса: safeHeight=$safeHeight, progress=$progress")
+                    updateProgressHeight(holder, safeHeight, progress)
                 } else {
                     updateProgressIndicator(holder, lessonNumbers)
                 }
@@ -491,6 +660,8 @@ class ScheduleAdapter(
                 
                 // Schedule next update
                 updateDayProgress(holder, lessonNumbers)
+            } else {
+                android.util.Log.w("ScheduleAdapter", "⚠️ Уроки изменились, отменяю периодическое обновление")
             }
         }, 60000) // Update every minute
     }
@@ -534,6 +705,8 @@ class ScheduleAdapter(
                 when {
                     isNothingTheme -> progressOverlay.setBackgroundResource(R.drawable.lesson_progress_fill_nothing)
                     isHalloweenTheme -> progressOverlay.setBackgroundResource(R.drawable.lesson_progress_fill_halloween)
+                    isGreenTheme -> progressOverlay.setBackgroundResource(R.drawable.lesson_progress_fill_green)
+                    isNewYearTheme -> progressOverlay.setBackgroundResource(R.drawable.lesson_progress_fill_newyear)
                     isLightTheme -> progressOverlay.setBackgroundResource(R.drawable.lesson_progress_fill_light)
                     isDarkTheme -> progressOverlay.setBackgroundResource(R.drawable.lesson_progress_fill_dark)
                     else -> progressOverlay.setBackgroundResource(R.drawable.lesson_progress_fill)
@@ -554,11 +727,12 @@ class ScheduleAdapter(
                 // Lesson is active now - highlight with accent color
                 progressOverlay.visibility = View.GONE
                 
-                // Use Halloween orange for active lesson in Halloween theme
-                val finalAccentColor = if (isHalloweenTheme) {
-                    context.getColor(R.color.custom_colorPrimary)
-                } else {
-                    accentColor
+                // Use theme-specific accent color for active lesson
+                val finalAccentColor = when {
+                    isHalloweenTheme -> context.getColor(R.color.custom_colorPrimary)
+                    isGreenTheme -> context.getColor(R.color.green_colorPrimary)
+                    isNewYearTheme -> context.getColor(R.color.newyear_colorPrimary)
+                    else -> accentColor
                 }
                 
                 lessonNumberView.setTextColor(finalAccentColor)
@@ -574,11 +748,12 @@ class ScheduleAdapter(
             else -> {
                 // Lesson not started - normal circle
                 progressOverlay.visibility = View.GONE
-                // Use Halloween orange for normal lessons in Halloween theme
-                val finalNormalColor = if (isHalloweenTheme) {
-                    context.getColor(R.color.custom_colorPrimary)
-                } else {
-                    normalTextColor
+                // Use theme-specific accent color for normal lessons
+                val finalNormalColor = when {
+                    isHalloweenTheme -> context.getColor(R.color.custom_colorPrimary)
+                    isGreenTheme -> context.getColor(R.color.green_colorPrimary)
+                    isNewYearTheme -> context.getColor(R.color.newyear_colorPrimary)
+                    else -> normalTextColor
                 }
                 lessonNumberView.setTextColor(finalNormalColor)
                 lessonNumberView.textSize = 16f
@@ -735,7 +910,21 @@ class ScheduleAdapter(
     override fun getItemCount(): Int = schedules.size
 
     fun updateSchedules(newSchedules: List<DaySchedule>) {
+        val previousSchedules = schedules
         schedules = newSchedules
+        
+        // Принудительно пересчитать прогресс если изменилась группа/колледж
+        // или если изменилось количество уроков в текущем дне
+        val needsFullRefresh = previousSchedules.isNotEmpty() && newSchedules.isNotEmpty()
+        
+        notifyDataSetChanged()
+    }
+    
+    /**
+     * Принудительно обновить прогресс для всех карточек (вызывается при изменении настроек)
+     */
+    fun forceUpdateProgress() {
+        // Уведомить адаптер о необходимости пересчета прогресса
         notifyDataSetChanged()
     }
 
@@ -823,6 +1012,8 @@ class ScheduleAdapter(
         when {
             isNothingTheme -> lessonProgressOverlay.setBackgroundResource(R.drawable.lesson_progress_fill_nothing)
             isHalloweenTheme -> lessonProgressOverlay.setBackgroundResource(R.drawable.lesson_progress_fill_halloween)
+            isGreenTheme -> lessonProgressOverlay.setBackgroundResource(R.drawable.lesson_progress_fill_green)
+            isNewYearTheme -> lessonProgressOverlay.setBackgroundResource(R.drawable.lesson_progress_fill_newyear)
             isLightTheme -> lessonProgressOverlay.setBackgroundResource(R.drawable.lesson_progress_fill_light)
             isDarkTheme -> lessonProgressOverlay.setBackgroundResource(R.drawable.lesson_progress_fill_dark)
             else -> lessonProgressOverlay.setBackgroundResource(R.drawable.lesson_progress_fill)

@@ -9,6 +9,8 @@ import com.example.raspisanie.R
 import com.example.raspisanie.data.*
 import java.text.SimpleDateFormat
 import java.util.*
+import java.util.concurrent.locks.ReentrantLock
+import kotlin.concurrent.withLock
 
 class CurrentLessonWidgetProvider : AppWidgetProvider() {
     
@@ -37,71 +39,100 @@ class CurrentLessonWidgetProvider : AppWidgetProvider() {
     companion object {
         private const val TAG = "CurrentLessonWidget"
         
+        // Thread-safe date formatter
+        private val dateFormatter = ThreadLocal.withInitial {
+            SimpleDateFormat("dd.MM.yyyy", Locale.getDefault())
+        }
+        
+        // Lock for widget updates to prevent race conditions
+        private val updateLock = ReentrantLock()
+        
         fun updateAppWidget(
             context: Context,
             appWidgetManager: AppWidgetManager,
             appWidgetId: Int
         ) {
-            try {
-                val prefs = PreferencesManager(context)
-                val views = RemoteViews(context.packageName, R.layout.widget_current_lesson)
-                
-                // Apply theme colors
-                applyThemeColors(context, views, prefs.theme)
-                
-                if (!prefs.isGroupSelected()) {
-                    views.setViewVisibility(R.id.widget_lesson_info, android.view.View.GONE)
-                    views.setViewVisibility(R.id.widget_no_lesson, android.view.View.VISIBLE)
-                    views.setTextViewText(R.id.widget_no_lesson, "Выберите группу")
-                } else {
-                    val todaySchedule = getTodaySchedule(context, prefs)
+            // Validate widget ID before proceeding
+            val validWidgetIds = appWidgetManager.getAppWidgetIds(
+                android.content.ComponentName(context, CurrentLessonWidgetProvider::class.java)
+            )
+            if (!validWidgetIds.contains(appWidgetId)) {
+                android.util.Log.w(TAG, "Widget ID $appWidgetId is no longer valid, skipping update")
+                return
+            }
+            
+            updateLock.withLock {
+                try {
+                    val prefs = PreferencesManager(context)
+                    val views = RemoteViews(context.packageName, R.layout.widget_current_lesson)
                     
-                    if (todaySchedule == null) {
+                    // Apply theme colors
+                    applyThemeColors(context, views, prefs.theme)
+                    
+                    if (!prefs.isGroupSelected()) {
                         views.setViewVisibility(R.id.widget_lesson_info, android.view.View.GONE)
                         views.setViewVisibility(R.id.widget_no_lesson, android.view.View.VISIBLE)
-                        views.setTextViewText(R.id.widget_no_lesson, "Нет расписания")
+                        views.setTextViewText(R.id.widget_no_lesson, "Выберите группу")
                     } else {
-                        val currentLesson = findCurrentLesson(todaySchedule, prefs.college)
+                        val todaySchedule = getTodaySchedule(context, prefs)
                         
-                        if (currentLesson == null) {
+                        if (todaySchedule == null) {
                             views.setViewVisibility(R.id.widget_lesson_info, android.view.View.GONE)
                             views.setViewVisibility(R.id.widget_no_lesson, android.view.View.VISIBLE)
-                            views.setTextViewText(R.id.widget_no_lesson, "Нет пар")
+                            views.setTextViewText(R.id.widget_no_lesson, "Нет расписания")
                         } else {
-                            views.setViewVisibility(R.id.widget_no_lesson, android.view.View.GONE)
-                            views.setViewVisibility(R.id.widget_lesson_info, android.view.View.VISIBLE)
+                            val currentLesson = findCurrentLesson(todaySchedule, prefs.college)
                             
-                            val subject = currentLesson.subject ?: "Занятие"
-                            val time = LessonTimes.formatTime(currentLesson.lessonNumber, prefs.college)
-                            
-                            views.setTextViewText(R.id.widget_subject, subject)
-                            views.setTextViewText(R.id.widget_time, time)
-                            
-                            val details = buildString {
-                                if (currentLesson.classroom != null) {
-                                    append("Ауд. ${currentLesson.classroom}")
+                            if (currentLesson == null) {
+                                views.setViewVisibility(R.id.widget_lesson_info, android.view.View.GONE)
+                                views.setViewVisibility(R.id.widget_no_lesson, android.view.View.VISIBLE)
+                                views.setTextViewText(R.id.widget_no_lesson, "Нет пар")
+                            } else {
+                                views.setViewVisibility(R.id.widget_no_lesson, android.view.View.GONE)
+                                views.setViewVisibility(R.id.widget_lesson_info, android.view.View.VISIBLE)
+                                
+                                val subject = currentLesson.subject ?: "Занятие"
+                                val time = LessonTimes.formatTime(currentLesson.lessonNumber, prefs.college) ?: ""
+                                
+                                views.setTextViewText(R.id.widget_subject, subject)
+                                views.setTextViewText(R.id.widget_time, time)
+                                
+                                val details = buildString {
+                                    if (currentLesson.classroom != null) {
+                                        append("Ауд. ${currentLesson.classroom}")
+                                    }
+                                    if (currentLesson.teacher != null) {
+                                        if (length > 0) append(" • ")
+                                        append(currentLesson.teacher)
+                                    }
                                 }
-                                if (currentLesson.teacher != null) {
-                                    if (length > 0) append(" • ")
-                                    append(currentLesson.teacher)
-                                }
+                                views.setTextViewText(R.id.widget_details, details.ifEmpty { "—" })
                             }
-                            views.setTextViewText(R.id.widget_details, details)
                         }
                     }
+                    
+                    val intent = android.content.Intent(context, com.example.raspisanie.MainActivity::class.java)
+                    val pendingIntent = android.app.PendingIntent.getActivity(
+                        context, 0, intent,
+                        android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE
+                    )
+                    views.setOnClickPendingIntent(R.id.widget_root, pendingIntent)
+                    
+                    appWidgetManager.updateAppWidget(appWidgetId, views)
+                    
+                } catch (e: Exception) {
+                    android.util.Log.e(TAG, "Error updating widget $appWidgetId", e)
+                    // Try to show error state
+                    try {
+                        val views = RemoteViews(context.packageName, R.layout.widget_current_lesson)
+                        views.setViewVisibility(R.id.widget_lesson_info, android.view.View.GONE)
+                        views.setViewVisibility(R.id.widget_no_lesson, android.view.View.VISIBLE)
+                        views.setTextViewText(R.id.widget_no_lesson, "Ошибка обновления")
+                        appWidgetManager.updateAppWidget(appWidgetId, views)
+                    } catch (e2: Exception) {
+                        android.util.Log.e(TAG, "Failed to show error state", e2)
+                    }
                 }
-                
-                val intent = android.content.Intent(context, com.example.raspisanie.MainActivity::class.java)
-                val pendingIntent = android.app.PendingIntent.getActivity(
-                    context, 0, intent,
-                    android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE
-                )
-                views.setOnClickPendingIntent(R.id.widget_root, pendingIntent)
-                
-                appWidgetManager.updateAppWidget(appWidgetId, views)
-                
-            } catch (e: Exception) {
-                android.util.Log.e(TAG, "Error updating widget", e)
             }
         }
         
@@ -142,6 +173,20 @@ class CurrentLessonWidgetProvider : AppWidgetProvider() {
                     R.drawable.widget_background_nothing,
                     R.drawable.widget_time_badge_nothing
                 )
+                PreferencesManager.THEME_GREEN -> arrayOf(
+                    context.getColor(R.color.green_textColorPrimary), // White subject
+                    context.getColor(R.color.green_textColorSecondary), // Light green time/details
+                    context.getColor(R.color.green_colorPrimary), // Green accent
+                    R.drawable.widget_background_green,
+                    R.drawable.widget_time_badge_green
+                )
+                PreferencesManager.THEME_NEW_YEAR -> arrayOf(
+                    context.getColor(R.color.newyear_textColorPrimary), // White subject
+                    context.getColor(R.color.newyear_textColorSecondary), // Light gray time/details
+                    context.getColor(R.color.newyear_colorPrimary), // Green accent
+                    R.drawable.widget_background_newyear,
+                    R.drawable.widget_time_badge_newyear
+                )
                 else -> { // Fallback to Purple theme
                     arrayOf(
                         context.getColor(R.color.system_textColorPrimary),
@@ -172,37 +217,57 @@ class CurrentLessonWidgetProvider : AppWidgetProvider() {
             val cached = cache.getCachedSchedule(prefs.selectedGroupFile, prefs.college)
             if (cached == null || cached.isEmpty()) return null
             
-            val today = SimpleDateFormat("dd.MM.yyyy", Locale.getDefault()).format(Date())
-            return cached.firstOrNull { it.date == today }
+            try {
+                val today = dateFormatter.get()?.format(Date()) ?: return null
+                return cached.firstOrNull { it.date == today }
+            } catch (e: Exception) {
+                android.util.Log.e(TAG, "Error formatting date", e)
+                return null
+            }
         }
         
         private fun findCurrentLesson(daySchedule: DaySchedule, college: String): ScheduleItem? {
-            val currentMinutes = DayProgressCalculator.getCurrentTimeInMinutes()
-            val lessons = daySchedule.items.sortedBy { it.lessonNumber }
-            
-            for (lesson in lessons) {
-                val lessonTime = LessonTimes.getTime(lesson.lessonNumber, college) ?: continue
-                val start = parseTime(lessonTime.startTime)
-                val end = parseTime(lessonTime.endTime)
+            try {
+                val currentMinutes = DayProgressCalculator.getCurrentTimeInMinutes()
+                val lessons = daySchedule.items.sortedBy { it.lessonNumber }
                 
-                if (currentMinutes >= start && currentMinutes <= end + 15) {
-                    return lesson
+                // Find currently ongoing lesson (with 15 minute buffer)
+                for (lesson in lessons) {
+                    val lessonTime = LessonTimes.getTime(lesson.lessonNumber, college) ?: continue
+                    val start = parseTime(lessonTime.startTime)
+                    val end = parseTime(lessonTime.endTime)
+                    
+                    if (start <= 0 || end <= 0) continue // Invalid time
+                    
+                    if (currentMinutes >= start && currentMinutes <= end + 15) {
+                        return lesson
+                    }
                 }
-            }
-            
-            return lessons.firstOrNull { lesson ->
-                val lessonTime = LessonTimes.getTime(lesson.lessonNumber, college) ?: return@firstOrNull false
-                val start = parseTime(lessonTime.startTime)
-                currentMinutes < start
+                
+                // Find next upcoming lesson
+                return lessons.firstOrNull { lesson ->
+                    val lessonTime = LessonTimes.getTime(lesson.lessonNumber, college) ?: return@firstOrNull false
+                    val start = parseTime(lessonTime.startTime)
+                    start > 0 && currentMinutes < start
+                }
+            } catch (e: Exception) {
+                android.util.Log.e(TAG, "Error finding current lesson", e)
+                return null
             }
         }
         
         private fun parseTime(timeStr: String): Int {
-            val parts = timeStr.split(":")
-            if (parts.size == 2) {
-                val hours = parts[0].toIntOrNull() ?: 0
-                val minutes = parts[1].toIntOrNull() ?: 0
-                return hours * 60 + minutes
+            if (timeStr.isBlank()) return 0
+            try {
+                val parts = timeStr.split(":")
+                if (parts.size == 2) {
+                    val hours = parts[0].toIntOrNull() ?: 0
+                    val minutes = parts[1].toIntOrNull() ?: 0
+                    if (hours < 0 || hours > 23 || minutes < 0 || minutes > 59) return 0
+                    return hours * 60 + minutes
+                }
+            } catch (e: Exception) {
+                android.util.Log.e(TAG, "Error parsing time: $timeStr", e)
             }
             return 0
         }

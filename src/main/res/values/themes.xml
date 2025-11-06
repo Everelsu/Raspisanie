@@ -340,4 +340,136 @@
         <item name="lessonNumberBg">@color/nothing_lessonNumberBg</item>
         <item name="lessonNumberStroke">@color/nothing_lessonNumberStroke</item>
     </style>
+
+    <!-- Green Theme - Темная основа с зелёными акцентами -->
+    <style name="Theme.Raspisanie.Green" parent="Theme.Material3.DayNight.NoActionBar">
+        <!-- Фон окна -->
+        <item name="android:windowBackground">@color/green_windowBackground</item>
+        
+        <!-- Основной цвет (зелёный) -->
+        <item name="colorPrimary">@color/green_colorPrimary</item>
+        <item name="colorOnPrimary">@color/green_colorOnPrimary</item>
+        <item name="colorPrimaryVariant">@color/green_colorPrimaryVariant</item>
+        
+        <!-- Material3 dynamic colors -->
+        <item name="colorSecondary">@color/green_colorPrimary</item>
+        <item name="colorTertiary">@color/green_colorPrimary</item>
+        <item name="colorPrimaryContainer">@color/green_colorPrimary</item>
+        <item name="colorSecondaryContainer">@color/green_colorPrimary</item>
+        <item name="colorTertiaryContainer">@color/green_colorPrimary</item>
+        
+        <!-- Цвет поверхности -->
+        <item name="colorSurface">@color/green_colorSurface</item>
+        <item name="colorOnSurface">@color/green_colorOnSurface</item>
+        
+        <!-- Фон карточек в настройках -->
+        <item name="settingsCardBg">@color/green_settingsCardBg</item>
+        
+        <!-- Статус бар -->
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        
+        <!-- Навигационная панель -->
+        <item name="android:navigationBarColor">@color/green_navigationBarColor</item>
+        
+        <!-- Темный статус бар -->
+        <item name="android:windowLightStatusBar">false</item>
+        
+        <!-- Шрифт -->
+        <item name="android:fontFamily">@font/inter</item>
+        
+        <!-- Цвет текста -->
+        <item name="android:textColor">@color/green_textColor</item>
+        <item name="android:textColorPrimary">@color/green_textColorPrimary</item>
+        <item name="android:textColorSecondary">@color/green_textColorSecondary</item>
+        
+        <!-- Фон и текст на фоне -->
+        <item name="android:colorBackground">@color/green_colorBackground</item>
+        <item name="colorOnBackground">@color/green_colorOnBackground</item>
+        
+        <!-- Цвета для кнопок и switches -->
+        <item name="colorControlActivated">@color/green_colorPrimary</item>
+        <item name="colorControlNormal">@color/green_textColorSecondary</item>
+        <item name="android:colorControlActivated">@color/green_colorPrimary</item>
+        <item name="android:colorControlNormal">@color/green_textColorSecondary</item>
+        <!-- Button styles -->
+        <item name="materialButtonStyle">@style/Widget.Raspisanie.Button</item>
+        <item name="buttonStyle">@style/Widget.Raspisanie.Button</item>
+        <!-- Switch colors -->
+        <item name="switchThumbTint">@color/switch_thumb_green</item>
+        <item name="switchTrackTint">@color/switch_track_green</item>
+        <item name="thumbTint">@color/switch_thumb_green</item>
+        <item name="trackTint">@color/switch_track_green</item>
+        <!-- Ripple colors -->
+        <item name="colorControlHighlight">@color/switch_ripple</item>
+        <item name="android:colorControlHighlight">@color/switch_ripple</item>
+        <!-- Lesson number colors -->
+        <item name="lessonNumberBg">@color/green_lessonNumberBg</item>
+        <item name="lessonNumberStroke">@color/green_lessonNumberStroke</item>
+    </style>
+
+    <!-- New Year Theme - Праздничная тема с красным, белым и зелёным -->
+    <style name="Theme.Raspisanie.NewYear" parent="Theme.Material3.DayNight.NoActionBar">
+        <!-- Фон окна (тёмно-зелёно-красный) -->
+        <item name="android:windowBackground">@color/newyear_windowBackground</item>
+        
+        <!-- Основной цвет (зелёный) -->
+        <item name="colorPrimary">@color/newyear_colorPrimary</item>
+        <item name="colorOnPrimary">@color/newyear_colorOnPrimary</item>
+        <item name="colorPrimaryVariant">@color/newyear_colorPrimaryVariant</item>
+        
+        <!-- Material3 dynamic colors -->
+        <item name="colorSecondary">@color/newyear_colorPrimary</item>
+        <item name="colorTertiary">@color/newyear_colorPrimary</item>
+        <item name="colorPrimaryContainer">@color/newyear_colorPrimary</item>
+        <item name="colorSecondaryContainer">@color/newyear_colorPrimary</item>
+        <item name="colorTertiaryContainer">@color/newyear_colorPrimary</item>
+        
+        <!-- Цвет поверхности -->
+        <item name="colorSurface">@color/newyear_colorSurface</item>
+        <item name="colorOnSurface">@color/newyear_colorOnSurface</item>
+        
+        <!-- Фон карточек в настройках -->
+        <item name="settingsCardBg">@color/newyear_settingsCardBg</item>
+        
+        <!-- Статус бар -->
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        
+        <!-- Навигационная панель -->
+        <item name="android:navigationBarColor">@color/newyear_navigationBarColor</item>
+        
+        <!-- Темный статус бар -->
+        <item name="android:windowLightStatusBar">false</item>
+        
+        <!-- Шрифт -->
+        <item name="android:fontFamily">@font/inter</item>
+        
+        <!-- Цвет текста -->
+        <item name="android:textColor">@color/newyear_textColor</item>
+        <item name="android:textColorPrimary">@color/newyear_textColorPrimary</item>
+        <item name="android:textColorSecondary">@color/newyear_textColorSecondary</item>
+        
+        <!-- Фон и текст на фоне -->
+        <item name="android:colorBackground">@color/newyear_colorBackground</item>
+        <item name="colorOnBackground">@color/newyear_colorOnBackground</item>
+        
+        <!-- Цвета для кнопок и switches -->
+        <item name="colorControlActivated">@color/newyear_colorPrimary</item>
+        <item name="colorControlNormal">@color/newyear_textColorSecondary</item>
+        <item name="android:colorControlActivated">@color/newyear_colorPrimary</item>
+        <item name="android:colorControlNormal">@color/newyear_textColorSecondary</item>
+        <!-- Button styles -->
+        <item name="materialButtonStyle">@style/Widget.Raspisanie.Button</item>
+        <item name="buttonStyle">@style/Widget.Raspisanie.Button</item>
+        <!-- Switch colors -->
+        <item name="switchThumbTint">@color/switch_thumb_newyear</item>
+        <item name="switchTrackTint">@color/switch_track_newyear</item>
+        <item name="thumbTint">@color/switch_thumb_newyear</item>
+        <item name="trackTint">@color/switch_track_newyear</item>
+        <!-- Ripple colors -->
+        <item name="colorControlHighlight">@color/switch_ripple</item>
+        <item name="android:colorControlHighlight">@color/switch_ripple</item>
+        <!-- Lesson number colors -->
+        <item name="lessonNumberBg">@color/newyear_lessonNumberBg</item>
+        <item name="lessonNumberStroke">@color/newyear_lessonNumberStroke</item>
+    </style>
 </resources>

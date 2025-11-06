@@ -203,4 +203,62 @@
     <color name="system_lessonNumberBgGradientStart">#3D2A55</color>
     <color name="system_lessonNumberBgGradientCenter">#2A1C40</color>
     <color name="system_lessonNumberBgGradientEnd">#1A1030</color>
+    
+    <!-- ===== ЗЕЛЁНАЯ ТЕМА (Темная основа с зелёными акцентами) ===== -->
+    <color name="green_windowBackground">#0A1A0A</color> <!-- Dark green-black background -->
+    <color name="green_colorPrimary">#4CAF50</color> <!-- Material green -->
+    <color name="green_colorOnPrimary">#000000</color>
+    <color name="green_colorPrimaryVariant">#66BB6A</color>
+    <color name="green_colorSurface">#1A2A1A</color> <!-- Medium green-black surface -->
+    <color name="green_colorOnSurface">#FFFFFF</color>
+    <color name="green_settingsCardBg">#1A2A1A</color> <!-- Medium green-black -->
+    <color name="green_navigationBarColor">#000000</color>
+    <color name="green_textColor">#FFFFFF</color>
+    <color name="green_textColorPrimary">#FFFFFF</color>
+    <color name="green_textColorSecondary">#81C784</color> <!-- Light green for secondary -->
+    <color name="green_colorBackground">#0A1A0A</color> <!-- Dark green-black -->
+    <color name="green_colorOnBackground">#FFFFFF</color>
+    <!-- Lesson number colors -->
+    <color name="green_lessonNumberBg">#1A1A1A</color>
+    <color name="green_lessonNumberStroke">#333333</color>
+    <!-- Gradient colors for Green theme -->
+    <color name="green_lessonNumberBgGradientStart">#2A3D2A</color>
+    <color name="green_lessonNumberBgGradientCenter">#1A2A1A</color>
+    <color name="green_lessonNumberBgGradientEnd">#0A1A0A</color>
+    <!-- Switch colors -->
+    <color name="green_switchThumbChecked">#4CAF50</color>
+    <color name="green_switchThumbUnchecked">#424242</color>
+    <color name="green_switchTrackChecked">#664CAF50</color>
+    <color name="green_switchTrackUnchecked">#33FFFFFF</color>
+    
+    <!-- ===== НОВОГОДНЯЯ ТЕМА (Красный, белый, зелёный) ===== -->
+    <color name="newyear_windowBackground">#0A1A0A</color> <!-- Dark green-red background -->
+    <color name="newyear_colorPrimary">#2E7D32</color> <!-- Green - новогодний цвет -->
+    <color name="newyear_colorOnPrimary">#FFFFFF</color>
+    <color name="newyear_colorPrimaryVariant">#4CAF50</color> <!-- Bright green -->
+    <color name="newyear_colorSurface">#1A2A1A</color> <!-- Medium green-red -->
+    <color name="newyear_colorOnSurface">#FFFFFF</color>
+    <color name="newyear_settingsCardBg">#1A2A1A</color> <!-- Medium green-red -->
+    <color name="newyear_navigationBarColor">#0A1A0A</color>
+    <color name="newyear_textColor">#FFFFFF</color>
+    <color name="newyear_textColorPrimary">#FFFFFF</color> <!-- White text -->
+    <color name="newyear_textColorSecondary">#81C784</color> <!-- Light green for secondary -->
+    <color name="newyear_colorBackground">#0A1A0A</color> <!-- Dark green-red background -->
+    <color name="newyear_colorOnBackground">#FFFFFF</color>
+    <!-- Новогодние акцентные цвета -->
+    <color name="newyear_accent_red">#C62828</color> <!-- Red -->
+    <color name="newyear_accent_green">#2E7D32</color> <!-- Green -->
+    <color name="newyear_accent_white">#FFFFFF</color> <!-- White -->
+    <!-- Lesson number colors -->
+    <color name="newyear_lessonNumberBg">#1A1A1A</color>
+    <color name="newyear_lessonNumberStroke">#2E7D32</color> <!-- Green stroke -->
+    <!-- Gradient colors for New Year theme - красные и зелёные оттенки -->
+    <color name="newyear_lessonNumberBgGradientStart">#2A3D2A</color> <!-- Dark green -->
+    <color name="newyear_lessonNumberBgGradientCenter">#3D2A1A</color> <!-- Medium green-red mix -->
+    <color name="newyear_lessonNumberBgGradientEnd">#2A1A0A</color> <!-- Dark red-green mix -->
+    <!-- Switch colors -->
+    <color name="newyear_switchThumbChecked">#2E7D32</color> <!-- Green -->
+    <color name="newyear_switchThumbUnchecked">#424242</color>
+    <color name="newyear_switchTrackChecked">#662E7D32</color> <!-- Green with transparency -->
+    <color name="newyear_switchTrackUnchecked">#33FFFFFF</color>
 </resources>

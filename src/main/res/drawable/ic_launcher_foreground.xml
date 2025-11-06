@@ -38,6 +38,6 @@
     <!-- Маленький круг в верхнем центре (символ текущего дня / отметка) -->
     <path
         android:fillColor="#FFFFFF"
-        android:pathData="M35,27m-4,3a4,4 0 1,1 8,0a4,4 0 1,1 -8,0" />
+        android:pathData="M39,29m-4,0a4,4 0 1,1 8,0a4,4 0 1,1 -8,0" />
 
 </vector>

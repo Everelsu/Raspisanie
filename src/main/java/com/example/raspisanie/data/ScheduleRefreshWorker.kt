@@ -44,21 +44,45 @@ class ScheduleRefreshWorker(
             try {
                 val appWidgetManager = android.appwidget.AppWidgetManager.getInstance(applicationContext)
                 
-                val currentLessonWidgetIds = appWidgetManager.getAppWidgetIds(
-                    android.content.ComponentName(applicationContext, CurrentLessonWidgetProvider::class.java)
-                )
-                for (widgetId in currentLessonWidgetIds) {
-                    CurrentLessonWidgetProvider.updateAppWidget(applicationContext, appWidgetManager, widgetId)
+                // Update CurrentLesson widgets
+                try {
+                    val currentLessonWidgetIds = appWidgetManager.getAppWidgetIds(
+                        android.content.ComponentName(applicationContext, CurrentLessonWidgetProvider::class.java)
+                    )
+                    if (currentLessonWidgetIds.isNotEmpty()) {
+                        for (widgetId in currentLessonWidgetIds) {
+                            try {
+                                CurrentLessonWidgetProvider.updateAppWidget(applicationContext, appWidgetManager, widgetId)
+                            } catch (e: Exception) {
+                                Log.w(TAG, "Не удалось обновить виджет текущего урока $widgetId: ${e.message}")
+                            }
+                        }
+                        Log.d(TAG, "Обновлено виджетов текущего урока: ${currentLessonWidgetIds.size}")
+                    }
+                } catch (e: Exception) {
+                    Log.w(TAG, "Ошибка при обновлении виджетов текущего урока: ${e.message}")
                 }
                 
-                val dayScheduleWidgetIds = appWidgetManager.getAppWidgetIds(
-                    android.content.ComponentName(applicationContext, DayScheduleWidgetProvider::class.java)
-                )
-                for (widgetId in dayScheduleWidgetIds) {
-                    DayScheduleWidgetProvider.updateAppWidget(applicationContext, appWidgetManager, widgetId)
+                // Update DaySchedule widgets
+                try {
+                    val dayScheduleWidgetIds = appWidgetManager.getAppWidgetIds(
+                        android.content.ComponentName(applicationContext, DayScheduleWidgetProvider::class.java)
+                    )
+                    if (dayScheduleWidgetIds.isNotEmpty()) {
+                        for (widgetId in dayScheduleWidgetIds) {
+                            try {
+                                DayScheduleWidgetProvider.updateAppWidget(applicationContext, appWidgetManager, widgetId)
+                            } catch (e: Exception) {
+                                Log.w(TAG, "Не удалось обновить виджет расписания дня $widgetId: ${e.message}")
+                            }
+                        }
+                        Log.d(TAG, "Обновлено виджетов расписания дня: ${dayScheduleWidgetIds.size}")
+                    }
+                } catch (e: Exception) {
+                    Log.w(TAG, "Ошибка при обновлении виджетов расписания дня: ${e.message}")
                 }
             } catch (e: Exception) {
-                Log.w(TAG, "Не удалось обновить виджеты: ${e.message}")
+                Log.w(TAG, "Общая ошибка при обновлении виджетов: ${e.message}", e)
             }
             
             Log.d(TAG, "Автообновление завершено успешно")

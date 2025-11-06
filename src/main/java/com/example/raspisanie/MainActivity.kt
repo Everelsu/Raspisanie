@@ -41,7 +41,7 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         prefs = PreferencesManager(this)
         
-        // Проверить первый запуск и установить дефолтную группу
+        // Проверить первый запуск
         prefs.checkFirstLaunch()
         
         currentThemeKey = prefs.theme
@@ -85,10 +85,16 @@ class MainActivity : AppCompatActivity() {
         // Очистить старые APK файлы обновлений
         com.example.raspisanie.data.AppUpdateManager.cleanupOldApkFiles(this)
         
+        // Проверить обновления при запуске (фоново, без уведомления если версия актуальна)
+        com.example.raspisanie.data.AppUpdateManager.checkForUpdatesOnStartup(this)
+        
         // Загрузить расписание для выбранной группы при первом запуске
         // Только если группа выбрана
         if (viewModel.schedule.value.isEmpty() && prefs.isGroupSelected()) {
             viewModel.loadSchedule(prefs.selectedGroupFile, prefs.college)
+        } else if (viewModel.schedule.value.isEmpty() && !prefs.isGroupSelected()) {
+            // Если группа не выбрана, показать сообщение
+            binding.emptyState.visibility = android.view.View.VISIBLE
         }
     }
     
@@ -96,21 +102,43 @@ class MainActivity : AppCompatActivity() {
         try {
             val appWidgetManager = android.appwidget.AppWidgetManager.getInstance(this)
             
-            val currentLessonWidgetIds = appWidgetManager.getAppWidgetIds(
-                android.content.ComponentName(this, CurrentLessonWidgetProvider::class.java)
-            )
-            for (widgetId in currentLessonWidgetIds) {
-                CurrentLessonWidgetProvider.updateAppWidget(this, appWidgetManager, widgetId)
+            // Update CurrentLesson widgets
+            try {
+                val currentLessonWidgetIds = appWidgetManager.getAppWidgetIds(
+                    android.content.ComponentName(this, CurrentLessonWidgetProvider::class.java)
+                )
+                if (currentLessonWidgetIds.isNotEmpty()) {
+                    for (widgetId in currentLessonWidgetIds) {
+                        try {
+                            CurrentLessonWidgetProvider.updateAppWidget(this, appWidgetManager, widgetId)
+                        } catch (e: Exception) {
+                            Log.w(TAG, "Не удалось обновить виджет текущего урока $widgetId: ${e.message}")
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Ошибка при обновлении виджетов текущего урока: ${e.message}")
             }
             
-            val dayScheduleWidgetIds = appWidgetManager.getAppWidgetIds(
-                android.content.ComponentName(this, DayScheduleWidgetProvider::class.java)
-            )
-            for (widgetId in dayScheduleWidgetIds) {
-                DayScheduleWidgetProvider.updateAppWidget(this, appWidgetManager, widgetId)
+            // Update DaySchedule widgets
+            try {
+                val dayScheduleWidgetIds = appWidgetManager.getAppWidgetIds(
+                    android.content.ComponentName(this, DayScheduleWidgetProvider::class.java)
+                )
+                if (dayScheduleWidgetIds.isNotEmpty()) {
+                    for (widgetId in dayScheduleWidgetIds) {
+                        try {
+                            DayScheduleWidgetProvider.updateAppWidget(this, appWidgetManager, widgetId)
+                        } catch (e: Exception) {
+                            Log.w(TAG, "Не удалось обновить виджет расписания дня $widgetId: ${e.message}")
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Ошибка при обновлении виджетов расписания дня: ${e.message}")
             }
         } catch (e: Exception) {
-            Log.w(TAG, "Не удалось обновить виджеты: ${e.message}")
+            Log.w(TAG, "Общая ошибка при обновлении виджетов: ${e.message}", e)
         }
     }
     
@@ -180,7 +208,8 @@ class MainActivity : AppCompatActivity() {
             } else {
                 // Просто обновить адаптер для отражения изменений настроек (показ времени, перерывов и т.д.)
                 // Это НЕ вызывает загрузку данных, только перерисовку UI
-                adapter.notifyDataSetChanged()
+                // Принудительно обновляем прогресс при изменении настроек
+                adapter.forceUpdateProgress()
             }
         } else {
             // Группа не выбрана - очистить расписание
@@ -224,6 +253,8 @@ class MainActivity : AppCompatActivity() {
             PreferencesManager.THEME_NOTHING -> resources.getColor(R.color.primaryNothing, theme)
             PreferencesManager.THEME_PURPLE -> resources.getColor(R.color.system_colorPrimary, theme) // Purple
             PreferencesManager.THEME_HALLOWEEN -> resources.getColor(R.color.custom_colorPrimary, theme) // Halloween orange
+            PreferencesManager.THEME_GREEN -> resources.getColor(R.color.green_colorPrimary, theme) // Green
+            PreferencesManager.THEME_NEW_YEAR -> resources.getColor(R.color.newyear_colorPrimary, theme) // New Year green
             else -> resources.getColor(android.R.color.black, theme)
         }
         binding.swipeRefresh.setColorSchemeColors(refreshColor)
@@ -286,7 +317,8 @@ class MainActivity : AppCompatActivity() {
             PreferencesManager.THEME_PURPLE -> R.style.Theme_Raspisanie_System
             PreferencesManager.THEME_HALLOWEEN -> R.style.Theme_Raspisanie_Custom
             PreferencesManager.THEME_NOTHING -> R.style.Theme_Raspisanie_Nothing
-            PreferencesManager.THEME_SYSTEM -> R.style.Theme_Raspisanie_System
+            PreferencesManager.THEME_GREEN -> R.style.Theme_Raspisanie_Green
+            PreferencesManager.THEME_NEW_YEAR -> R.style.Theme_Raspisanie_NewYear
             else -> {
                 // Fallback - просто фиолетовая тема
                 R.style.Theme_Raspisanie_System

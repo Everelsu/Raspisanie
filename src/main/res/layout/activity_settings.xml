@@ -679,7 +679,45 @@
 
                 </LinearLayout>
 
-                <!-- Row 3: Nothing (Full Width) -->
+                <!-- Row 3: Green & New Year -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:weightSum="2"
+                    android:layout_marginTop="8dp">
+
+                    <androidx.cardview.widget.CardView
+                        android:id="@+id/themeGreen"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:layout_margin="6dp"
+                        app:cardCornerRadius="16dp"
+                        app:cardElevation="0dp"
+                        app:cardBackgroundColor="@android:color/transparent">
+
+                        <include layout="@layout/item_theme_content" />
+
+                    </androidx.cardview.widget.CardView>
+
+                    <androidx.cardview.widget.CardView
+                        android:id="@+id/themeNewYear"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:layout_margin="6dp"
+                        app:cardCornerRadius="16dp"
+                        app:cardElevation="0dp"
+                        app:cardBackgroundColor="@android:color/transparent">
+
+                        <include layout="@layout/item_theme_content" />
+
+                    </androidx.cardview.widget.CardView>
+
+                </LinearLayout>
+
+                <!-- Row 4: Nothing (Full Width) -->
                 <androidx.cardview.widget.CardView
                     android:id="@+id/themeNothing"
                     android:layout_width="match_parent"
@@ -713,7 +751,10 @@
                     android:text="@string/developed_by"
                     android:textSize="14sp"
                     android:textColor="?android:textColorSecondary"
-                    android:layout_marginBottom="4dp" />
+                    android:layout_marginBottom="4dp"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:foreground="?android:attr/selectableItemBackground" />
 
                 <TextView
                     android:id="@+id/authorName"
@@ -723,6 +764,18 @@
                     android:textSize="16sp"
                     android:textColor="?attr/colorPrimary"
                     android:textStyle="bold"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:foreground="?android:attr/selectableItemBackground"
+                    android:layout_marginBottom="4dp" />
+
+                <TextView
+                    android:id="@+id/changelogButton"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/view_changelog"
+                    android:textSize="14sp"
+                    android:textColor="?attr/colorPrimary"
                     android:clickable="true"
                     android:focusable="true"
                     android:foreground="?android:attr/selectableItemBackground"

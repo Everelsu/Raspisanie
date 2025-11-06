@@ -4,6 +4,7 @@
     <string name="select_group">Выберите группу</string>
     <string name="loading_groups">Загрузка групп...</string>
     <string name="no_group_selected">Не выбрано</string>
+    <string name="select_group_in_settings">Выберите группу в настройках</string>
     
     <string name="widget_current_lesson_description">Текущая пара</string>
     <string name="widget_day_schedule_description">Расписание на день</string>
@@ -15,4 +16,6 @@
     <string name="version_format">Версия %1$s</string>
     <string name="version_placeholder">Версия 1.0.0</string>
     <string name="cannot_open_profile">Не удалось открыть профиль</string>
+    <string name="view_changelog">Патчноуты</string>
+    <string name="changelog_url">https://github.com/Everelsu/Raspisanie/releases</string>
 </resources>

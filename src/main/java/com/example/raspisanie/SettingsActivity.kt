@@ -22,6 +22,13 @@ class SettingsActivity : AppCompatActivity() {
     private lateinit var prefs: PreferencesManager
     private var savedScrollPosition: Int = 0
     private var isFavoriteButtonSetup = false
+    private var easterEggClickCount = 0
+    private var lastClickTime = 0L
+    private val easterEggNames = listOf(
+        "@Serpartine", "@kameko4", "Ever", "Everelsu", "Durov",
+        "Stalin", "Lenin", "Владимир", "ВОЛОДЯ", "Егор",
+        "ВАЛЕРА", "Wplace", "SVO", "ZZZ", "Goida", "КАЛЛда?",
+    )
 
     override fun onCreate(savedInstanceState: Bundle?) {
         prefs = PreferencesManager(this)
@@ -459,6 +466,24 @@ class SettingsActivity : AppCompatActivity() {
         )
         
         setupThemeCard(
+            R.id.themeGreen,
+            "Зелёная",
+            "Темная с зелёными акцентами",
+            R.drawable.theme_preview_green,
+            PreferencesManager.THEME_GREEN,
+            currentTheme == PreferencesManager.THEME_GREEN
+        )
+        
+        setupThemeCard(
+            R.id.themeNewYear,
+            "Новогодняя",
+            "Красный, белый, зелёный со снегом",
+            R.drawable.theme_preview_newyear,
+            PreferencesManager.THEME_NEW_YEAR,
+            currentTheme == PreferencesManager.THEME_NEW_YEAR
+        )
+        
+        setupThemeCard(
             R.id.themeNothing,
             "RedDot",
             "Красный с NDot шрифтом",
@@ -495,6 +520,8 @@ class SettingsActivity : AppCompatActivity() {
             PreferencesManager.THEME_PURPLE -> resources.getColor(R.color.system_textColorPrimary, theme)
             PreferencesManager.THEME_HALLOWEEN -> resources.getColor(R.color.custom_textColorPrimary, theme)
             PreferencesManager.THEME_NOTHING -> resources.getColor(R.color.nothing_textColorPrimary, theme)
+            PreferencesManager.THEME_GREEN -> resources.getColor(R.color.green_textColorPrimary, theme)
+            PreferencesManager.THEME_NEW_YEAR -> resources.getColor(R.color.newyear_textColorPrimary, theme)
             else -> {
                 // Fallback theme, use TypedArray to get the attribute
                 val typedArray = theme.obtainStyledAttributes(intArrayOf(android.R.attr.textColorPrimary))
@@ -509,6 +536,8 @@ class SettingsActivity : AppCompatActivity() {
             PreferencesManager.THEME_PURPLE -> resources.getColor(R.color.system_textColorSecondary, theme)
             PreferencesManager.THEME_HALLOWEEN -> resources.getColor(R.color.custom_textColorSecondary, theme)
             PreferencesManager.THEME_NOTHING -> resources.getColor(R.color.nothing_textColorSecondary, theme)
+            PreferencesManager.THEME_GREEN -> resources.getColor(R.color.green_textColorSecondary, theme)
+            PreferencesManager.THEME_NEW_YEAR -> resources.getColor(R.color.newyear_textColorSecondary, theme)
             else -> {
                 // Fallback theme, use TypedArray to get the attribute
                 val typedArray = theme.obtainStyledAttributes(intArrayOf(android.R.attr.textColorSecondary))
@@ -556,6 +585,8 @@ class SettingsActivity : AppCompatActivity() {
             R.id.themeLight,
             R.id.themeFiolet,
             R.id.themeCustom,
+            R.id.themeGreen,
+            R.id.themeNewYear,
             R.id.themeNothing
         ).forEach { id ->
             val cardView = findViewById<androidx.cardview.widget.CardView>(id) ?: return@forEach
@@ -677,6 +708,48 @@ class SettingsActivity : AppCompatActivity() {
         authorName?.setOnClickListener {
             openAuthorProfile()
         }
+        
+        // Установить обработчик клика на кнопку патчнотов
+        val changelogButton = findViewById<android.widget.TextView>(R.id.changelogButton)
+        changelogButton?.setOnClickListener {
+            openChangelog()
+        }
+        
+        // Пасхалка: обработчик кликов на текст "Разработано"
+        val authorText = findViewById<android.widget.TextView>(R.id.authorText)
+        authorText?.setOnClickListener {
+            handleEasterEggClick()
+        }
+    }
+    
+    private fun handleEasterEggClick() {
+        val currentTime = System.currentTimeMillis()
+        
+        // Сброс счётчика, если прошло больше 5 секунд с последнего клика
+        if (currentTime - lastClickTime > 5000) {
+            easterEggClickCount = 0
+        }
+        
+        lastClickTime = currentTime
+        easterEggClickCount++
+        
+        // После 5 кликов показываем случайное имя
+        if (easterEggClickCount >= 5) {
+            val randomName = easterEggNames.random()
+            val authorName = findViewById<android.widget.TextView>(R.id.authorName)
+            val originalText = getString(R.string.author_name)
+            
+            // Показываем имя после @Relsev
+            authorName?.text = "$originalText\n$randomName"
+            
+            // Сбрасываем счётчик
+            easterEggClickCount = 0
+            
+            // Через 5 секунд возвращаем оригинальный текст
+            authorName?.postDelayed({
+                authorName.text = originalText
+            }, 5000)
+        }
     }
     
     private fun openAuthorProfile() {
@@ -690,6 +763,17 @@ class SettingsActivity : AppCompatActivity() {
         }
     }
     
+    private fun openChangelog() {
+        val changelogUrl = getString(R.string.changelog_url)
+        
+        try {
+            val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(changelogUrl))
+            startActivity(intent)
+        } catch (e: Exception) {
+            android.widget.Toast.makeText(this, "Не удалось открыть патчноты", android.widget.Toast.LENGTH_SHORT).show()
+        }
+    }
+    
     private fun applyTheme(themeKey: String) {
         val themeResId = when (themeKey) {
             PreferencesManager.THEME_LIGHT -> R.style.Theme_Raspisanie_Light
@@ -697,7 +781,8 @@ class SettingsActivity : AppCompatActivity() {
             PreferencesManager.THEME_PURPLE -> R.style.Theme_Raspisanie_System
             PreferencesManager.THEME_HALLOWEEN -> R.style.Theme_Raspisanie_Custom
             PreferencesManager.THEME_NOTHING -> R.style.Theme_Raspisanie_Nothing
-            PreferencesManager.THEME_SYSTEM -> R.style.Theme_Raspisanie_System
+            PreferencesManager.THEME_GREEN -> R.style.Theme_Raspisanie_Green
+            PreferencesManager.THEME_NEW_YEAR -> R.style.Theme_Raspisanie_NewYear
             else -> {
                 // Fallback - просто фиолетовая тема
                 R.style.Theme_Raspisanie_System

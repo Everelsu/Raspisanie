@@ -28,6 +28,9 @@ class PreferencesManager(context: Context) {
         private const val KEY_APP_AUTO_UPDATE_ENABLED = "app_auto_update_enabled"
         private const val KEY_LAST_UPDATE_CHECK = "last_update_check"
         private const val KEY_LAST_UPDATE_DOWNLOAD_ID = "last_update_download_id"
+        private const val KEY_LAST_UPDATE_RESULT = "last_update_result"
+        private const val KEY_UPDATE_CHECK_ERROR_COUNT = "update_check_error_count"
+        private const val KEY_LAST_UPDATE_CHECK_SUCCESS = "last_update_check_success"
         
         // Font size options
         const val FONT_SIZE_SMALL = "small"
@@ -46,6 +49,8 @@ class PreferencesManager(context: Context) {
         const val THEME_PURPLE = "purple"
         const val THEME_HALLOWEEN = "halloween"
         const val THEME_NOTHING = "nothing"
+        const val THEME_GREEN = "green"
+        const val THEME_NEW_YEAR = "new_year"
         
         @Deprecated("Use THEME_PURPLE instead")
         const val THEME_SYSTEM = "system"
@@ -76,44 +81,44 @@ class PreferencesManager(context: Context) {
         set(value) = prefs.edit().putBoolean(KEY_SHOW_PROGRESS_LINE, value).apply()
     
     var theme: String
-        get() = prefs.getString(KEY_THEME, THEME_PURPLE) ?: THEME_PURPLE
-        set(value) = prefs.edit().putString(KEY_THEME, value).apply()
+        get() = prefs.getString(KEY_THEME, THEME_DARK) ?: THEME_DARK
+        set(value) {
+            if (value.isNotBlank()) {
+                prefs.edit().putString(KEY_THEME, value).apply()
+            }
+        }
     
     var college: String
         get() = prefs.getString(KEY_COLLEGE, DEFAULT_COLLEGE) ?: DEFAULT_COLLEGE
-        set(value) = prefs.edit().putString(KEY_COLLEGE, value).apply()
+        set(value) {
+            if (value.isNotBlank()) {
+                prefs.edit().putString(KEY_COLLEGE, value).apply()
+            }
+        }
     
     var selectedGroupFile: String
         get() = prefs.getString(KEY_SELECTED_GROUP, "") ?: ""
-        set(value) = prefs.edit().putString(KEY_SELECTED_GROUP, value).apply()
+        set(value) {
+            // Use commit() for critical widget-affecting settings to ensure immediate persistence
+            prefs.edit().putString(KEY_SELECTED_GROUP, value).commit()
+        }
     
     var selectedGroupName: String
         get() = prefs.getString(KEY_SELECTED_GROUP_NAME, "") ?: ""
-        set(value) = prefs.edit().putString(KEY_SELECTED_GROUP_NAME, value).apply()
+        set(value) {
+            // Use commit() for critical widget-affecting settings to ensure immediate persistence
+            prefs.edit().putString(KEY_SELECTED_GROUP_NAME, value).commit()
+        }
     
     /**
      * Проверяет, был ли это первый запуск приложения.
-     * При первом запуске устанавливает дефолтную группу.
+     * При первом запуске не устанавливает дефолтную группу - пользователь сам выберет.
      */
     fun checkFirstLaunch() {
         val isFirstLaunch = prefs.getBoolean(KEY_FIRST_LAUNCH, true)
         if (isFirstLaunch) {
-            // Проверяем напрямую в SharedPreferences, есть ли уже сохраненная группа
-            val savedGroupFile = prefs.getString(KEY_SELECTED_GROUP, "")
-            val savedGroupName = prefs.getString(KEY_SELECTED_GROUP_NAME, "")
-            
-            // Если группа не сохранена (первый запуск) - установить дефолтную
-            if (savedGroupFile.isNullOrEmpty() || savedGroupName.isNullOrEmpty()) {
-                prefs.edit()
-                    .putString(KEY_COLLEGE, DEFAULT_COLLEGE)
-                    .putString(KEY_SELECTED_GROUP, DEFAULT_GROUP_FILE)
-                    .putString(KEY_SELECTED_GROUP_NAME, DEFAULT_GROUP_NAME)
-                    .putBoolean(KEY_FIRST_LAUNCH, false)
-                    .apply()
-            } else {
-                // Группа уже выбрана, просто отмечаем что это не первый запуск
-                prefs.edit().putBoolean(KEY_FIRST_LAUNCH, false).apply()
-            }
+            // Просто отмечаем, что это уже не первый запуск
+            prefs.edit().putBoolean(KEY_FIRST_LAUNCH, false).apply()
         }
     }
     
@@ -140,6 +145,7 @@ class PreferencesManager(context: Context) {
      * Добавить группу в избранное
      */
     fun addFavoriteGroup(groupName: String) {
+        if (groupName.isBlank()) return
         val favorites = getFavoriteGroups().toMutableSet()
         favorites.add(groupName)
         prefs.edit().putString(KEY_FAVORITE_GROUPS, favorites.joinToString(",")).apply()
@@ -149,6 +155,7 @@ class PreferencesManager(context: Context) {
      * Удалить группу из избранного
      */
     fun removeFavoriteGroup(groupName: String) {
+        if (groupName.isBlank()) return
         val favorites = getFavoriteGroups().toMutableSet()
         favorites.remove(groupName)
         prefs.edit().putString(KEY_FAVORITE_GROUPS, favorites.joinToString(",")).apply()
@@ -202,5 +209,34 @@ class PreferencesManager(context: Context) {
     var lastUpdateDownloadId: Long
         get() = prefs.getLong(KEY_LAST_UPDATE_DOWNLOAD_ID, -1)
         set(value) = prefs.edit().putLong(KEY_LAST_UPDATE_DOWNLOAD_ID, value).apply()
+    
+    // Кэширование результата последней проверки обновлений
+    var lastUpdateResult: String
+        get() = prefs.getString(KEY_LAST_UPDATE_RESULT, "") ?: ""
+        set(value) = prefs.edit().putString(KEY_LAST_UPDATE_RESULT, value).apply()
+    
+    // Счетчик ошибок при проверке обновлений (для умной логики пропуска проверок)
+    var updateCheckErrorCount: Int
+        get() = prefs.getInt(KEY_UPDATE_CHECK_ERROR_COUNT, 0)
+        set(value) = prefs.edit().putInt(KEY_UPDATE_CHECK_ERROR_COUNT, value.coerceAtLeast(0)).apply()
+    
+    // Время последней успешной проверки обновлений
+    var lastUpdateCheckSuccess: Long
+        get() = prefs.getLong(KEY_LAST_UPDATE_CHECK_SUCCESS, 0)
+        set(value) = prefs.edit().putLong(KEY_LAST_UPDATE_CHECK_SUCCESS, value).apply()
+    
+    /**
+     * Сбросить счетчик ошибок при успешной проверке
+     */
+    fun resetUpdateCheckErrorCount() {
+        updateCheckErrorCount = 0
+    }
+    
+    /**
+     * Увеличить счетчик ошибок
+     */
+    fun incrementUpdateCheckErrorCount() {
+        updateCheckErrorCount = updateCheckErrorCount + 1
+    }
 }
 

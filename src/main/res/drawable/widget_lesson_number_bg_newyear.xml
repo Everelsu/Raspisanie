@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Базовый градиент -->
+    <item>
+        <shape android:shape="rectangle">
+            <gradient
+                android:startColor="@color/newyear_lessonNumberBgGradientStart"
+                android:centerColor="@color/newyear_lessonNumberBgGradientCenter"
+                android:endColor="@color/newyear_lessonNumberBgGradientEnd"
+                android:angle="135" />
+            <corners android:radius="18dp" />
+        </shape>
+    </item>
+    <!-- Зелёный акцент -->
+    <item>
+        <shape android:shape="rectangle">
+            <gradient
+                android:startColor="#302E7D32"
+                android:endColor="#002E7D32"
+                android:angle="45" />
+            <corners android:radius="18dp" />
+        </shape>
+    </item>
+</layer-list>
+
