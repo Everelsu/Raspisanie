@@ -1,0 +1,388 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_marginHorizontal="16dp"
+    android:layout_marginTop="8dp"
+    android:layout_marginBottom="12dp">
+
+    <!-- Фон карточки -->
+    <FrameLayout
+        android:id="@+id/cardBackground"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:minHeight="120dp"
+        android:background="@drawable/card_background_dark"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintBottom_toBottomOf="parent">
+
+        <!-- Прогресс-заполнение (заполняется по мере выполнения) -->
+        <View
+            android:id="@+id/progressFill"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:background="@drawable/statistics_progress_fill_dark"
+            android:layout_gravity="start|top"
+            android:alpha="0.4" />
+
+        <!-- Контент карточки -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="18dp"
+            android:minHeight="120dp">
+
+            <!-- Заголовок: Номер и Дисциплина -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:layout_marginBottom="12dp">
+
+                <!-- Номер дисциплины -->
+                <FrameLayout
+                    android:layout_width="40dp"
+                    android:layout_height="40dp"
+                    android:layout_marginEnd="12dp">
+
+                    <View
+                        android:layout_width="40dp"
+                        android:layout_height="40dp"
+                        android:background="@drawable/lesson_number_bg" />
+
+                    <TextView
+                        android:id="@+id/statNumberText"
+                        android:layout_width="40dp"
+                        android:layout_height="40dp"
+                        android:text="1"
+                        android:textSize="16sp"
+                        android:textStyle="bold"
+                        android:textColor="?android:textColorPrimary"
+                        android:gravity="center"
+                        android:elevation="2dp" />
+
+                </FrameLayout>
+
+                <!-- Название дисциплины -->
+                <TextView
+                    android:id="@+id/statDisciplineText"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="Дисциплина"
+                    android:textSize="18sp"
+                    android:textStyle="bold"
+                    android:textColor="?android:textColorPrimary"
+                    android:fontFamily="@font/inter"
+                    android:maxLines="2"
+                    android:ellipsize="end"
+                    android:lineSpacingExtra="2dp" />
+
+            </LinearLayout>
+
+            <!-- Преподаватель и тип занятия -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:layout_marginBottom="16dp"
+                android:paddingStart="52dp">
+
+                <TextView
+                    android:id="@+id/statTeacherText"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="Преподаватель"
+                    android:textSize="13sp"
+                    android:textColor="?android:textColorSecondary"
+                    android:fontFamily="@font/inter"
+                    android:maxLines="1"
+                    android:ellipsize="end" />
+
+                <TextView
+                    android:id="@+id/statLessonTypeText"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Лекция"
+                    android:textSize="12sp"
+                    android:textColor="?android:textColorSecondary"
+                    android:fontFamily="@font/inter"
+                    android:background="@drawable/subgroup_bg"
+                    android:paddingHorizontal="8dp"
+                    android:paddingVertical="4dp" />
+
+            </LinearLayout>
+
+            <!-- Разделитель -->
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:layout_marginTop="4dp"
+                android:layout_marginBottom="12dp"
+                android:background="?android:attr/dividerHorizontal" />
+
+            <!-- Прогресс с процентами -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:layout_marginBottom="12dp"
+                android:paddingStart="52dp">
+
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="Прогресс"
+                    android:textSize="12sp"
+                    android:textColor="?android:textColorSecondary"
+                    android:fontFamily="@font/inter" />
+
+                <TextView
+                    android:id="@+id/statCompletionPercentText"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="0%"
+                    android:textSize="14sp"
+                    android:textStyle="bold"
+                    android:textColor="?android:textColorPrimary"
+                    android:fontFamily="@font/inter" />
+
+            </LinearLayout>
+
+            <!-- Часы: Всего, План, Факт, Остаток -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:paddingStart="52dp">
+
+                <!-- Всего -->
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:orientation="vertical"
+                    android:gravity="center"
+                    android:padding="6dp">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Всего"
+                        android:textSize="11sp"
+                        android:textColor="?android:textColorSecondary"
+                        android:fontFamily="@font/inter"
+                        android:layout_marginBottom="4dp" />
+
+                    <TextView
+                        android:id="@+id/statTotalHoursText"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="—"
+                        android:textSize="20sp"
+                        android:textStyle="bold"
+                        android:textColor="?android:textColorPrimary"
+                        android:fontFamily="@font/inter" />
+
+                </LinearLayout>
+
+                <!-- План -->
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:orientation="vertical"
+                    android:gravity="center"
+                    android:padding="6dp">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="План"
+                        android:textSize="11sp"
+                        android:textColor="?android:textColorSecondary"
+                        android:fontFamily="@font/inter"
+                        android:layout_marginBottom="4dp" />
+
+                    <TextView
+                        android:id="@+id/statPlannedHoursText"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="—"
+                        android:textSize="20sp"
+                        android:textStyle="bold"
+                        android:textColor="?android:textColorPrimary"
+                        android:fontFamily="@font/inter" />
+
+                </LinearLayout>
+
+                <!-- Факт -->
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:orientation="vertical"
+                    android:gravity="center"
+                    android:padding="6dp">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Факт"
+                        android:textSize="11sp"
+                        android:textColor="?android:textColorSecondary"
+                        android:fontFamily="@font/inter"
+                        android:layout_marginBottom="4dp" />
+
+                    <TextView
+                        android:id="@+id/statFactHoursText"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="—"
+                        android:textSize="20sp"
+                        android:textStyle="bold"
+                        android:textColor="?android:textColorPrimary"
+                        android:fontFamily="@font/inter" />
+
+                </LinearLayout>
+
+                <!-- Остаток -->
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:orientation="vertical"
+                    android:gravity="center"
+                    android:padding="6dp">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Остаток"
+                        android:textSize="11sp"
+                        android:textColor="?android:textColorSecondary"
+                        android:fontFamily="@font/inter"
+                        android:layout_marginBottom="4dp" />
+
+                    <TextView
+                        android:id="@+id/statRemainingHoursText"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="—"
+                        android:textSize="20sp"
+                        android:textStyle="bold"
+                        android:textColor="?android:textColorPrimary"
+                        android:fontFamily="@font/inter" />
+
+                </LinearLayout>
+
+            </LinearLayout>
+
+            <!-- Дополнительная информация (скрыта по умолчанию) -->
+            <LinearLayout
+                android:id="@+id/statAdditionalInfo"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:paddingStart="52dp"
+                android:paddingTop="12dp"
+                android:visibility="gone">
+
+                <View
+                    android:layout_width="match_parent"
+                    android:layout_height="1dp"
+                    android:layout_marginBottom="12dp"
+                    android:background="?android:attr/dividerHorizontal" />
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:layout_marginBottom="6dp">
+
+                    <TextView
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="План в 2 нед.:"
+                        android:textSize="11sp"
+                        android:textColor="?android:textColorSecondary"
+                        android:fontFamily="@font/inter" />
+
+                    <TextView
+                        android:id="@+id/statPlannedIn2WeeksText"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="—"
+                        android:textSize="11sp"
+                        android:textColor="?android:textColorPrimary"
+                        android:fontFamily="@font/inter" />
+
+                </LinearLayout>
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:layout_marginBottom="6dp">
+
+                    <TextView
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="Факт в 2 нед.:"
+                        android:textSize="11sp"
+                        android:textColor="?android:textColorSecondary"
+                        android:fontFamily="@font/inter" />
+
+                    <TextView
+                        android:id="@+id/statFactIn2WeeksText"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="—"
+                        android:textSize="11sp"
+                        android:textColor="?android:textColorPrimary"
+                        android:fontFamily="@font/inter" />
+
+                </LinearLayout>
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal">
+
+                    <TextView
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="Окончание:"
+                        android:textSize="11sp"
+                        android:textColor="?android:textColorSecondary"
+                        android:fontFamily="@font/inter" />
+
+                    <TextView
+                        android:id="@+id/statCompletionDateText"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="—"
+                        android:textSize="11sp"
+                        android:textColor="?android:textColorPrimary"
+                        android:fontFamily="@font/inter" />
+
+                </LinearLayout>
+
+            </LinearLayout>
+
+        </LinearLayout>
+
+    </FrameLayout>
+
+</androidx.constraintlayout.widget.ConstraintLayout>

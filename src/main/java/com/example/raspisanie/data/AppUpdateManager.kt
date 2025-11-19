@@ -28,6 +28,10 @@ object AppUpdateManager {
     private const val WORK_NAME = "app_update_check"
     private const val UPDATE_CHECK_INTERVAL_HOURS = 12L // Проверка каждые 12 часов
     
+    // Флаг для защиты от повторных установок
+    @Volatile
+    private var isInstalling = false
+    
     /**
      * Настроить периодическую проверку обновлений
      */
@@ -147,76 +151,267 @@ object AppUpdateManager {
     /**
      * Скачать и установить обновление
      */
-    fun downloadAndInstall(context: Context, downloadUrl: String) {
+    fun downloadAndInstall(context: Context, downloadUrl: String?, versionName: String? = null) {
         try {
-            // Использовать DownloadManager для скачивания APK
-            val downloadManager = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
+            // Валидация входных данных
+            if (downloadUrl.isNullOrBlank()) {
+                Log.e(TAG, "URL скачивания пуст или null")
+                showDownloadErrorNotification(context, "URL скачивания не указан")
+                return
+            }
+            
+            // Проверка валидности URL
+            val uri = try {
+                Uri.parse(downloadUrl)
+            } catch (e: Exception) {
+                Log.e(TAG, "Некорректный URL: $downloadUrl", e)
+                showDownloadErrorNotification(context, "Некорректный URL для скачивания")
+                return
+            }
+            
+            if (uri.scheme == null || (uri.scheme != "http" && uri.scheme != "https")) {
+                Log.e(TAG, "Неподдерживаемый протокол: ${uri.scheme}")
+                showDownloadErrorNotification(context, "Неподдерживаемый протокол для скачивания")
+                return
+            }
+            
+            // Проверка доступности DownloadManager
+            val downloadManager = try {
+                context.getSystemService(Context.DOWNLOAD_SERVICE) as? DownloadManager
+            } catch (e: Exception) {
+                Log.e(TAG, "Ошибка при получении DownloadManager", e)
+                showDownloadErrorNotification(context, "Сервис загрузки недоступен")
+                return
+            }
+            
+            if (downloadManager == null) {
+                Log.e(TAG, "DownloadManager недоступен")
+                showDownloadErrorNotification(context, "Сервис загрузки недоступен")
+                return
+            }
             
             // Определить путь для сохранения APK
             val fileName = "raspisanie_update.apk"
-            val destinationPath = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+            val destinationPath = try {
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
                 // Android 10+: сохранять в app-specific directory через MediaStore или внешнее хранилище
-                Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+                    val downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+                    if (!downloadsDir.exists()) {
+                        downloadsDir.mkdirs()
+                    }
+                    downloadsDir
             } else {
                 // Старые версии Android: использовать внешнее хранилище
-                File(context.getExternalFilesDir(null), "downloads").apply {
-                    if (!exists()) mkdirs()
-                    this
+                    val externalFilesDir = context.getExternalFilesDir(null)
+                    if (externalFilesDir == null) {
+                        Log.e(TAG, "Внешнее хранилище недоступно")
+                        showDownloadErrorNotification(context, "Внешнее хранилище недоступно")
+                        return
+                    }
+                    val downloadsDir = File(externalFilesDir, "downloads")
+                    if (!downloadsDir.exists()) {
+                        downloadsDir.mkdirs()
+                    }
+                    downloadsDir
                 }
+            } catch (e: Exception) {
+                Log.e(TAG, "Ошибка при определении пути сохранения", e)
+                showDownloadErrorNotification(context, "Ошибка доступа к хранилищу: ${e.message}")
+                return
+            }
+            
+            if (!destinationPath.exists() || !destinationPath.canWrite()) {
+                Log.e(TAG, "Нет доступа на запись в директорию: ${destinationPath.absolutePath}")
+                showDownloadErrorNotification(context, "Нет доступа на запись в хранилище")
+                return
             }
             
             val file = File(destinationPath, fileName)
             // Удалить старый файл, если существует
             if (file.exists()) {
-                file.delete()
+                try {
+                    if (!file.delete()) {
+                        Log.w(TAG, "Не удалось удалить старый файл: ${file.absolutePath}")
+                    }
+                } catch (e: Exception) {
+                    Log.w(TAG, "Ошибка при удалении старого файла", e)
+                }
             }
             
-            val request = DownloadManager.Request(Uri.parse(downloadUrl))
+            // Создать запрос на скачивание
+            val request = try {
+                DownloadManager.Request(uri)
                 .setTitle("Обновление приложения")
-                .setDescription("Скачивание новой версии")
-                .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+                    .setDescription("Скачивание новой версии ${versionName ?: ""}")
+                    .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE)
                 .setMimeType("application/vnd.android.package-archive")
+                    .setAllowedOverMetered(true)
+                    .setAllowedOverRoaming(false)
+            } catch (e: Exception) {
+                Log.e(TAG, "Ошибка при создании запроса на скачивание", e)
+                showDownloadErrorNotification(context, "Ошибка при создании запроса: ${e.message}")
+                return
+            }
             
             // Установить путь для сохранения в зависимости от версии Android
+            try {
             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
                 request.setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, fileName)
             } else {
                 request.setDestinationUri(Uri.fromFile(file))
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Ошибка при установке пути назначения", e)
+                showDownloadErrorNotification(context, "Ошибка при установке пути: ${e.message}")
+                return
             }
             
-            val downloadId = downloadManager.enqueue(request)
+            // Запустить скачивание
+            val downloadId = try {
+                downloadManager.enqueue(request)
+            } catch (e: Exception) {
+                Log.e(TAG, "Ошибка при запуске скачивания", e)
+                showDownloadErrorNotification(context, "Ошибка при запуске скачивания: ${e.message}")
+                return
+            }
+            
+            if (downloadId <= 0) {
+                Log.e(TAG, "Неверный downloadId: $downloadId")
+                showDownloadErrorNotification(context, "Ошибка при запуске скачивания")
+                return
+            }
             
             // Сохранить downloadId для отслеживания
+            try {
             val prefs = PreferencesManager(context)
             prefs.lastUpdateDownloadId = downloadId
+            } catch (e: Exception) {
+                Log.w(TAG, "Ошибка при сохранении downloadId", e)
+            }
             
-            android.widget.Toast.makeText(
-                context,
-                "Начато скачивание обновления. После завершения загрузки будет запущена установка.",
-                android.widget.Toast.LENGTH_LONG
-            ).show()
+            // Запустить Service для отслеживания прогресса
+            try {
+                val serviceIntent = Intent(context, DownloadProgressService::class.java).apply {
+                    putExtra(DownloadManager.EXTRA_DOWNLOAD_ID, downloadId)
+                }
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                    context.startForegroundService(serviceIntent)
+                } else {
+                    context.startService(serviceIntent)
+                }
+            } catch (e: IllegalStateException) {
+                Log.w(TAG, "Не удалось запустить foreground service (возможно, приложение в фоне)", e)
+                // Это не критично, скачивание продолжится
+            } catch (e: Exception) {
+                Log.w(TAG, "Ошибка при запуске DownloadProgressService", e)
+                // Это не критично, скачивание продолжится
+            }
             
-            Log.d(TAG, "Начато скачивание обновления: $downloadId, путь: ${file.absolutePath}")
+            Log.d(TAG, "✅ Начато скачивание обновления: $downloadId, путь: ${file.absolutePath}, версия: $versionName")
             
         } catch (e: Exception) {
-            Log.e(TAG, "Ошибка при скачивании обновления", e)
-            android.widget.Toast.makeText(
-                context,
-                "Ошибка при скачивании обновления: ${e.message}",
-                android.widget.Toast.LENGTH_SHORT
-            ).show()
+            Log.e(TAG, "Критическая ошибка при скачивании обновления", e)
+            showDownloadErrorNotification(context, "Ошибка при скачивании: ${e.message ?: "Неизвестная ошибка"}")
         }
     }
     
     /**
      * Установить APK файл
      */
-    fun installApk(context: Context, apkFile: File) {
+    fun installApk(context: Context, apkFile: File?) {
+        // Защита от повторных вызовов
+        if (isInstalling) {
+            Log.w(TAG, "Установка уже выполняется, пропускаем повторный вызов")
+            return
+        }
+        
         try {
-            val intent = Intent(Intent.ACTION_VIEW).apply {
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION
-                
-                val uri = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {
+            // Валидация входных данных
+            if (apkFile == null) {
+                Log.e(TAG, "APK файл равен null")
+                showDownloadErrorNotification(context, "APK файл не указан")
+                return
+            }
+            
+            // Проверить, что файл существует
+            if (!apkFile.exists()) {
+                Log.e(TAG, "APK файл не существует: ${apkFile.absolutePath}")
+                showDownloadErrorNotification(context, "APK файл не найден")
+                return
+            }
+            
+            // Установить флаг установки
+            isInstalling = true
+            
+            // Проверить, что это файл (а не директория)
+            if (!apkFile.isFile) {
+                isInstalling = false
+                Log.e(TAG, "Указанный путь не является файлом: ${apkFile.absolutePath}")
+                showDownloadErrorNotification(context, "Указанный путь не является файлом")
+                return
+            }
+            
+            // Проверить, что файл можно читать
+            if (!apkFile.canRead()) {
+                isInstalling = false
+                Log.e(TAG, "Нет доступа на чтение файла: ${apkFile.absolutePath}")
+                showDownloadErrorNotification(context, "Нет доступа на чтение файла")
+                return
+            }
+            
+            // Проверить расширение файла
+            if (!apkFile.name.endsWith(".apk", ignoreCase = true)) {
+                isInstalling = false
+                Log.e(TAG, "Файл не является APK: ${apkFile.name}")
+                showDownloadErrorNotification(context, "Файл не является APK")
+                return
+            }
+            
+            // Проверить размер файла (должен быть больше 0)
+            val fileSize = try {
+                apkFile.length()
+            } catch (e: Exception) {
+                isInstalling = false
+                Log.e(TAG, "Ошибка при получении размера файла", e)
+                showDownloadErrorNotification(context, "Ошибка при проверке файла")
+                return
+            }
+            
+            if (fileSize == 0L) {
+                isInstalling = false
+                Log.e(TAG, "APK файл пуст: ${apkFile.absolutePath}")
+                showDownloadErrorNotification(context, "APK файл поврежден (размер 0)")
+                return
+            }
+            
+            // Проверить минимальный размер APK (обычно APK файлы больше 1KB)
+            if (fileSize < 1024) {
+                isInstalling = false
+                Log.e(TAG, "APK файл слишком мал: ${apkFile.absolutePath}, размер: $fileSize байт")
+                showDownloadErrorNotification(context, "APK файл поврежден (слишком мал)")
+                return
+            }
+            
+            // Проверить разрешение на установку для Android 8.0+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                try {
+                    if (!context.packageManager.canRequestPackageInstalls()) {
+                        isInstalling = false
+                        Log.w(TAG, "Нет разрешения на установку неизвестных источников")
+                        showInstallPermissionNotification(context)
+                        return
+                    }
+                } catch (e: Exception) {
+                    isInstalling = false
+                    Log.e(TAG, "Ошибка при проверке разрешения на установку", e)
+                    showDownloadErrorNotification(context, "Ошибка при проверке разрешений")
+                    return
+                }
+            }
+            
+            // Получить URI для файла
+            val uri = try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
                     // Использовать FileProvider для Android 7.0+
                     FileProvider.getUriForFile(
                         context,
@@ -227,82 +422,493 @@ object AppUpdateManager {
                     // Для старых версий Android
                     Uri.fromFile(apkFile)
                 }
-                
-                setDataAndType(uri, "application/vnd.android.package-archive")
+            } catch (e: IllegalArgumentException) {
+                isInstalling = false
+                Log.e(TAG, "Ошибка при получении URI через FileProvider: файл не найден в конфигурации", e)
+                showDownloadErrorNotification(context, "Ошибка доступа к файлу. Проверьте конфигурацию FileProvider.")
+                return
+            } catch (e: Exception) {
+                isInstalling = false
+                Log.e(TAG, "Ошибка при получении URI через FileProvider", e)
+                showDownloadErrorNotification(context, "Ошибка доступа к файлу: ${e.message}")
+                return
             }
             
-            context.startActivity(intent)
+            if (uri == null) {
+                isInstalling = false
+                Log.e(TAG, "URI равен null")
+                showDownloadErrorNotification(context, "Ошибка доступа к файлу")
+                return
+            }
+            
+            // Создать Intent для установки
+            val intent = try {
+                Intent(Intent.ACTION_VIEW).apply {
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                    setDataAndType(uri, "application/vnd.android.package-archive")
+                }
+            } catch (e: Exception) {
+                isInstalling = false
+                Log.e(TAG, "Ошибка при создании Intent", e)
+                showDownloadErrorNotification(context, "Ошибка при создании запроса на установку")
+                return
+            }
+            
+            // Предоставить временные разрешения на чтение URI для Android 7.0+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                try {
+                    val resInfoList = context.packageManager.queryIntentActivities(
+                        intent, 
+                        android.content.pm.PackageManager.MATCH_DEFAULT_ONLY
+                    )
+                    
+                    if (resInfoList.isEmpty()) {
+                        isInstalling = false
+                        Log.e(TAG, "Не найдено приложений для установки APK")
+                        showDownloadErrorNotification(context, "Не найдено приложение для установки. Включите установку из неизвестных источников в настройках.")
+                        return
+                    }
+                    
+                    for (resolveInfo in resInfoList) {
+                        try {
+                            val packageName = resolveInfo.activityInfo.packageName
+                            if (!packageName.isNullOrBlank()) {
+                                context.grantUriPermission(
+                                    packageName,
+                                    uri,
+                                    Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                                )
+                            }
+                        } catch (e: Exception) {
+                            Log.w(TAG, "Ошибка при предоставлении разрешения для пакета", e)
+                            // Продолжаем для других приложений
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.w(TAG, "Ошибка при предоставлении URI разрешений", e)
+                    // Продолжаем, возможно система сама обработает
+                }
+            }
+            
+            // Запустить установку
+            try {
+                context.startActivity(intent)
+                Log.d(TAG, "✅ Запущена установка APK: ${apkFile.absolutePath}")
+                
+                // Сбросить флаг через 5 секунд (достаточно для запуска установки)
+                android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                    isInstalling = false
+                }, 5000)
+            } catch (e: android.content.ActivityNotFoundException) {
+                isInstalling = false
+                Log.e(TAG, "Не найдено приложение для установки APK", e)
+                showDownloadErrorNotification(context, "Не найдено приложение для установки. Включите установку из неизвестных источников в настройках.")
+            } catch (e: SecurityException) {
+                isInstalling = false
+                Log.e(TAG, "Ошибка безопасности при установке APK", e)
+                showDownloadErrorNotification(context, "Ошибка безопасности. Проверьте разрешения в настройках.")
         } catch (e: Exception) {
-            Log.e(TAG, "Ошибка при установке APK", e)
-            android.widget.Toast.makeText(
-                context,
-                "Ошибка при установке обновления",
-                android.widget.Toast.LENGTH_SHORT
-            ).show()
+                isInstalling = false
+                Log.e(TAG, "Ошибка при запуске установки APK", e)
+                showDownloadErrorNotification(context, "Ошибка при установке: ${e.message ?: "Неизвестная ошибка"}")
+            }
+        } catch (e: Exception) {
+            isInstalling = false
+            Log.e(TAG, "Критическая ошибка при установке APK", e)
+            showDownloadErrorNotification(context, "Критическая ошибка при установке: ${e.message ?: "Неизвестная ошибка"}")
         }
     }
     
     /**
-     * Показать уведомление об обновлении
+     * Показать уведомление о необходимости разрешения на установку
      */
-    fun showUpdateNotification(context: Context, versionInfo: AppVersionInfo) {
+    private fun showInstallPermissionNotification(context: Context) {
         try {
-            val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? android.app.NotificationManager
+            val notificationManager = try {
+                context.getSystemService(Context.NOTIFICATION_SERVICE) as? android.app.NotificationManager
+            } catch (e: Exception) {
+                Log.e(TAG, "Ошибка при получении NotificationManager", e)
+                return
+            }
             
             if (notificationManager == null) {
                 Log.w(TAG, "NotificationManager недоступен")
                 return
             }
             
-            // Создать канал уведомлений (для Android 8.0+)
+            createNotificationChannel(context)
+            
+            // Intent для открытия настроек разрешений
+            val intent = try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    Intent(android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES).apply {
+                        data = Uri.parse("package:${context.packageName}")
+                        flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                    }
+                } else {
+                    Intent(android.provider.Settings.ACTION_SECURITY_SETTINGS).apply {
+                        flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Ошибка при создании Intent для настроек разрешений", e)
+                return
+            }
+            
+            val pendingIntent = try {
+                android.app.PendingIntent.getActivity(
+                    context,
+                    3,
+                    intent,
+                    android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE
+                )
+            } catch (e: Exception) {
+                Log.e(TAG, "Ошибка при создании PendingIntent для разрешений", e)
+                return
+            }
+            
+            val notification = try {
+                NotificationCompat.Builder(context, "app_updates")
+                    .setSmallIcon(android.R.drawable.stat_notify_error)
+                    .setContentTitle("⚠️ Требуется разрешение")
+                    .setContentText("Разрешите установку из неизвестных источников для установки обновления")
+                    .setPriority(NotificationCompat.PRIORITY_HIGH)
+                    .setContentIntent(pendingIntent)
+                    .setAutoCancel(true)
+                    .build()
+            } catch (e: Exception) {
+                Log.e(TAG, "Ошибка при создании уведомления о разрешении", e)
+                return
+            }
+            
+            try {
+                notificationManager.notify(1005, notification)
+            } catch (e: Exception) {
+                Log.e(TAG, "Ошибка при показе уведомления о разрешении", e)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Критическая ошибка при показе уведомления о разрешении", e)
+        }
+    }
+    
+    /**
+     * Создать канал уведомлений (если еще не создан)
+     */
+    fun createNotificationChannel(context: Context) {
+        try {
             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                val notificationManager = try {
+                    context.getSystemService(Context.NOTIFICATION_SERVICE) as? android.app.NotificationManager
+                } catch (e: Exception) {
+                    Log.e(TAG, "Ошибка при получении NotificationManager для создания канала", e)
+                    return
+                }
+                
+                if (notificationManager == null) {
+                    Log.w(TAG, "NotificationManager недоступен для создания канала")
+                    return
+                }
+                
                 val channelId = "app_updates"
                 val channelName = "Обновления приложения"
                 val importance = android.app.NotificationManager.IMPORTANCE_HIGH
                 val channel = android.app.NotificationChannel(channelId, channelName, importance)
                 channel.description = "Уведомления о доступных обновлениях приложения"
                 channel.enableVibration(true)
-                notificationManager.createNotificationChannel(channel)
+                channel.enableLights(true)
+                channel.setShowBadge(true)
+                
+                // Создать отдельный канал для прогресса загрузки без вибрации
+                val downloadProgressChannelId = "app_updates_download_progress"
+                val downloadProgressChannel = android.app.NotificationChannel(
+                    downloadProgressChannelId,
+                    "Прогресс загрузки",
+                    android.app.NotificationManager.IMPORTANCE_LOW
+                )
+                downloadProgressChannel.description = "Уведомления о прогрессе загрузки обновлений"
+                downloadProgressChannel.enableVibration(false) // Без вибрации
+                downloadProgressChannel.enableLights(false)
+                downloadProgressChannel.setShowBadge(false)
+                
+                try {
+                    notificationManager.createNotificationChannel(channel)
+                    notificationManager.createNotificationChannel(downloadProgressChannel)
+                    Log.d(TAG, "Каналы уведомлений созданы: $channelId, $downloadProgressChannelId")
+                } catch (e: Exception) {
+                    Log.e(TAG, "Ошибка при создании канала уведомлений", e)
+                }
             }
+        } catch (e: Exception) {
+            Log.e(TAG, "Критическая ошибка при создании канала уведомлений", e)
+        }
+    }
+    
+    /**
+     * Показать уведомление об обновлении
+     */
+    fun showUpdateNotification(context: Context, versionInfo: AppVersionInfo?) {
+        try {
+            // Валидация входных данных
+            if (versionInfo == null) {
+                Log.e(TAG, "versionInfo равен null")
+                return
+            }
+            
+            if (versionInfo.downloadUrl.isNullOrBlank()) {
+                Log.e(TAG, "URL скачивания пуст в versionInfo")
+                return
+            }
+            
+            val notificationManager = try {
+                context.getSystemService(Context.NOTIFICATION_SERVICE) as? android.app.NotificationManager
+            } catch (e: Exception) {
+                Log.e(TAG, "Ошибка при получении NotificationManager", e)
+                return
+            }
+            
+            if (notificationManager == null) {
+                Log.w(TAG, "NotificationManager недоступен")
+                return
+            }
+            
+            // Создать канал уведомлений
+            createNotificationChannel(context)
             
             // Создать Intent для открытия настроек при нажатии на уведомление
-            val intent = Intent(context, com.example.raspisanie.SettingsActivity::class.java).apply {
+            val intent = try {
+                Intent(context, com.example.raspisanie.SettingsActivity::class.java).apply {
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
                 putExtra("show_update_section", true)
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Ошибка при создании Intent для настроек", e)
+                return
             }
             
-            val pendingIntent = android.app.PendingIntent.getActivity(
+            val pendingIntent = try {
+                android.app.PendingIntent.getActivity(
                 context,
                 0,
                 intent,
                 android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE
             )
+            } catch (e: Exception) {
+                Log.e(TAG, "Ошибка при создании PendingIntent", e)
+                return
+            }
+            
+            // Создать Intent для кнопки "Скачать"
+            val downloadIntent = try {
+                Intent(context, AppUpdateActionReceiver::class.java).apply {
+                    action = "DOWNLOAD_UPDATE"
+                    putExtra("download_url", versionInfo.downloadUrl)
+                    putExtra("version_name", versionInfo.versionName)
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Ошибка при создании Intent для скачивания", e)
+                return
+            }
+            
+            val downloadPendingIntent = try {
+                android.app.PendingIntent.getBroadcast(
+                    context,
+                    1,
+                    downloadIntent,
+                    android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE
+                )
+            } catch (e: Exception) {
+                Log.e(TAG, "Ошибка при создании PendingIntent для скачивания", e)
+                return
+            }
             
             // Сформировать текст уведомления
             val updateType = if (versionInfo.isCritical) "критическое" else ""
             val title = if (updateType.isNotBlank()) {
-                "Доступно $updateType обновление"
+                "🔔 Доступно $updateType обновление"
             } else {
-                "Доступна новая версия"
+                "🔔 Доступна новая версия"
             }
             val text = "Версия ${versionInfo.versionName} готова к установке"
+            val bigText = text + (versionInfo.changelog?.takeIf { it.isNotBlank() }?.let { "\n\n📝 Изменения:\n$it" } ?: "")
             
-            // Создать уведомление
-            val notification = NotificationCompat.Builder(context, "app_updates")
+            // Создать уведомление с кнопкой действия
+            val notification = try {
+                NotificationCompat.Builder(context, "app_updates")
                 .setSmallIcon(android.R.drawable.stat_notify_sync)
                 .setContentTitle(title)
                 .setContentText(text)
-                .setStyle(NotificationCompat.BigTextStyle()
-                    .bigText(text + (versionInfo.changelog?.takeIf { it.isNotBlank() }?.let { "\n\n$it" } ?: "")))
+                    .setStyle(NotificationCompat.BigTextStyle().bigText(bigText))
                 .setPriority(if (versionInfo.isCritical) NotificationCompat.PRIORITY_HIGH else NotificationCompat.PRIORITY_DEFAULT)
                 .setContentIntent(pendingIntent)
+                    .addAction(0, "Скачать", downloadPendingIntent)
                 .setAutoCancel(true)
+                    .setDefaults(android.app.Notification.DEFAULT_ALL)
                 .build()
+            } catch (e: Exception) {
+                Log.e(TAG, "Ошибка при создании уведомления", e)
+                return
+            }
             
+            try {
             notificationManager.notify(1001, notification)
-            Log.d(TAG, "Показано уведомление о новой версии: ${versionInfo.versionName}")
+                Log.d(TAG, "✅ Показано уведомление о новой версии: ${versionInfo.versionName}")
         } catch (e: Exception) {
-            Log.e(TAG, "Ошибка при показе уведомления об обновлении", e)
+                Log.e(TAG, "Ошибка при показе уведомления", e)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Критическая ошибка при показе уведомления об обновлении", e)
+        }
+    }
+    
+    /**
+     * Показать уведомление о начале скачивания
+     */
+    fun showDownloadStartedNotification(context: Context, versionName: String) {
+        try {
+            val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? android.app.NotificationManager
+                ?: return
+            
+            createNotificationChannel(context)
+            
+            // Не показываем уведомление здесь - DownloadManager сам покажет системное уведомление
+            // А мы будем обновлять его через DownloadProgressReceiver
+            Log.d(TAG, "Начато скачивание: $versionName")
+        } catch (e: Exception) {
+            Log.e(TAG, "Ошибка при показе уведомления о скачивании", e)
+        }
+    }
+    
+    /**
+     * Показать уведомление о завершении скачивания
+     */
+    fun showDownloadCompleteNotification(context: Context, versionName: String, apkFile: File?) {
+        try {
+            if (apkFile == null || !apkFile.exists() || !apkFile.isFile) {
+                Log.e(TAG, "Некорректный APK файл для уведомления о завершении")
+                return
+            }
+            
+            val notificationManager = try {
+                context.getSystemService(Context.NOTIFICATION_SERVICE) as? android.app.NotificationManager
+            } catch (e: Exception) {
+                Log.e(TAG, "Ошибка при получении NotificationManager", e)
+                return
+            }
+            
+            if (notificationManager == null) {
+                Log.w(TAG, "NotificationManager недоступен")
+                return
+            }
+            
+            createNotificationChannel(context)
+            
+            // Intent для установки
+            val uri = try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                    FileProvider.getUriForFile(
+                        context,
+                        "${context.packageName}.fileprovider",
+                        apkFile
+                    )
+                } else {
+                    Uri.fromFile(apkFile)
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Ошибка при получении URI для установки", e)
+                return
+            }
+            
+            val installIntent = try {
+                Intent(Intent.ACTION_VIEW).apply {
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION
+                    setDataAndType(uri, "application/vnd.android.package-archive")
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Ошибка при создании Intent для установки", e)
+                return
+            }
+            
+            val installPendingIntent = try {
+                android.app.PendingIntent.getActivity(
+                    context,
+                    2,
+                    installIntent,
+                    android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE
+                )
+            } catch (e: Exception) {
+                Log.e(TAG, "Ошибка при создании PendingIntent для установки", e)
+                return
+            }
+            
+            val notification = try {
+                NotificationCompat.Builder(context, "app_updates")
+                    .setSmallIcon(android.R.drawable.stat_sys_download_done)
+                    .setContentTitle("✅ Скачивание завершено")
+                    .setContentText("Версия $versionName готова к установке")
+                    .setPriority(NotificationCompat.PRIORITY_HIGH)
+                    .setContentIntent(installPendingIntent)
+                    .addAction(0, "Установить", installPendingIntent)
+                    .setAutoCancel(true)
+                    .setDefaults(android.app.Notification.DEFAULT_ALL)
+                    .build()
+            } catch (e: Exception) {
+                Log.e(TAG, "Ошибка при создании уведомления", e)
+                return
+            }
+            
+            try {
+                notificationManager.notify(1003, notification)
+                Log.d(TAG, "✅ Показано уведомление о завершении скачивания: $versionName")
+            } catch (e: Exception) {
+                Log.e(TAG, "Ошибка при показе уведомления", e)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Критическая ошибка при показе уведомления о завершении скачивания", e)
+        }
+    }
+    
+    /**
+     * Показать уведомление об ошибке скачивания
+     */
+    fun showDownloadErrorNotification(context: Context, errorMessage: String?) {
+        try {
+            val message = errorMessage?.takeIf { it.isNotBlank() } ?: "Произошла неизвестная ошибка"
+            
+            val notificationManager = try {
+                context.getSystemService(Context.NOTIFICATION_SERVICE) as? android.app.NotificationManager
+            } catch (e: Exception) {
+                Log.e(TAG, "Ошибка при получении NotificationManager", e)
+                return
+            }
+            
+            if (notificationManager == null) {
+                Log.w(TAG, "NotificationManager недоступен")
+                return
+            }
+            
+            createNotificationChannel(context)
+            
+            val notification = try {
+                NotificationCompat.Builder(context, "app_updates")
+                    .setSmallIcon(android.R.drawable.stat_notify_error)
+                    .setContentTitle("❌ Ошибка скачивания")
+                    .setContentText(message)
+                    .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+                    .setAutoCancel(true)
+                    .build()
+            } catch (e: Exception) {
+                Log.e(TAG, "Ошибка при создании уведомления об ошибке", e)
+                return
+            }
+            
+            try {
+                notificationManager.notify(1004, notification)
+                Log.d(TAG, "Показано уведомление об ошибке скачивания: $message")
+            } catch (e: Exception) {
+                Log.e(TAG, "Ошибка при показе уведомления об ошибке", e)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Критическая ошибка при показе уведомления об ошибке", e)
         }
     }
     
@@ -317,10 +923,11 @@ object AppUpdateManager {
             return
         }
         
-        // Проверить, прошло ли достаточно времени с последней проверки
+        // Если автообновление включено, проверяем при каждом запуске (или почти при каждом)
+        // Минимальный интервал уменьшен до 5 минут, чтобы проверка происходила при почти каждом запуске
         val lastCheck = prefs.lastUpdateCheck
         val now = System.currentTimeMillis()
-        val minIntervalMillis = 2 * 60 * 60 * 1000L // 2 часа минимум между проверками при запуске
+        val minIntervalMillis = 5 * 60 * 1000L // 5 минут минимум между проверками при запуске (было 2 часа)
         
         if (lastCheck > 0 && (now - lastCheck) < minIntervalMillis) {
             // Если недавно проверяли и есть кэшированный результат - проверить его
@@ -551,68 +1158,6 @@ class AppUpdateCheckWorker(context: Context, params: WorkerParameters) : Worker(
         } catch (e: Exception) {
             Log.e(TAG, "Ошибка при проверке режима энергосбережения", e)
             false // По умолчанию не блокировать проверку
-        }
-    }
-    
-    private fun showUpdateNotification(versionInfo: AppVersionInfo) {
-        try {
-            val context = applicationContext
-            val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? android.app.NotificationManager
-            
-            if (notificationManager == null) {
-                Log.w(TAG, "NotificationManager недоступен")
-                return
-            }
-            
-            // Создать канал уведомлений (для Android 8.0+)
-            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-                val channelId = "app_updates"
-                val channelName = "Обновления приложения"
-                val importance = android.app.NotificationManager.IMPORTANCE_HIGH
-                val channel = android.app.NotificationChannel(channelId, channelName, importance)
-                channel.description = "Уведомления о доступных обновлениях приложения"
-                channel.enableVibration(true)
-                notificationManager.createNotificationChannel(channel)
-            }
-            
-            // Создать Intent для открытия настроек при нажатии на уведомление
-            val intent = Intent(context, com.example.raspisanie.SettingsActivity::class.java).apply {
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
-                putExtra("show_update_section", true)
-            }
-            
-            val pendingIntent = android.app.PendingIntent.getActivity(
-                context,
-                0,
-                intent,
-                android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE
-            )
-            
-            // Сформировать текст уведомления
-            val updateType = if (versionInfo.isCritical) "критическое" else ""
-            val title = if (updateType.isNotBlank()) {
-                "Доступно $updateType обновление"
-            } else {
-                "Доступна новая версия"
-            }
-            val text = "Версия ${versionInfo.versionName} готова к установке"
-            
-            // Создать уведомление
-            val notification = NotificationCompat.Builder(context, "app_updates")
-                .setSmallIcon(android.R.drawable.stat_notify_sync)
-                .setContentTitle(title)
-                .setContentText(text)
-                .setStyle(NotificationCompat.BigTextStyle()
-                    .bigText(text + (versionInfo.changelog?.takeIf { it.isNotBlank() }?.let { "\n\n$it" } ?: "")))
-                .setPriority(if (versionInfo.isCritical) NotificationCompat.PRIORITY_HIGH else NotificationCompat.PRIORITY_DEFAULT)
-                .setContentIntent(pendingIntent)
-                .setAutoCancel(true)
-                .build()
-            
-            notificationManager.notify(1001, notification)
-            Log.d(TAG, "Показано уведомление о новой версии: ${versionInfo.versionName}")
-        } catch (e: Exception) {
-            Log.e(TAG, "Ошибка при показе уведомления об обновлении", e)
         }
     }
     

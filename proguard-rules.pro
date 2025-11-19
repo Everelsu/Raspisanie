@@ -52,6 +52,9 @@
 # Keep MainActivity - widgets create PendingIntent for it
 -keep class com.example.raspisanie.MainActivity { *; }
 
+# Keep Application class
+-keep class com.example.raspisanie.RaspisanieApplication { *; }
+
 # Keep Worker classes - used by WorkManager
 -keep class com.example.raspisanie.data.ScheduleRefreshWorker { *; }
 -keep class com.example.raspisanie.data.AppUpdateCheckWorker { *; }

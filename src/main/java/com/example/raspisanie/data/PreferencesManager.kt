@@ -13,6 +13,7 @@ class PreferencesManager(context: Context) {
         private const val KEY_SHOW_LUNCH = "show_lunch"
         private const val KEY_SHOW_TIME = "show_time"
         private const val KEY_SHOW_PROGRESS_LINE = "show_progress_line"
+        private const val KEY_SHOW_LESSON_STATUS = "show_lesson_status"
         private const val KEY_THEME = "theme"
         private const val KEY_COLLEGE = "college"
         private const val KEY_SELECTED_GROUP = "selected_group"
@@ -31,12 +32,24 @@ class PreferencesManager(context: Context) {
         private const val KEY_LAST_UPDATE_RESULT = "last_update_result"
         private const val KEY_UPDATE_CHECK_ERROR_COUNT = "update_check_error_count"
         private const val KEY_LAST_UPDATE_CHECK_SUCCESS = "last_update_check_success"
+        private const val KEY_BOTTOM_NAVIGATION_ENABLED = "bottom_navigation_enabled"
+        private const val KEY_LAST_SCHEDULE_HASH = "last_schedule_hash"
+        private const val KEY_SCHEDULE_NOTIFICATIONS_ENABLED = "schedule_notifications_enabled"
+        private const val KEY_FCM_TOKEN = "fcm_token"
+        private const val KEY_SCHEDULED_EVENT_REQUESTS = "scheduled_event_requests"
+        private const val KEY_UPCOMING_NOTIFICATIONS_ENABLED = "upcoming_notifications_enabled"
+        private const val KEY_UPCOMING_LESSON_OFFSET_MIN = "upcoming_lesson_offset_min"
+        private const val KEY_UPCOMING_BREAK_ENABLED = "upcoming_break_enabled"
+        private const val KEY_UPCOMING_LUNCH_ENABLED = "upcoming_lunch_enabled"
         
         // Font size options
         const val FONT_SIZE_SMALL = "small"
         const val FONT_SIZE_NORMAL = "normal"
         const val FONT_SIZE_LARGE = "large"
         const val FONT_SIZE_EXTRA_LARGE = "extra_large"
+        
+        const val SHARE_FORMAT_TEXT = "text"
+        const val SHARE_FORMAT_IMAGE = "image"
         
         // Auto refresh intervals (in minutes)
         const val REFRESH_INTERVAL_15 = 15
@@ -79,6 +92,10 @@ class PreferencesManager(context: Context) {
     var showProgressLine: Boolean
         get() = prefs.getBoolean(KEY_SHOW_PROGRESS_LINE, false)
         set(value) = prefs.edit().putBoolean(KEY_SHOW_PROGRESS_LINE, value).apply()
+    
+    var showLessonStatus: Boolean
+        get() = prefs.getBoolean(KEY_SHOW_LESSON_STATUS, true)
+        set(value) = prefs.edit().putBoolean(KEY_SHOW_LESSON_STATUS, value).apply()
     
     var theme: String
         get() = prefs.getString(KEY_THEME, THEME_DARK) ?: THEME_DARK
@@ -170,7 +187,7 @@ class PreferencesManager(context: Context) {
     
     // Auto refresh settings
     var autoRefreshEnabled: Boolean
-        get() = prefs.getBoolean(KEY_AUTO_REFRESH_ENABLED, false)
+        get() = prefs.getBoolean(KEY_AUTO_REFRESH_ENABLED, true)
         set(value) = prefs.edit().putBoolean(KEY_AUTO_REFRESH_ENABLED, value).apply()
     
     var autoRefreshInterval: Int
@@ -196,10 +213,46 @@ class PreferencesManager(context: Context) {
     var animationsEnabled: Boolean
         get() = prefs.getBoolean(KEY_ANIMATIONS_ENABLED, true)
         set(value) = prefs.edit().putBoolean(KEY_ANIMATIONS_ENABLED, value).apply()
+
+    var bottomNavigationEnabled: Boolean
+        get() = prefs.getBoolean(KEY_BOTTOM_NAVIGATION_ENABLED, true)
+        set(value) = prefs.edit().putBoolean(KEY_BOTTOM_NAVIGATION_ENABLED, value).apply()
+    
+    var scheduleNotificationsEnabled: Boolean
+        get() = prefs.getBoolean(KEY_SCHEDULE_NOTIFICATIONS_ENABLED, true)
+        set(value) = prefs.edit().putBoolean(KEY_SCHEDULE_NOTIFICATIONS_ENABLED, value).apply()
+
+    var fcmToken: String
+        get() = prefs.getString(KEY_FCM_TOKEN, "") ?: ""
+        set(value) = prefs.edit().putString(KEY_FCM_TOKEN, value).apply()
+
+    var scheduledEventRequestCodes: Set<String>
+        get() = prefs.getStringSet(KEY_SCHEDULED_EVENT_REQUESTS, emptySet()) ?: emptySet()
+        set(value) = prefs.edit().putStringSet(KEY_SCHEDULED_EVENT_REQUESTS, value).apply()
+
+    var upcomingNotificationsEnabled: Boolean
+        get() = prefs.getBoolean(KEY_UPCOMING_NOTIFICATIONS_ENABLED, true)
+        set(value) = prefs.edit().putBoolean(KEY_UPCOMING_NOTIFICATIONS_ENABLED, value).apply()
+
+    var upcomingLessonOffsetMinutes: Int
+        get() = prefs.getInt(KEY_UPCOMING_LESSON_OFFSET_MIN, 5).coerceIn(0, 30)
+        set(value) = prefs.edit().putInt(KEY_UPCOMING_LESSON_OFFSET_MIN, value.coerceIn(0, 60)).apply()
+
+    var upcomingBreakRemindersEnabled: Boolean
+        get() = prefs.getBoolean(KEY_UPCOMING_BREAK_ENABLED, true)
+        set(value) = prefs.edit().putBoolean(KEY_UPCOMING_BREAK_ENABLED, value).apply()
+
+    var upcomingLunchRemindersEnabled: Boolean
+        get() = prefs.getBoolean(KEY_UPCOMING_LUNCH_ENABLED, true)
+        set(value) = prefs.edit().putBoolean(KEY_UPCOMING_LUNCH_ENABLED, value).apply()
+
+    var lastScheduleHash: String
+        get() = prefs.getString(KEY_LAST_SCHEDULE_HASH, "") ?: ""
+        set(value) = prefs.edit().putString(KEY_LAST_SCHEDULE_HASH, value).apply()
     
     // App auto-update settings
     var appAutoUpdateEnabled: Boolean
-        get() = prefs.getBoolean(KEY_APP_AUTO_UPDATE_ENABLED, false)
+        get() = prefs.getBoolean(KEY_APP_AUTO_UPDATE_ENABLED, true)
         set(value) = prefs.edit().putBoolean(KEY_APP_AUTO_UPDATE_ENABLED, value).apply()
     
     var lastUpdateCheck: Long

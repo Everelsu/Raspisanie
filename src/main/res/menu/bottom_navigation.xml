@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+    <item
+        android:id="@+id/navigation_schedule"
+        android:icon="@android:drawable/ic_menu_view"
+        android:title="Расписание"
+        android:checkable="true" />
+    
+    <item
+        android:id="@+id/navigation_statistics"
+        android:icon="@android:drawable/ic_menu_info_details"
+        android:title="Итоги"
+        android:checkable="true" />
+    
+    <item
+        android:id="@+id/navigation_settings"
+        android:icon="@android:drawable/ic_menu_preferences"
+        android:title="Настройки"
+        android:checkable="true" />
+</menu>
+

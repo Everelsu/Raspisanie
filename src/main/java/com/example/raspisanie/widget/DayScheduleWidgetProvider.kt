@@ -93,6 +93,7 @@ class DayScheduleWidgetProvider : AppWidgetProvider() {
                                 val serviceIntent = Intent(context, ScheduleWidgetService::class.java).apply {
                                     putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId)
                                 }
+                                @Suppress("DEPRECATION")
                                 views.setRemoteAdapter(R.id.widget_lessons_list, serviceIntent)
                                     
                                 // Hide navigation since we have scrolling
@@ -111,6 +112,7 @@ class DayScheduleWidgetProvider : AppWidgetProvider() {
                                 
                                 // Notify widget that data has changed after views are updated
                                 try {
+                                    @Suppress("DEPRECATION")
                                     appWidgetManager.notifyAppWidgetViewDataChanged(appWidgetId, R.id.widget_lessons_list)
                                 } catch (e: Exception) {
                                     android.util.Log.e(TAG, "Error notifying widget data changed", e)

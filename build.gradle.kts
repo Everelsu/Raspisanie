@@ -1,6 +1,7 @@
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
+    id("com.google.gms.google-services") version "4.4.2"
 }
 
 android {
@@ -11,19 +12,28 @@ android {
         applicationId = "com.example.raspisanie"
         minSdk = 28
         targetSdk = 34
-        versionCode = 2
-        versionName = "1.0.5"
+        versionCode = 3
+        versionName = "1.1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        
+        // Включить MultiDex для поддержки устройств с ограниченной памятью
+        multiDexEnabled = true
     }
 
     buildTypes {
         release {
             isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+        }
+        debug {
+            // Оптимизации для отладки
+            isMinifyEnabled = false
+            isDebuggable = true
         }
     }
     compileOptions {
@@ -49,6 +59,13 @@ dependencies {
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
 
+    // Firebase Cloud Messaging
+    implementation(platform("com.google.firebase:firebase-bom:33.1.2"))
+    implementation("com.google.firebase:firebase-messaging-ktx")
+
+    // OkHttp for admin push panel
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+
     // Jsoup for HTML parsing
     implementation("org.jsoup:jsoup:1.17.2")
 
@@ -71,4 +88,22 @@ dependencies {
     
     // WorkManager for auto refresh
     implementation("androidx.work:work-runtime-ktx:2.9.0")
+    
+    // MultiDex для поддержки устройств с ограниченной памятью
+    implementation("androidx.multidex:multidex:2.0.1")
+    
+    // Fragment
+    implementation("androidx.fragment:fragment-ktx:1.6.2")
+    
+    // Markwon for Markdown rendering
+    implementation("io.noties.markwon:core:4.6.2")
+    implementation("io.noties.markwon:image:4.6.2")
+    implementation("io.noties.markwon:image-glide:4.6.2")
+    implementation("io.noties.markwon:html:4.6.2")
+    implementation("io.noties.markwon:ext-tables:4.6.2")
+    implementation("io.noties.markwon:ext-strikethrough:4.6.2")
+    implementation("io.noties.markwon:linkify:4.6.2")
+    
+    // Glide for image loading
+    implementation("com.github.bumptech.glide:glide:4.16.0")
 }

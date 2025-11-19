@@ -1,21 +1,37 @@
 package com.example.raspisanie.adapter
 
 import android.animation.ValueAnimator
+import android.app.Activity
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Context
+import android.content.Intent
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.drawable.Drawable
+import android.net.Uri
 import android.os.Handler
 import android.os.Looper
+import android.view.HapticFeedbackConstants
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.view.ViewTreeObserver
 import android.view.animation.DecelerateInterpolator
 import android.widget.TextView
+import android.widget.Toast
+import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
 import androidx.recyclerview.widget.RecyclerView
+import com.google.android.material.bottomsheet.BottomSheetDialog
+import com.google.android.material.button.MaterialButton
 import com.example.raspisanie.R
 import com.example.raspisanie.data.DayProgressCalculator
 import com.example.raspisanie.data.DaySchedule
 import com.example.raspisanie.data.LessonTimes
 import com.example.raspisanie.data.PreferencesManager
+import java.io.File
+import java.io.FileOutputStream
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -34,6 +50,7 @@ class ScheduleAdapter(
     private val isPurpleTheme: Boolean get() = prefs?.theme == PreferencesManager.THEME_PURPLE
     private val isGreenTheme: Boolean get() = prefs?.theme == PreferencesManager.THEME_GREEN
     private val isNewYearTheme: Boolean get() = prefs?.theme == PreferencesManager.THEME_NEW_YEAR
+    private val showLessonStatus: Boolean get() = prefs?.showLessonStatus ?: true
     
     // Font size multiplier based on preference
     private fun getFontSizeMultiplier(): Float {
@@ -71,14 +88,35 @@ class ScheduleAdapter(
     override fun onViewRecycled(holder: ScheduleViewHolder) {
         super.onViewRecycled(holder)
         // Clean up handlers and listeners when ViewHolder is recycled
-        holder.progressHandler?.removeCallbacksAndMessages(null)
-        holder.progressHandler = null
-        holder.progressLineSetup = false
-        holder.currentLessonNumbers = null
-        
-        // Cancel any animations on progress indicator
-        holder.progressIndicator.clearAnimation()
-        holder.progressIndicator.animate().cancel()
+        try {
+            holder.progressHandler?.removeCallbacksAndMessages(null)
+            holder.progressHandler = null
+            holder.progressLineSetup = false
+            holder.currentLessonNumbers = null
+            
+            // Cancel any animations on progress indicator
+            holder.progressIndicator.clearAnimation()
+            holder.progressIndicator.animate().cancel()
+            
+            // Отменить все анимации в дочерних view
+            cancelAnimationsInView(holder.itemView)
+        } catch (e: Exception) {
+            android.util.Log.e("ScheduleAdapter", "Ошибка при очистке ViewHolder: ${e.message}", e)
+        }
+    }
+    
+    private fun cancelAnimationsInView(view: View) {
+        try {
+            view.clearAnimation()
+            view.animate().cancel()
+            if (view is ViewGroup) {
+                for (i in 0 until view.childCount) {
+                    cancelAnimationsInView(view.getChildAt(i))
+                }
+            }
+        } catch (e: Exception) {
+            // Игнорируем ошибки при очистке
+        }
     }
 
     override fun onBindViewHolder(holder: ScheduleViewHolder, position: Int) {
@@ -151,6 +189,9 @@ class ScheduleAdapter(
         } else {
             // Group items by lesson number
             val groupedByLesson = daySchedule.items.groupBy { it.lessonNumber }
+            val college = prefs?.college ?: PreferencesManager.COLLEGE_CHTOTIB
+            val statusEnabled = isToday && showLessonStatus
+            val currentMinutesForStatus = if (statusEnabled) DayProgressCalculator.getCurrentTimeInMinutes() else -1
             
             var previousLessonNumber: Int? = null
             
@@ -159,7 +200,6 @@ class ScheduleAdapter(
                 
                 // Add break info if needed
                 if (previousLessonNumber != null) {
-                    val college = prefs?.college ?: PreferencesManager.COLLEGE_CHTOTIB
                     // Check for regular break
                     val breakText = LessonTimes.getBreakText(previousLessonNumber, lessonNum, college)
                     if (breakText != null && prefs?.showBreaks == true) {
@@ -226,6 +266,7 @@ class ScheduleAdapter(
                     val detailsView = lessonView.findViewById<TextView>(R.id.details)
                     val subgroupIndicator = lessonView.findViewById<TextView>(R.id.subgroupIndicator)
                     val lessonProgressOverlay = lessonView.findViewById<View>(R.id.lessonProgressOverlay)
+                    val lessonStatusView = lessonView.findViewById<TextView>(R.id.lessonStatus)
                     val circleBackground = lessonView.findViewById<View>(R.id.circleBackground)
 
                     lessonNumberView.text = lessonNum.toString()
@@ -297,6 +338,9 @@ class ScheduleAdapter(
                                 updateCircleState(lessonNumberView, lessonProgressOverlay, lessonNum)
                             }
                         })
+                        lessonStatusView?.visibility = View.GONE
+                    } else {
+                        lessonStatusView?.visibility = View.GONE
                     }
                 }
                 
@@ -310,25 +354,36 @@ class ScheduleAdapter(
                 previousLessonNumber = lessonNum
             }
             
+            if (isToday) {
+                if (statusEnabled) {
+                    updateAllLessonStatuses(holder, currentMinutesForStatus, college)
+                } else {
+                    hideAllLessonStatuses(holder)
+                }
+            }
+            
             // Setup day progress indicator
-            if (isToday && prefs?.showProgressLine == true) {
+            if (isToday) {
                 val lessonNumbers = daySchedule.items.map { it.lessonNumber }.distinct().sorted()
-                
-                // Всегда пересчитываем прогресс при перепривязке или изменении настроек
                 holder.currentLessonNumbers = lessonNumbers
                 
-                // Apply theme-specific progress line (важно делать до setup)
-                when {
-                    isNothingTheme -> holder.progressIndicator.setBackgroundResource(R.drawable.progress_indicator_nothing)
-                    isHalloweenTheme -> holder.progressIndicator.setBackgroundResource(R.drawable.progress_indicator_halloween)
-                    isGreenTheme -> holder.progressIndicator.setBackgroundResource(R.drawable.progress_indicator_green)
-                    isNewYearTheme -> holder.progressIndicator.setBackgroundResource(R.drawable.progress_indicator_newyear)
-                    else -> holder.progressIndicator.setBackgroundResource(R.drawable.progress_indicator)
+                if (prefs?.showProgressLine == true) {
+                    when {
+                        isNothingTheme -> holder.progressIndicator.setBackgroundResource(R.drawable.progress_indicator_nothing)
+                        isHalloweenTheme -> holder.progressIndicator.setBackgroundResource(R.drawable.progress_indicator_halloween)
+                        isGreenTheme -> holder.progressIndicator.setBackgroundResource(R.drawable.progress_indicator_green)
+                        isNewYearTheme -> holder.progressIndicator.setBackgroundResource(R.drawable.progress_indicator_newyear)
+                        else -> holder.progressIndicator.setBackgroundResource(R.drawable.progress_indicator)
+                    }
+                    
+                    holder.progressIndicator.visibility = View.VISIBLE
+                    setupDayProgress(holder, lessonNumbers)
+                } else {
+                    holder.progressIndicator.visibility = View.GONE
+                    holder.progressLineSetup = false
+                    holder.progressHandler?.removeCallbacksAndMessages(null)
+                    updateDayProgress(holder, lessonNumbers)
                 }
-                
-                // Всегда заново настраиваем прогресс для корректного обновления
-                holder.progressIndicator.visibility = View.VISIBLE
-                setupDayProgress(holder, lessonNumbers)
             } else {
                 holder.progressIndicator.visibility = View.GONE
                 holder.progressLineSetup = false
@@ -346,9 +401,14 @@ class ScheduleAdapter(
                 isNewYearTheme -> holder.dayName.setTextColor(context?.getColor(R.color.newyear_colorPrimary) ?: 0xFF2E7D32.toInt())
                 isLightTheme -> holder.dayName.setTextColor(context?.getColor(R.color.light_colorPrimary) ?: 0xFF000000.toInt()) // Черный для светлой темы
                 isDarkTheme -> holder.dayName.setTextColor(context?.getColor(R.color.dark_colorPrimary) ?: 0xFFFFFFFF.toInt()) // Белый для темной темы
-                isPurpleTheme -> holder.dayName.setTextColor(context?.getColor(R.color.dayNamePurple) ?: 0xFF9E7CC1.toInt()) // Фиолетовый для фиолетовой темы
-                else -> holder.dayName.setTextColor(context?.getColor(R.color.dayNamePurple) ?: 0xFF9E7CC1.toInt()) // Фиолетовый по умолчанию
+                isPurpleTheme -> holder.dayName.setTextColor(context?.getColor(R.color.system_textColorPrimary) ?: 0xFFFFFFFF.toInt()) // Белый для фиолетовой темы для лучшей читаемости
+                else -> holder.dayName.setTextColor(context?.getColor(R.color.system_textColorPrimary) ?: 0xFFFFFFFF.toInt()) // Белый по умолчанию для фиолетовой темы
             }
+        }
+
+        holder.cardBackground.setOnLongClickListener {
+            showShareMenu(holder, daySchedule)
+            true
         }
     }
     
@@ -608,60 +668,77 @@ class ScheduleAdapter(
         // Cancel any existing handler
         holder.progressHandler?.removeCallbacksAndMessages(null)
         
+        // Проверка валидности контекста
+        if (context == null) {
+            android.util.Log.w("ScheduleAdapter", "⚠️ Context null, отменяю обновление прогресса")
+            return
+        }
+        
         val handler = Handler(Looper.getMainLooper())
         holder.progressHandler = handler
         
         handler.postDelayed({
-            // ЖЕСТКАЯ ПРОВЕРКА: ViewHolder еще привязан и валиден
-            if (!holder.itemView.isAttachedToWindow) {
-                android.util.Log.w("ScheduleAdapter", "⚠️ ViewHolder отвязан, отменяю обновление")
-                return@postDelayed
-            }
-            
-            if (holder.progressIndicator.visibility != View.VISIBLE) {
-                android.util.Log.w("ScheduleAdapter", "⚠️ Прогресс невидим, отменяю обновление")
-                return@postDelayed
-            }
-            
-            // Check if ViewHolder is still bound to the same item and attached
-            if (holder.currentLessonNumbers?.size == lessonNumbers.size &&
-                holder.currentLessonNumbers == lessonNumbers) {
-                
-                // ЖЕСТКОЕ получение высоты: проверяем оба контейнера
-                val containerHeight = holder.itemsContainer.height
-                val wrapperHeight = holder.itemsWrapper.height
-                
-                // Используем минимальную высоту для безопасности
-                val safeHeight = when {
-                    containerHeight > 0 && wrapperHeight > 0 -> minOf(containerHeight, wrapperHeight)
-                    containerHeight > 0 -> containerHeight
-                    wrapperHeight > 0 -> wrapperHeight
-                    else -> {
-                        android.util.Log.w("ScheduleAdapter", "⚠️ Высоты не определены, пропускаю обновление")
-                        updateProgressIndicator(holder, lessonNumbers) // Попытка пересчитать
-                        return@postDelayed
-                    }
+            try {
+                // ЖЕСТКАЯ ПРОВЕРКА: ViewHolder еще привязан и валиден
+                if (!holder.itemView.isAttachedToWindow) {
+                    android.util.Log.w("ScheduleAdapter", "⚠️ ViewHolder отвязан, отменяю обновление")
+                    holder.progressHandler = null
+                    return@postDelayed
                 }
-                
-                if (safeHeight > 0) {
+
+                val progressVisible = holder.progressIndicator.visibility == View.VISIBLE
+
+                // Check if ViewHolder is still bound to the same item and attached
+                if (holder.currentLessonNumbers?.size == lessonNumbers.size &&
+                    holder.currentLessonNumbers == lessonNumbers) {
+
                     val currentMinutes = DayProgressCalculator.getCurrentTimeInMinutes()
                     val college = prefs?.college ?: PreferencesManager.COLLEGE_CHTOTIB
-                    val progress = DayProgressCalculator.getDayProgress(currentMinutes, lessonNumbers, college)
-                    
-                    android.util.Log.d("ScheduleAdapter", "🔄 Обновление прогресса: safeHeight=$safeHeight, progress=$progress")
-                    updateProgressHeight(holder, safeHeight, progress)
+
+                    if (progressVisible) {
+                        // ЖЕСТКОЕ получение высоты: проверяем оба контейнера
+                        val containerHeight = holder.itemsContainer.height
+                        val wrapperHeight = holder.itemsWrapper.height
+
+                        val safeHeight = when {
+                            containerHeight > 0 && wrapperHeight > 0 -> minOf(containerHeight, wrapperHeight)
+                            containerHeight > 0 -> containerHeight
+                            wrapperHeight > 0 -> wrapperHeight
+                            else -> {
+                                android.util.Log.w("ScheduleAdapter", "⚠️ Высоты не определены, пропускаю обновление прогресса")
+                                null
+                            }
+                        }
+
+                        if (safeHeight != null) {
+                            val progress = DayProgressCalculator.getDayProgress(currentMinutes, lessonNumbers, college)
+
+                            android.util.Log.d("ScheduleAdapter", "🔄 Обновление прогресса: safeHeight=$safeHeight, progress=$progress")
+                            updateProgressHeight(holder, safeHeight, progress)
+                        } else {
+                            updateProgressIndicator(holder, lessonNumbers)
+                        }
+                    }
+
+                    updateAllCircles(holder, currentMinutes)
+                    if (showLessonStatus) {
+                        updateAllLessonStatuses(holder, currentMinutes, college)
+                    } else {
+                        hideAllLessonStatuses(holder)
+                    }
+
+                    if (holder.itemView.isAttachedToWindow) {
+                        updateDayProgress(holder, lessonNumbers)
+                    } else {
+                        holder.progressHandler = null
+                    }
                 } else {
-                    updateProgressIndicator(holder, lessonNumbers)
+                    android.util.Log.w("ScheduleAdapter", "⚠️ Уроки изменились, отменяю периодическое обновление")
+                    holder.progressHandler = null
                 }
-                
-                // Update circles
-                val currentMinutes = DayProgressCalculator.getCurrentTimeInMinutes()
-                updateAllCircles(holder, currentMinutes)
-                
-                // Schedule next update
-                updateDayProgress(holder, lessonNumbers)
-            } else {
-                android.util.Log.w("ScheduleAdapter", "⚠️ Уроки изменились, отменяю периодическое обновление")
+            } catch (e: Exception) {
+                android.util.Log.e("ScheduleAdapter", "Ошибка при обновлении прогресса: ${e.message}", e)
+                holder.progressHandler = null
             }
         }, 60000) // Update every minute
     }
@@ -800,6 +877,109 @@ class ScheduleAdapter(
                 val lessonNum = lessonNumberView.text.toString().toIntOrNull() ?: continue
                 updateCircleState(lessonNumberView, progressOverlay, lessonNum)
             }
+        }
+    }
+
+    private fun updateAllLessonStatuses(holder: ScheduleViewHolder, currentMinutes: Int, college: String) {
+        val context = holder.itemView.context ?: return
+        if (!showLessonStatus || currentMinutes < 0) {
+            hideAllLessonStatuses(holder)
+            return
+        }
+
+        val statusMap = linkedMapOf<Int, MutableList<TextView>>()
+        for (i in 0 until holder.itemsContainer.childCount) {
+            val child = holder.itemsContainer.getChildAt(i)
+            val statusView = child.findViewById<TextView>(R.id.lessonStatus) ?: continue
+            val lessonNumberView = child.findViewById<TextView>(R.id.lessonNumber) ?: continue
+            val lessonNum = lessonNumberView.text.toString().toIntOrNull() ?: continue
+            statusView.visibility = View.GONE
+            statusMap.getOrPut(lessonNum) { mutableListOf() }.add(statusView)
+        }
+
+        if (statusMap.isEmpty()) return
+
+        val sortedNumbers = statusMap.keys.sorted()
+        var currentLesson: Int? = null
+        var nextLesson: Int? = null
+
+        for (lessonNum in sortedNumbers) {
+            val time = LessonTimes.getTime(lessonNum, college) ?: continue
+            val start = parseTimeToMinutes(time.startTime)
+            val end = parseTimeToMinutes(time.endTime)
+            when {
+                currentMinutes in start until end -> {
+                    currentLesson = lessonNum
+                    break
+                }
+                currentMinutes < start -> {
+                    nextLesson = lessonNum
+                    break
+                }
+            }
+        }
+
+        if (currentLesson == null) {
+            for (lessonNum in sortedNumbers) {
+                val time = LessonTimes.getTime(lessonNum, college) ?: continue
+                val start = parseTimeToMinutes(time.startTime)
+                if (currentMinutes < start) {
+                    nextLesson = lessonNum
+                    break
+                }
+            }
+        } else {
+            val currentIndex = sortedNumbers.indexOf(currentLesson!!)
+            if (currentIndex >= 0) {
+                for (idx in currentIndex + 1 until sortedNumbers.size) {
+                    val candidate = sortedNumbers[idx]
+                    if (LessonTimes.getTime(candidate, college) != null) {
+                        nextLesson = candidate
+                        break
+                    }
+                }
+            }
+        }
+
+        val lastLesson = sortedNumbers.lastOrNull()
+
+        fun setStatus(lessonNum: Int?, text: String?) {
+            if (lessonNum == null || text == null) return
+            statusMap[lessonNum]?.forEach { view ->
+                view.text = text
+                view.visibility = View.VISIBLE
+            }
+        }
+
+        currentLesson?.let { lessonNum ->
+            val time = LessonTimes.getTime(lessonNum, college)
+            if (time != null) {
+                val remaining = (parseTimeToMinutes(time.endTime) - currentMinutes).coerceAtLeast(1)
+                setStatus(lessonNum, context.getString(R.string.lesson_status_remaining, remaining))
+            }
+        }
+
+        nextLesson?.let { lessonNum ->
+            val time = LessonTimes.getTime(lessonNum, college)
+            if (time != null) {
+                val diff = (parseTimeToMinutes(time.startTime) - currentMinutes).coerceAtLeast(1)
+                setStatus(lessonNum, context.getString(R.string.lesson_status_starts_in, diff))
+            }
+        }
+
+        if (currentLesson == null && nextLesson == null && lastLesson != null) {
+            val time = LessonTimes.getTime(lastLesson, college)
+            if (time != null && currentMinutes >= parseTimeToMinutes(time.endTime)) {
+                val diff = (currentMinutes - parseTimeToMinutes(time.endTime)).coerceAtLeast(1)
+                setStatus(lastLesson, context.getString(R.string.lesson_status_passed, diff))
+            }
+        }
+    }
+
+    private fun hideAllLessonStatuses(holder: ScheduleViewHolder) {
+        for (i in 0 until holder.itemsContainer.childCount) {
+            val child = holder.itemsContainer.getChildAt(i)
+            child.findViewById<TextView>(R.id.lessonStatus)?.visibility = View.GONE
         }
     }
     
@@ -1030,5 +1210,250 @@ class ScheduleAdapter(
             (53 * 0.75 + 153 * 0.25).toInt().coerceAtMost(255) // B
         )
         breakTextView.setTextColor(orangeTint)
+    }
+
+    private fun showShareMenu(holder: ScheduleViewHolder, daySchedule: DaySchedule) {
+        val view = holder.cardBackground
+        val context = view.context ?: return
+        view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+
+        val dialog = BottomSheetDialog(context)
+        val sheetView = LayoutInflater.from(context).inflate(R.layout.bottom_sheet_share_schedule, null)
+
+        sheetView.findViewById<TextView>(R.id.shareSubtitle)?.text = context.getString(R.string.share_menu_hint)
+
+        sheetView.findViewById<MaterialButton>(R.id.btnSharePrimary)?.apply {
+            text = context.getString(R.string.share_day)
+            setOnClickListener {
+                dialog.dismiss()
+                // Основная кнопка делится изображением
+                shareDaySchedule(holder, daySchedule, PreferencesManager.SHARE_FORMAT_IMAGE)
+            }
+        }
+ 
+        sheetView.findViewById<MaterialButton>(R.id.btnShareText)?.apply {
+            setOnClickListener {
+                dialog.dismiss()
+                shareDaySchedule(holder, daySchedule, PreferencesManager.SHARE_FORMAT_TEXT)
+            }
+        }
+ 
+        sheetView.findViewById<MaterialButton>(R.id.btnCopy)?.setOnClickListener {
+            dialog.dismiss()
+            copyDaySchedule(context, daySchedule)
+        }
+
+        dialog.setContentView(sheetView)
+        dialog.show()
+    }
+
+    private fun shareDaySchedule(holder: ScheduleViewHolder, daySchedule: DaySchedule, formatOverride: String?) {
+        val context = holder.itemView.context ?: return
+        val format = formatOverride ?: PreferencesManager.SHARE_FORMAT_TEXT
+        try {
+            when (format) {
+                PreferencesManager.SHARE_FORMAT_IMAGE -> shareDayAsImage(context, holder.cardBackground, daySchedule)
+                else -> shareDayAsText(context, daySchedule)
+            }
+        } catch (e: Exception) {
+            Toast.makeText(context, context.getString(R.string.share_schedule_failed), Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun shareDayAsText(context: Context, daySchedule: DaySchedule) {
+        val shareText = buildShareText(context, daySchedule)
+        val subject = context.getString(R.string.share_schedule_subject, daySchedule.day, daySchedule.date)
+        val shareIntent = Intent(Intent.ACTION_SEND).apply {
+            type = "text/plain"
+            putExtra(Intent.EXTRA_SUBJECT, subject)
+            putExtra(Intent.EXTRA_TEXT, shareText)
+        }
+        val chooser = Intent.createChooser(shareIntent, context.getString(R.string.share_schedule_title))
+        startActivitySafely(context, chooser)
+    }
+
+    private fun shareDayAsImage(context: Context, shareView: View, daySchedule: DaySchedule) {
+        if (shareView.width == 0 || shareView.height == 0) {
+            shareView.post { shareDayAsImage(context, shareView, daySchedule) }
+            return
+        }
+
+        try {
+            val bitmap = captureViewBitmap(shareView)
+            
+            if (bitmap == null) {
+                android.util.Log.e("ScheduleAdapter", "Не удалось создать bitmap из view")
+                Toast.makeText(context, "Не удалось создать изображение для шаринга", Toast.LENGTH_SHORT).show()
+                return
+            }
+
+            val shareDir = File(context.cacheDir, "schedule_share").apply {
+                if (!exists()) {
+                    mkdirs()
+                } else {
+                    listFiles()?.forEach { child ->
+                        if (child.name.startsWith("schedule_share_")) {
+                            child.delete()
+                        }
+                    }
+                }
+            }
+
+            val file = File.createTempFile("schedule_share_", ".png", shareDir)
+            FileOutputStream(file).use { stream ->
+                if (!bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream)) {
+                    android.util.Log.e("ScheduleAdapter", "Не удалось сохранить bitmap в файл")
+                    Toast.makeText(context, "Не удалось сохранить изображение", Toast.LENGTH_SHORT).show()
+                    return
+                }
+            }
+
+            val uri: Uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+            
+            // Создаем Intent для шаринга изображения
+            val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                type = "image/png"
+                putExtra(Intent.EXTRA_STREAM, uri)
+                putExtra(Intent.EXTRA_SUBJECT, context.getString(R.string.share_schedule_subject, daySchedule.day, daySchedule.date))
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            
+            // Предоставляем временные права на чтение URI для всех приложений
+            val chooser = Intent.createChooser(shareIntent, context.getString(R.string.share_schedule_title))
+            val resInfoList = context.packageManager.queryIntentActivities(chooser, android.content.pm.PackageManager.MATCH_DEFAULT_ONLY)
+            for (resolveInfo in resInfoList) {
+                val packageName = resolveInfo.activityInfo.packageName
+                context.grantUriPermission(packageName, uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            
+            startActivitySafely(context, chooser)
+        } catch (e: Exception) {
+            android.util.Log.e("ScheduleAdapter", "Ошибка при шаринге изображения", e)
+            Toast.makeText(context, "Ошибка при создании изображения: ${e.message}", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun buildShareText(context: Context, daySchedule: DaySchedule): String {
+        val builder = StringBuilder()
+        builder.append(context.getString(R.string.share_schedule_subject, daySchedule.day, daySchedule.date))
+        builder.append('\n')
+        builder.append("==============================")
+        builder.append('\n')
+
+        val items = daySchedule.items
+        if (items.isEmpty()) {
+            builder.append(context.getString(R.string.share_schedule_no_lessons))
+            builder.append('\n')
+        } else {
+            val grouped = items.groupBy { it.lessonNumber }.toSortedMap()
+            val college = prefs?.college ?: PreferencesManager.COLLEGE_CHTOTIB
+
+            grouped.forEach { (lessonNumber, lessonItems) ->
+                val time = LessonTimes.formatTime(lessonNumber, college)
+                builder.append(lessonNumber)
+                builder.append('.').append(' ')
+                if (time.isNotEmpty()) {
+                    builder.append('[').append(time).append(']').append(' ')
+                }
+
+                if (lessonItems.size == 1) {
+                    builder.append(formatLessonLine(lessonItems.first()))
+                    builder.append('\n')
+                } else {
+                    builder.append('\n')
+                    lessonItems.forEach { item ->
+                        builder.append("    • ")
+                        val subgroup = item.subgroup
+                        if (subgroup != null) {
+                            builder.append(subgroup).append(" подг. ")
+                        }
+                        builder.append(formatLessonLine(item))
+                        builder.append('\n')
+                    }
+                }
+                builder.append('\n')
+            }
+        }
+
+        builder.append("#Расписание")
+        return builder.toString().trimEnd()
+    }
+
+    private fun formatLessonLine(item: com.example.raspisanie.data.ScheduleItem): String {
+        val parts = mutableListOf<String>()
+        item.subject?.let { subject -> parts.add(subject) }
+        item.classroom?.let { classroom -> parts.add("ауд. $classroom") }
+        item.teacher?.let { teacher -> parts.add(teacher) }
+        return if (parts.isEmpty()) {
+            "—"
+        } else {
+            parts.joinToString(", ")
+        }
+    }
+
+    private fun copyDaySchedule(context: Context, daySchedule: DaySchedule) {
+        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+        val clip = ClipData.newPlainText("schedule", buildShareText(context, daySchedule))
+        clipboard?.setPrimaryClip(clip)
+        Toast.makeText(context, context.getString(R.string.share_copy_success), Toast.LENGTH_SHORT).show()
+    }
+
+    private fun startActivitySafely(context: Context, intent: Intent) {
+        val safeIntent = Intent(intent)
+        if (context !is Activity) {
+            safeIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        try {
+            context.startActivity(safeIntent)
+            Toast.makeText(context, context.getString(R.string.share_schedule_ready), Toast.LENGTH_SHORT).show()
+        } catch (e: Exception) {
+            Toast.makeText(context, context.getString(R.string.share_schedule_failed), Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun captureViewBitmap(view: View): Bitmap? {
+        return try {
+            if (view.width <= 0 || view.height <= 0) {
+                android.util.Log.w("ScheduleAdapter", "View имеет нулевой размер: ${view.width}x${view.height}")
+                return null
+            }
+            
+            val bitmap = Bitmap.createBitmap(view.width, view.height, Bitmap.Config.ARGB_8888)
+            val canvas = Canvas(bitmap)
+            val background: Drawable? = view.background
+            if (background != null) {
+                background.draw(canvas)
+            } else {
+                val color = ContextCompat.getColor(view.context, android.R.color.background_light)
+                canvas.drawColor(color)
+            }
+            view.draw(canvas)
+            bitmap
+        } catch (e: Exception) {
+            android.util.Log.e("ScheduleAdapter", "Ошибка при создании bitmap из view", e)
+            null
+        }
+    }
+
+    private fun animateArc(previousArc: View, nextArc: View) {
+        if (!animationsEnabled) {
+            previousArc.alpha = 0f
+            nextArc.alpha = 1f
+            return
+        }
+
+        previousArc.alpha = 1f
+        nextArc.alpha = 0f
+
+        ValueAnimator.ofFloat(0f, 1f).apply {
+            duration = 500
+            interpolator = DecelerateInterpolator()
+            addUpdateListener { animator ->
+                val progress = animator.animatedValue as Float
+                previousArc.alpha = 1f - progress
+                nextArc.alpha = progress
+            }
+            start()
+        }
     }
 }

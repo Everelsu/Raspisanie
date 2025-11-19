@@ -25,7 +25,7 @@ class SettingsActivity : AppCompatActivity() {
     private var easterEggClickCount = 0
     private var lastClickTime = 0L
     private val easterEggNames = listOf(
-        "@Serpartine", "@kameko4", "Ever", "Everelsu", "Durov",
+        "@Serpartine", "@kameko4", "@KIR", "Ever", "Everelsu", "Durov",
         "Stalin", "Lenin", "Владимир", "ВОЛОДЯ", "Егор",
         "ВАЛЕРА", "Wplace", "SVO", "ZZZ", "Goida", "КАЛЛда?",
     )
@@ -40,6 +40,11 @@ class SettingsActivity : AppCompatActivity() {
         binding = ActivitySettingsBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
+        setSupportActionBar(binding.toolbar)
+        supportActionBar?.setDisplayHomeAsUpEnabled(true)
+        binding.toolbar.setNavigationOnClickListener { finish() }
+        binding.toolbar.title = getString(R.string.settings_title)
+
         ViewCompat.setOnApplyWindowInsetsListener(binding.root) { v, insets ->
             val systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
             v.setPadding(systemBars.left, systemBars.top, systemBars.right, systemBars.bottom)
@@ -48,7 +53,6 @@ class SettingsActivity : AppCompatActivity() {
 
         prefs = PreferencesManager(this)
         
-        setupToolbar()
         setupSwitches()
         setupAdditionalSettings()
         setupCollegeSelection()
@@ -62,8 +66,7 @@ class SettingsActivity : AppCompatActivity() {
         // Restore scroll position after layout
         if (savedScrollPosition > 0) {
             binding.root.post {
-                val scrollView = binding.root.findViewById<androidx.core.widget.NestedScrollView>(R.id.nestedScrollView)
-                scrollView?.scrollTo(0, savedScrollPosition)
+                binding.nestedScrollView.scrollTo(0, savedScrollPosition)
                 savedScrollPosition = 0 // Reset after restore
             }
         }
@@ -72,10 +75,7 @@ class SettingsActivity : AppCompatActivity() {
     override fun onSaveInstanceState(outState: Bundle) {
         super.onSaveInstanceState(outState)
         // Save scroll position if NestedScrollView exists
-        val scrollView = findViewById<androidx.core.widget.NestedScrollView>(R.id.nestedScrollView)
-        scrollView?.let {
-            outState.putInt("scroll_position", it.scrollY)
-        }
+        outState.putInt("scroll_position", binding.nestedScrollView.scrollY)
     }
     
     override fun onRestoreInstanceState(savedInstanceState: Bundle) {
@@ -91,8 +91,8 @@ class SettingsActivity : AppCompatActivity() {
         if (prefs.theme == PreferencesManager.THEME_NOTHING) {
             try {
                 val ndotFont = resources.getFont(R.font.ndot)
-                binding.root.post {
-                    applyFontRecursive(binding.root, ndotFont)
+                binding.nestedScrollView.post {
+                    applyFontRecursive(binding.nestedScrollView, ndotFont)
                 }
             } catch (e: Exception) {
                 // Fallback
@@ -113,12 +113,7 @@ class SettingsActivity : AppCompatActivity() {
         }
     }
 
-    private fun setupToolbar() {
-        binding.toolbar.setNavigationOnClickListener {
-            finish()
-        }
-    }
-    
+
     private fun setupCollegeSelection() {
         val colleges = listOf(
             "ЧТОТиБ" to PreferencesManager.COLLEGE_CHTOTIB,
@@ -669,19 +664,85 @@ class SettingsActivity : AppCompatActivity() {
     }
     
     private fun showUpdateDialog(versionInfo: AppVersionInfo) {
-        val builder = androidx.appcompat.app.AlertDialog.Builder(this)
-        builder.setTitle("Доступно обновление")
-        builder.setMessage("Версия ${versionInfo.versionName}\n\n${versionInfo.changelog ?: "Обновления и улучшения"}")
-        builder.setPositiveButton("Обновить") { _, _ ->
-            // Запустить установку обновления
-            if (versionInfo.downloadUrl != null) {
-                AppUpdateManager.downloadAndInstall(this, versionInfo.downloadUrl)
+        val context = this
+        
+        // Создаем кастомный layout для диалога
+        val scrollView = android.widget.ScrollView(context).apply {
+            layoutParams = android.view.ViewGroup.LayoutParams(
+                android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                android.view.ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+        }
+        val textView = android.widget.TextView(context).apply {
+            setPadding(48, 32, 48, 32)
+            textSize = 14f
+            layoutParams = android.view.ViewGroup.LayoutParams(
+                android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                android.view.ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+        }
+        scrollView.addView(textView)
+        
+        // Инициализируем Markwon с поддержкой изображений и ссылок
+        val markwon = io.noties.markwon.Markwon.builder(context)
+            .usePlugin(io.noties.markwon.image.glide.GlideImagesPlugin.create(context))
+            .usePlugin(io.noties.markwon.linkify.LinkifyPlugin.create())
+            .build()
+        
+        // Формируем текст для отображения
+        val changelogText = versionInfo.changelog ?: "Обновления и улучшения"
+        val fullText = "## Версия ${versionInfo.versionName}\n\n$changelogText"
+        
+        // Рендерим Markdown
+        markwon.setMarkdown(textView, fullText)
+        
+        val builder = com.google.android.material.dialog.MaterialAlertDialogBuilder(context)
+            .setTitle("Доступно обновление")
+            .setView(scrollView)
+            .setPositiveButton("Обновить") { _, _ ->
+                // Запустить установку обновления
+                if (versionInfo.downloadUrl != null) {
+                    AppUpdateManager.downloadAndInstall(context, versionInfo.downloadUrl, versionInfo.versionName)
+                } else {
+                    android.widget.Toast.makeText(context, "Ссылка на скачивание недоступна", android.widget.Toast.LENGTH_SHORT).show()
+                }
+            }
+            .setNegativeButton("Позже", null)
+            .setNeutralButton("Поделиться") { _, _ ->
+                shareUpdateInfo(versionInfo)
+            }
+        
+        builder.show()
+    }
+    
+    private fun shareUpdateInfo(versionInfo: AppVersionInfo) {
+        val shareText = buildString {
+            append("Доступна новая версия приложения Расписание!\n\n")
+            append("Версия: ${versionInfo.versionName}\n\n")
+            if (versionInfo.changelog != null) {
+                // Убираем Markdown форматирование для текстового шаринга
+                val plainText = versionInfo.changelog
+                    .replace(Regex("!\\[.*?\\]\\(.*?\\)"), "") // Убираем изображения
+                    .replace(Regex("\\[([^\\]]+)\\]\\([^)]+\\)"), "$1") // Преобразуем ссылки в текст
+                    .replace(Regex("#+\\s*"), "") // Убираем заголовки
+                    .replace(Regex("\\*\\*([^*]+)\\*\\*"), "$1") // Убираем жирный текст
+                    .replace(Regex("\\*([^*]+)\\*"), "$1") // Убираем курсив
+                    .replace(Regex("`([^`]+)`"), "$1") // Убираем код
+                    .trim()
+                append("Изменения:\n$plainText")
             } else {
-                android.widget.Toast.makeText(this, "Ссылка на скачивание недоступна", android.widget.Toast.LENGTH_SHORT).show()
+                append("Обновления и улучшения")
             }
         }
-        builder.setNegativeButton("Позже", null)
-        builder.show()
+        
+        val shareIntent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+            type = "text/plain"
+            putExtra(android.content.Intent.EXTRA_SUBJECT, "Обновление приложения Расписание")
+            putExtra(android.content.Intent.EXTRA_TEXT, shareText)
+        }
+        
+        val chooser = android.content.Intent.createChooser(shareIntent, "Поделиться обновлением")
+        startActivity(chooser)
     }
     
     private fun setupAppInfo() {
@@ -708,6 +769,14 @@ class SettingsActivity : AppCompatActivity() {
         authorName?.setOnClickListener {
             openAuthorProfile()
         }
+        
+        // Установить имя второго разработчика
+        val developer2Name = findViewById<android.widget.TextView>(R.id.developer2Name)
+        developer2Name?.text = getString(R.string.developer_2)
+        
+        // Установить имя бета-тестера
+        val betaTesterName = findViewById<android.widget.TextView>(R.id.betaTesterName)
+        betaTesterName?.text = getString(R.string.beta_tester_name)
         
         // Установить обработчик клика на кнопку патчнотов
         val changelogButton = findViewById<android.widget.TextView>(R.id.changelogButton)

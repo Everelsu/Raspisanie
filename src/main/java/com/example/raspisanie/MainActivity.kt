@@ -1,28 +1,21 @@
 package com.example.raspisanie
 
+import android.content.Intent
 import android.os.Bundle
 import android.util.Log
+import android.content.pm.PackageManager
+import android.Manifest
 import android.view.View
-import android.view.ViewGroup
-import android.widget.TextView
 import androidx.activity.enableEdgeToEdge
-import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
-import androidx.lifecycle.lifecycleScope
-import androidx.lifecycle.ViewModelProvider
-import androidx.recyclerview.widget.LinearLayoutManager
-import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
-import com.example.raspisanie.adapter.ScheduleAdapter
-import com.example.raspisanie.data.AutoRefreshManager
+import androidx.fragment.app.Fragment
 import com.example.raspisanie.data.PreferencesManager
 import com.example.raspisanie.databinding.ActivityMainBinding
-import com.example.raspisanie.viewmodel.ScheduleViewModel
-import com.example.raspisanie.viewmodel.ScheduleViewModelFactory
-import com.example.raspisanie.widget.CurrentLessonWidgetProvider
-import com.example.raspisanie.widget.DayScheduleWidgetProvider
-import kotlinx.coroutines.launch
+import com.example.raspisanie.util.NotificationPermissionHelper
+import com.google.firebase.messaging.FirebaseMessaging
 
 class MainActivity : AppCompatActivity() {
     companion object {
@@ -30,300 +23,270 @@ class MainActivity : AppCompatActivity() {
     }
     
     private lateinit var binding: ActivityMainBinding
-    private val viewModel: ScheduleViewModel by lazy {
-        ViewModelProvider(this, ScheduleViewModelFactory(applicationContext))[ScheduleViewModel::class.java]
-    }
-    private lateinit var adapter: ScheduleAdapter
     private lateinit var prefs: PreferencesManager
     private var currentThemeKey: String = ""
-    private var lastKnownGroupFile: String = ""
+    private var bottomInset: Int = 0
+    private var bottomNavBasePadding = intArrayOf(0, 0, 0, 0)
+    private var fragmentContainerBasePadding = intArrayOf(0, 0, 0, 0)
 
     override fun onCreate(savedInstanceState: Bundle?) {
-        prefs = PreferencesManager(this)
-        
-        // Проверить первый запуск
-        prefs.checkFirstLaunch()
-        
-        currentThemeKey = prefs.theme
-        applyTheme(currentThemeKey)
-        
-        super.onCreate(savedInstanceState)
-        
-        // Инициализировать последнюю известную группу
-        lastKnownGroupFile = prefs.selectedGroupFile
-        enableEdgeToEdge()
-        
-        binding = ActivityMainBinding.inflate(layoutInflater)
-        setContentView(binding.root)
-        
-        Log.d(TAG, "MainActivity создана")
-
-        ViewCompat.setOnApplyWindowInsetsListener(binding.root) { v, insets ->
-            val systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
-            v.setPadding(systemBars.left, systemBars.top, systemBars.right, systemBars.bottom)
-            insets
-        }
-
-        setupRecyclerView()
-        setupSwipeRefresh()
-        applyNothingFontIfNeeded()
-        observeViewModel()
-        
-        // Setup auto refresh
-        if (prefs.autoRefreshEnabled) {
-            AutoRefreshManager.setupAutoRefresh(this)
-        }
-        
-        // Setup app auto-update check
-        if (prefs.appAutoUpdateEnabled) {
-            com.example.raspisanie.data.AppUpdateManager.setupAutoUpdateCheck(this)
-        }
-        
-        // Update widgets on startup
-        updateWidgets()
-        
-        // Очистить старые APK файлы обновлений
-        com.example.raspisanie.data.AppUpdateManager.cleanupOldApkFiles(this)
-        
-        // Проверить обновления при запуске (фоново, без уведомления если версия актуальна)
-        com.example.raspisanie.data.AppUpdateManager.checkForUpdatesOnStartup(this)
-        
-        // Загрузить расписание для выбранной группы при первом запуске
-        // Только если группа выбрана
-        if (viewModel.schedule.value.isEmpty() && prefs.isGroupSelected()) {
-            viewModel.loadSchedule(prefs.selectedGroupFile, prefs.college)
-        } else if (viewModel.schedule.value.isEmpty() && !prefs.isGroupSelected()) {
-            // Если группа не выбрана, показать сообщение
-            binding.emptyState.visibility = android.view.View.VISIBLE
-        }
-    }
-    
-    private fun updateWidgets() {
         try {
-            val appWidgetManager = android.appwidget.AppWidgetManager.getInstance(this)
+            prefs = PreferencesManager(this)
             
-            // Update CurrentLesson widgets
-            try {
-                val currentLessonWidgetIds = appWidgetManager.getAppWidgetIds(
-                    android.content.ComponentName(this, CurrentLessonWidgetProvider::class.java)
-                )
-                if (currentLessonWidgetIds.isNotEmpty()) {
-                    for (widgetId in currentLessonWidgetIds) {
-                        try {
-                            CurrentLessonWidgetProvider.updateAppWidget(this, appWidgetManager, widgetId)
-                        } catch (e: Exception) {
-                            Log.w(TAG, "Не удалось обновить виджет текущего урока $widgetId: ${e.message}")
-                        }
-                    }
-                }
-            } catch (e: Exception) {
-                Log.w(TAG, "Ошибка при обновлении виджетов текущего урока: ${e.message}")
-            }
+            // Проверить первый запуск
+            prefs.checkFirstLaunch()
             
-            // Update DaySchedule widgets
-            try {
-                val dayScheduleWidgetIds = appWidgetManager.getAppWidgetIds(
-                    android.content.ComponentName(this, DayScheduleWidgetProvider::class.java)
-                )
-                if (dayScheduleWidgetIds.isNotEmpty()) {
-                    for (widgetId in dayScheduleWidgetIds) {
-                        try {
-                            DayScheduleWidgetProvider.updateAppWidget(this, appWidgetManager, widgetId)
-                        } catch (e: Exception) {
-                            Log.w(TAG, "Не удалось обновить виджет расписания дня $widgetId: ${e.message}")
-                        }
-                    }
-                }
-            } catch (e: Exception) {
-                Log.w(TAG, "Ошибка при обновлении виджетов расписания дня: ${e.message}")
-            }
-        } catch (e: Exception) {
-            Log.w(TAG, "Общая ошибка при обновлении виджетов: ${e.message}", e)
-        }
-    }
-    
-    private fun applyNothingFontIfNeeded() {
-        if (prefs.theme == PreferencesManager.THEME_NOTHING) {
-            // Apply Nothing font to all text views
-            try {
-                val ndotFont = resources.getFont(R.font.ndot)
-                binding.root.post {
-                    applyFontRecursive(binding.root, ndotFont)
-                }
-            } catch (e: Exception) {
-                // Fallback to inter if ndot not available
+            currentThemeKey = prefs.theme
+            applyTheme(currentThemeKey)
+            
+            super.onCreate(savedInstanceState)
+            
+            enableEdgeToEdge()
+            
+            binding = ActivityMainBinding.inflate(layoutInflater)
+            setContentView(binding.root)
+            
+            maybeRequestNotificationPermission()
+            initFirebaseMessaging()
+            bottomNavBasePadding = intArrayOf(
+                binding.bottomNavigation.paddingLeft,
+                binding.bottomNavigation.paddingTop,
+                binding.bottomNavigation.paddingRight,
+                binding.bottomNavigation.paddingBottom
+            )
+            fragmentContainerBasePadding = intArrayOf(
+                binding.fragmentContainer.paddingLeft,
+                binding.fragmentContainer.paddingTop,
+                binding.fragmentContainer.paddingRight,
+                binding.fragmentContainer.paddingBottom
+            )
+            
+            Log.d(TAG, "MainActivity создана")
+
+            ViewCompat.setOnApplyWindowInsetsListener(binding.root) { v, insets ->
                 try {
-                    val fallbackFont = resources.getFont(R.font.inter_regular)
-                    binding.root.post {
-                        applyFontRecursive(binding.root, fallbackFont)
-                    }
-                } catch (e2: Exception) {
-                    // Ignore font loading errors
+                    val systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
+                    v.setPadding(systemBars.left, systemBars.top, systemBars.right, 0)
+                    bottomInset = systemBars.bottom
+                    applyInsets()
+                    insets
+                } catch (e: Exception) {
+                    Log.e(TAG, "Ошибка при установке window insets: ${e.message}", e)
+                    insets
                 }
             }
-        }
-    }
-    
-    private fun applyFontRecursive(view: View, font: android.graphics.Typeface) {
-        when (view) {
-            is TextView -> {
-                view.typeface = font
+
+            setupBottomNavigation()
+            
+            if (savedInstanceState == null) {
+                supportFragmentManager.beginTransaction()
+                    .replace(R.id.fragmentContainer, ScheduleFragment())
+                    .commit()
+                binding.bottomNavigation.selectedItemId = R.id.navigation_schedule
             }
-            is ViewGroup -> {
-                for (i in 0 until view.childCount) {
-                    applyFontRecursive(view.getChildAt(i), font)
+            
+            // Setup app auto-update check
+            try {
+                if (prefs.appAutoUpdateEnabled) {
+                    com.example.raspisanie.data.AppUpdateManager.setupAutoUpdateCheck(this)
                 }
+            } catch (e: Exception) {
+                Log.e(TAG, "Ошибка при настройке автообновления приложения: ${e.message}", e)
             }
+            
+            // Очистить старые APK файлы обновлений
+            try {
+                com.example.raspisanie.data.AppUpdateManager.cleanupOldApkFiles(this)
+            } catch (e: Exception) {
+                Log.e(TAG, "Ошибка при очистке старых APK: ${e.message}", e)
+            }
+            
+            // Проверить обновления при запуске (фоново, без уведомления если версия актуальна)
+            try {
+                com.example.raspisanie.data.AppUpdateManager.checkForUpdatesOnStartup(this)
+            } catch (e: Exception) {
+                Log.e(TAG, "Ошибка при проверке обновлений: ${e.message}", e)
+            }
+            
+            // Логика загрузки расписания теперь в ScheduleFragment
+        } catch (e: Exception) {
+            Log.e(TAG, "Критическая ошибка в onCreate: ${e.message}", e)
+            // Ошибки теперь обрабатываются в ScheduleFragment
         }
     }
     
     override fun onResume() {
         super.onResume()
         
-        // Проверить изменение темы
-        val savedTheme = prefs.theme
-        if (savedTheme != currentThemeKey) {
-            currentThemeKey = savedTheme
-            // При смене темы только обновляем UI, не загружаем заново данные
-            recreate()
-            return  // recreate() пересоздаст Activity, поэтому выходим
-        }
-        
-        // Проверить изменение группы
-        val selectedGroup = prefs.selectedGroupFile
-        
-        // Если группа выбрана
-        if (prefs.isGroupSelected()) {
-            if (lastKnownGroupFile.isEmpty()) {
-                lastKnownGroupFile = selectedGroup
+        try {
+            if (!::prefs.isInitialized) {
+                return
             }
-            
-            // Если группа изменилась - загрузить новое расписание
-            if (selectedGroup != lastKnownGroupFile) {
-                lastKnownGroupFile = selectedGroup
-                viewModel.loadSchedule(selectedGroup, prefs.college)
-            } else if (viewModel.schedule.value.isEmpty()) {
-                // Если данных нет - загрузить расписание
-                viewModel.loadSchedule(selectedGroup, prefs.college)
-            } else {
-                // Просто обновить адаптер для отражения изменений настроек (показ времени, перерывов и т.д.)
-                // Это НЕ вызывает загрузку данных, только перерисовку UI
-                // Принудительно обновляем прогресс при изменении настроек
-                adapter.forceUpdateProgress()
-            }
-        } else {
-            // Группа не выбрана - очистить расписание
-            if (viewModel.schedule.value.isNotEmpty()) {
-                adapter.updateSchedules(emptyList())
-            }
-        }
-    }
 
-    private fun setupRecyclerView() {
-        adapter = ScheduleAdapter(context = this)
-        binding.recyclerView.layoutManager = LinearLayoutManager(this)
-        binding.recyclerView.adapter = adapter
-        
-        // Add settings button/icon
-        binding.toolbar.setOnMenuItemClickListener { item ->
-            when (item.itemId) {
-                R.id.action_settings -> {
-                    val intent = android.content.Intent(this, SettingsActivity::class.java)
-                    startActivity(intent)
-                    true
+            // Проверить изменение темы
+            val savedTheme = prefs.theme
+            if (savedTheme != currentThemeKey) {
+                currentThemeKey = savedTheme
+                try {
+                    recreate()
+                } catch (e: Exception) {
+                    Log.e(TAG, "Ошибка при recreate: ${e.message}", e)
                 }
-                else -> false
+                return
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Критическая ошибка в onResume: ${e.message}", e)
+        }
+    }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == NotificationPermissionHelper.REQUEST_CODE_NOTIFICATIONS) {
+            val granted = grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED
+            Log.d(TAG, "Notification permission granted: $granted")
+            if (::prefs.isInitialized) {
+                prefs.scheduleNotificationsEnabled = granted
+                if (granted) {
+                    initFirebaseMessaging()
+                }
             }
         }
     }
 
-    private fun setupSwipeRefresh() {
-        binding.swipeRefresh.setOnRefreshListener {
-            if (prefs.isGroupSelected()) {
-                viewModel.refreshSchedule(prefs.selectedGroupFile, prefs.college)
-            } else {
-                binding.swipeRefresh.isRefreshing = false
+    private fun maybeRequestNotificationPermission() {
+        if (!::prefs.isInitialized) return
+        if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.TIRAMISU) {
+            return
+        }
+
+        val granted = ContextCompat.checkSelfPermission(
+            this,
+            Manifest.permission.POST_NOTIFICATIONS
+        ) == PackageManager.PERMISSION_GRANTED
+
+        if (granted) {
+            if (!prefs.scheduleNotificationsEnabled) {
+                prefs.scheduleNotificationsEnabled = true
             }
+            return
         }
-        
-        // Configure colors for refresh indicator based on theme
-        val refreshColor = when (prefs.theme) {
-            PreferencesManager.THEME_LIGHT -> resources.getColor(android.R.color.black, theme)
-            PreferencesManager.THEME_DARK -> resources.getColor(android.R.color.white, theme)
-            PreferencesManager.THEME_NOTHING -> resources.getColor(R.color.primaryNothing, theme)
-            PreferencesManager.THEME_PURPLE -> resources.getColor(R.color.system_colorPrimary, theme) // Purple
-            PreferencesManager.THEME_HALLOWEEN -> resources.getColor(R.color.custom_colorPrimary, theme) // Halloween orange
-            PreferencesManager.THEME_GREEN -> resources.getColor(R.color.green_colorPrimary, theme) // Green
-            PreferencesManager.THEME_NEW_YEAR -> resources.getColor(R.color.newyear_colorPrimary, theme) // New Year green
-            else -> resources.getColor(android.R.color.black, theme)
+
+        if (prefs.scheduleNotificationsEnabled) {
+            NotificationPermissionHelper.requestIfNeeded(this)
         }
-        binding.swipeRefresh.setColorSchemeColors(refreshColor)
     }
 
-    private fun observeViewModel() {
-        lifecycleScope.launch {
-            viewModel.schedule.collect { schedules ->
-                Log.d(TAG, "Получено расписаний: ${schedules.size}")
-                if (schedules.isNotEmpty()) {
-                    adapter.updateSchedules(schedules)
-                    binding.emptyState.visibility = android.view.View.GONE
-                    binding.errorText.visibility = android.view.View.GONE
-                    binding.recyclerView.visibility = android.view.View.VISIBLE
-                    Log.d(TAG, "Расписание отображается, всего дней: ${schedules.size}")
-                    
-                    // Update widgets when schedule changes
-                    updateWidgets()
-                } else {
-                    binding.recyclerView.visibility = android.view.View.GONE
-                    if (viewModel.error.value == null) {
-                        binding.emptyState.visibility = android.view.View.VISIBLE
-                        binding.errorText.visibility = android.view.View.GONE
-                        Log.d(TAG, "Расписание пустое, показываю состояние загрузки")
+    private fun initFirebaseMessaging() {
+        try {
+            if (!prefs.scheduleNotificationsEnabled) {
+                return
+            }
+
+            FirebaseMessaging.getInstance().token.addOnCompleteListener { task ->
+                if (!task.isSuccessful) {
+                    Log.e(TAG, "Failed to get FCM token", task.exception)
+                    return@addOnCompleteListener
+                }
+
+                val token = task.result
+                if (!token.isNullOrEmpty()) {
+                    if (prefs.fcmToken != token) {
+                        prefs.fcmToken = token
                     }
+                    Log.d(TAG, "FCM token: $token")
                 }
             }
-        }
 
-        lifecycleScope.launch {
-            viewModel.isLoading.collect { isLoading ->
-                binding.swipeRefresh.isRefreshing = isLoading
-                if (isLoading) {
-                    binding.emptyState.visibility = android.view.View.GONE
-                    binding.errorText.visibility = android.view.View.GONE
-                }
-            }
-        }
-
-        lifecycleScope.launch {
-            viewModel.error.collect { error ->
-                if (error != null) {
-                    Log.e(TAG, "Ошибка загрузки: $error")
-                    binding.errorText.text = "Ошибка: $error\n\nПотяните вниз для обновления"
-                    binding.errorText.visibility = android.view.View.VISIBLE
-                    binding.emptyState.visibility = android.view.View.GONE
-                    binding.recyclerView.visibility = android.view.View.GONE
-                } else {
-                    binding.errorText.visibility = android.view.View.GONE
-                }
-            }
+        } catch (e: Exception) {
+            Log.e(TAG, "initFirebaseMessaging error: ${e.message}", e)
         }
     }
 
 
     private fun applyTheme(themeKey: String) {
-        val themeResId = when (themeKey) {
-            PreferencesManager.THEME_LIGHT -> R.style.Theme_Raspisanie_Light
-            PreferencesManager.THEME_DARK -> R.style.Theme_Raspisanie_Dark
-            PreferencesManager.THEME_PURPLE -> R.style.Theme_Raspisanie_System
-            PreferencesManager.THEME_HALLOWEEN -> R.style.Theme_Raspisanie_Custom
-            PreferencesManager.THEME_NOTHING -> R.style.Theme_Raspisanie_Nothing
-            PreferencesManager.THEME_GREEN -> R.style.Theme_Raspisanie_Green
-            PreferencesManager.THEME_NEW_YEAR -> R.style.Theme_Raspisanie_NewYear
-            else -> {
-                // Fallback - просто фиолетовая тема
-                R.style.Theme_Raspisanie_System
+        try {
+            val themeResId = when (themeKey) {
+                PreferencesManager.THEME_LIGHT -> R.style.Theme_Raspisanie_Light
+                PreferencesManager.THEME_DARK -> R.style.Theme_Raspisanie_Dark
+                PreferencesManager.THEME_PURPLE -> R.style.Theme_Raspisanie_System
+                PreferencesManager.THEME_HALLOWEEN -> R.style.Theme_Raspisanie_Custom
+                PreferencesManager.THEME_NOTHING -> R.style.Theme_Raspisanie_Nothing
+                PreferencesManager.THEME_GREEN -> R.style.Theme_Raspisanie_Green
+                PreferencesManager.THEME_NEW_YEAR -> R.style.Theme_Raspisanie_NewYear
+                else -> {
+                    // Fallback - просто фиолетовая тема
+                    R.style.Theme_Raspisanie_System
+                }
+            }
+            setTheme(themeResId)
+        } catch (e: Exception) {
+            Log.e(TAG, "Ошибка при применении темы: ${e.message}", e)
+            // Применить тему по умолчанию
+            try {
+                setTheme(R.style.Theme_Raspisanie_System)
+            } catch (e2: Exception) {
+                Log.e(TAG, "Критическая ошибка при применении темы по умолчанию: ${e2.message}", e2)
             }
         }
-        setTheme(themeResId)
+    }
+    
+    override fun onDestroy() {
+        super.onDestroy()
+    }
+    
+    override fun onPause() {
+        super.onPause()
+        // Остановить обновления виджетов для экономии ресурсов
+        // Виджеты будут обновляться при необходимости через WorkManager
+    }
+    
+    private fun setupBottomNavigation() {
+        binding.bottomNavigation.visibility = View.VISIBLE
+        binding.bottomNavigation.setOnItemSelectedListener { item ->
+            val fragment: Fragment = when (item.itemId) {
+                R.id.navigation_schedule -> ScheduleFragment()
+                R.id.navigation_statistics -> StatisticsFragment()
+                R.id.navigation_settings -> SettingsFragment()
+                else -> ScheduleFragment()
+            }
+            
+            supportFragmentManager.beginTransaction()
+                .replace(R.id.fragmentContainer, fragment)
+                .commit()
+            
+            true
+        }
+    }
+
+    fun switchToSettings() {
+        binding.bottomNavigation.selectedItemId = R.id.navigation_settings
+    }
+
+    fun switchToSchedule() {
+        binding.bottomNavigation.selectedItemId = R.id.navigation_schedule
+    }
+
+    fun switchToStatistics() {
+        binding.bottomNavigation.selectedItemId = R.id.navigation_statistics
+    }
+
+    private fun applyInsets() {
+        if (!::binding.isInitialized) return
+        binding.bottomNavigation.setPadding(
+            bottomNavBasePadding[0],
+            bottomNavBasePadding[1],
+            bottomNavBasePadding[2],
+            bottomNavBasePadding[3] + bottomInset
+        )
+        binding.fragmentContainer.setPadding(
+            fragmentContainerBasePadding[0],
+            fragmentContainerBasePadding[1],
+            fragmentContainerBasePadding[2],
+            fragmentContainerBasePadding[3]
+        )
     }
 }

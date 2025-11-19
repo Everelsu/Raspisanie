@@ -1,68 +1,37 @@
 <?xml version="1.0" encoding="utf-8"?>
-<androidx.swiperefreshlayout.widget.SwipeRefreshLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
-    android:id="@+id/swipeRefresh"
+    xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
-    android:layout_height="match_parent">
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="?android:colorBackground"
+    android:fitsSystemWindows="true"
+    tools:context=".MainActivity">
 
-    <androidx.constraintlayout.widget.ConstraintLayout
+    <!-- Контейнер для фрагментов -->
+    <androidx.fragment.app.FragmentContainerView
+        android:id="@+id/fragmentContainer"
         android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:background="?android:colorBackground">
+        android:layout_height="0dp"
+        android:layout_weight="1" />
 
-        <com.google.android.material.appbar.MaterialToolbar
-            android:id="@+id/toolbar"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:background="?android:colorBackground"
-            app:title="Расписание"
-            app:titleTextColor="?android:textColorPrimary"
-            app:menu="@menu/main_menu"
-            app:layout_constraintEnd_toEndOf="parent"
-            app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintTop_toTopOf="parent" />
+    <!-- Нижняя навигационная панель -->
+    <com.google.android.material.bottomnavigation.BottomNavigationView
+        android:id="@+id/bottomNavigation"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="?android:colorBackground"
+        android:elevation="8dp"
+        android:minHeight="56dp"
+        android:paddingTop="4dp"
+        android:paddingBottom="4dp"
+        app:itemIconSize="22dp"
+        app:itemIconTint="@color/bottom_nav_selector"
+        app:itemTextColor="@color/bottom_nav_selector"
+        app:itemRippleColor="?android:attr/colorControlHighlight"
+        app:menu="@menu/bottom_navigation"
+        app:labelVisibilityMode="labeled"
+        app:itemHorizontalTranslationEnabled="false" />
 
-        <androidx.recyclerview.widget.RecyclerView
-            android:id="@+id/recyclerView"
-            android:layout_width="0dp"
-            android:layout_height="0dp"
-            android:paddingTop="16dp"
-            android:paddingBottom="16dp"
-            android:clipToPadding="false"
-            app:layout_constraintBottom_toBottomOf="parent"
-            app:layout_constraintEnd_toEndOf="parent"
-            app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintTop_toBottomOf="@id/toolbar" />
-
-        <TextView
-            android:id="@+id/emptyState"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="@string/select_group_in_settings"
-            android:textSize="16sp"
-            android:textColor="?android:textColorSecondary"
-            android:fontFamily="@font/inter"
-            android:gravity="center"
-            android:visibility="gone"
-            app:layout_constraintBottom_toBottomOf="parent"
-            app:layout_constraintEnd_toEndOf="parent"
-            app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintTop_toTopOf="parent" />
-
-        <TextView
-            android:id="@+id/errorText"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Ошибка загрузки"
-            android:textSize="16sp"
-            android:textColor="@color/error"
-            android:fontFamily="@font/inter"
-            android:visibility="gone"
-            app:layout_constraintBottom_toBottomOf="parent"
-            app:layout_constraintEnd_toEndOf="parent"
-            app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintTop_toTopOf="parent" />
-
-    </androidx.constraintlayout.widget.ConstraintLayout>
-
-</androidx.swiperefreshlayout.widget.SwipeRefreshLayout>
+</LinearLayout>

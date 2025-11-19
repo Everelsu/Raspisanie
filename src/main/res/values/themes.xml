@@ -64,7 +64,10 @@
         <!-- Шрифт -->
         <item name="android:fontFamily">@font/inter</item>
         
-        <!-- Цвет текста - через DayNight -->
+        <!-- Цвет текста - явно задаем белый для фиолетовой темы для лучшей читаемости -->
+        <item name="android:textColor">@color/system_textColorPrimary</item>
+        <item name="android:textColorPrimary">@color/system_textColorPrimary</item>
+        <item name="android:textColorSecondary">@color/system_textColorSecondary</item>
         
         <!-- Lesson number colors - унифицированы с другими темами -->
         <!-- Используем условные цвета для light/dark режимов через Material3 DayNight -->

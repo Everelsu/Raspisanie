@@ -5,8 +5,9 @@ import android.content.SharedPreferences
 import android.util.Log
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
-import java.text.SimpleDateFormat
-import java.util.*
+import java.net.URLDecoder
+import java.net.URLEncoder
+import java.nio.charset.StandardCharsets
 
 class ScheduleCache(context: Context) {
     private val prefs: SharedPreferences = 
@@ -14,14 +15,39 @@ class ScheduleCache(context: Context) {
     private val gson = Gson()
     
     companion object {
-        private const val CACHE_PREFS_NAME = "schedule_cache"
-        private const val KEY_SCHEDULE_CACHE = "schedule_cache_data"
-        private const val KEY_CACHE_TIMESTAMP = "cache_timestamp"
-        private const val KEY_GROUP_FILE = "cached_group_file"
-        private const val KEY_COLLEGE = "cached_college"
-        private const val CACHE_EXPIRY_HOURS = 24 // Cache expires after 24 hours
-        
+        private const val CACHE_PREFS_NAME = "schedule_cache_v2"
+        private const val CACHE_EXPIRY_HOURS = 24 * 7 // Cache expires after 7 days
         private const val TAG = "ScheduleCache"
+        
+        // Префиксы для ключей
+        private const val PREFIX_SCHEDULE = "schedule_"
+        private const val PREFIX_TIMESTAMP = "timestamp_"
+        private const val PREFIX_LAST_GROUP = "last_group_"
+        private const val PREFIX_LAST_COLLEGE = "last_college_"
+    }
+    
+    /**
+     * Создать уникальный ключ для комбинации college и groupFile
+     */
+    private fun createCacheKey(college: String, groupFile: String): String {
+        // Используем URL encoding для безопасного создания ключа
+        val encodedCollege = URLEncoder.encode(college, StandardCharsets.UTF_8.toString())
+        val encodedGroupFile = URLEncoder.encode(groupFile, StandardCharsets.UTF_8.toString())
+        return "${encodedCollege}_${encodedGroupFile}"
+    }
+    
+    /**
+     * Получить ключ для хранения расписания
+     */
+    private fun getScheduleKey(college: String, groupFile: String): String {
+        return PREFIX_SCHEDULE + createCacheKey(college, groupFile)
+    }
+    
+    /**
+     * Получить ключ для хранения timestamp
+     */
+    private fun getTimestampKey(college: String, groupFile: String): String {
+        return PREFIX_TIMESTAMP + createCacheKey(college, groupFile)
     }
     
     /**
@@ -33,25 +59,49 @@ class ScheduleCache(context: Context) {
             return
         }
         
+        if (schedules.isEmpty()) {
+            Log.w(TAG, "Попытка кэширования пустого расписания для $groupFile/$college")
+            return
+        }
+        
         try {
             val type = object : TypeToken<List<DaySchedule>>() {}.type
             val json = gson.toJson(schedules, type)
             
-            // Use commit() to ensure data is written immediately for widget stability
+            if (json.isBlank()) {
+                Log.e(TAG, "Ошибка: JSON сериализация вернула пустую строку")
+                return
+            }
+            
+            val scheduleKey = getScheduleKey(college, groupFile)
+            val timestampKey = getTimestampKey(college, groupFile)
+            val timestamp = System.currentTimeMillis()
+            
+            // Используем commit() для гарантированного сохранения
             val success = prefs.edit()
-                .putString(KEY_SCHEDULE_CACHE, json)
-                .putLong(KEY_CACHE_TIMESTAMP, System.currentTimeMillis())
-                .putString(KEY_GROUP_FILE, groupFile)
-                .putString(KEY_COLLEGE, college)
+                .putString(scheduleKey, json)
+                .putLong(timestampKey, timestamp)
+                .putString(PREFIX_LAST_GROUP, groupFile)
+                .putString(PREFIX_LAST_COLLEGE, college)
                 .commit()
             
             if (success) {
-                Log.d(TAG, "Расписание закэшировано: ${schedules.size} дней для группы $groupFile")
+                Log.d(TAG, "✅ Расписание закэшировано: ${schedules.size} дней для группы $groupFile/$college")
+                Log.d(TAG, "   Ключ кэша: $scheduleKey, timestamp: $timestamp")
+                
+                // Проверка сохранения
+                val savedJson = prefs.getString(scheduleKey, null)
+                val savedTimestamp = prefs.getLong(timestampKey, 0)
+                if (savedJson != null && savedTimestamp > 0) {
+                    Log.d(TAG, "✅ Проверка: данные сохранены корректно (размер JSON: ${savedJson.length} символов)")
+                } else {
+                    Log.e(TAG, "❌ ОШИБКА: Данные не сохранились! savedJson=${savedJson != null}, savedTimestamp=$savedTimestamp")
+                }
             } else {
-                Log.e(TAG, "Не удалось сохранить расписание в кэш")
+                Log.e(TAG, "❌ Не удалось сохранить расписание в кэш (commit вернул false)")
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Ошибка при кэшировании расписания", e)
+            Log.e(TAG, "Ошибка при кэшировании расписания для $groupFile/$college", e)
         }
     }
     
@@ -60,52 +110,57 @@ class ScheduleCache(context: Context) {
      */
     fun getCachedSchedule(groupFile: String, college: String): List<DaySchedule>? {
         if (groupFile.isBlank() || college.isBlank()) {
-            Log.d(TAG, "Пустые параметры запроса кэша: groupFile=$groupFile, college=$college")
+            Log.w(TAG, "❌ Пустые параметры запроса кэша: groupFile=$groupFile, college=$college")
             return null
         }
         
         try {
-            // Проверить, что кэш для правильной группы и колледжа
-            val cachedGroupFile = prefs.getString(KEY_GROUP_FILE, "") ?: ""
-            val cachedCollege = prefs.getString(KEY_COLLEGE, "") ?: ""
+            val scheduleKey = getScheduleKey(college, groupFile)
+            val timestampKey = getTimestampKey(college, groupFile)
             
-            if (cachedGroupFile != groupFile || cachedCollege != college) {
-                Log.d(TAG, "Кэш не соответствует запрошенной группе: $groupFile/$college vs $cachedGroupFile/$cachedCollege")
+            // Проверить наличие timestamp
+            val timestamp = prefs.getLong(timestampKey, 0)
+            if (timestamp <= 0) {
+                Log.d(TAG, "❌ Кэш отсутствует для $groupFile/$college (timestamp = 0)")
                 return null
             }
             
             // Проверить срок действия кэша
-            val timestamp = prefs.getLong(KEY_CACHE_TIMESTAMP, 0)
-            if (timestamp <= 0) {
-                Log.d(TAG, "Кэш отсутствует (timestamp = 0)")
-                return null
-            }
-            
             val ageHours = (System.currentTimeMillis() - timestamp) / (1000 * 60 * 60)
-            
             if (ageHours > CACHE_EXPIRY_HOURS) {
-                Log.d(TAG, "Кэш устарел: $ageHours часов (максимум $CACHE_EXPIRY_HOURS)")
+                Log.d(TAG, "❌ Кэш устарел для $groupFile/$college: $ageHours часов (максимум $CACHE_EXPIRY_HOURS)")
+                // Удаляем устаревший кэш
+                prefs.edit()
+                    .remove(scheduleKey)
+                    .remove(timestampKey)
+                    .apply()
                 return null
             }
             
-            val json = prefs.getString(KEY_SCHEDULE_CACHE, null) ?: return null
+            // Загрузить JSON
+            val json = prefs.getString(scheduleKey, null) ?: run {
+                Log.d(TAG, "❌ Кэш отсутствует для $groupFile/$college (JSON = null)")
+                return null
+            }
+            
             if (json.isBlank()) {
-                Log.d(TAG, "Кэш пуст")
+                Log.d(TAG, "❌ Кэш пуст для $groupFile/$college (json пустой)")
                 return null
             }
             
+            // Десериализовать
             val type = object : TypeToken<List<DaySchedule>>() {}.type
             val schedules = gson.fromJson<List<DaySchedule>>(json, type)
             
             if (schedules.isNullOrEmpty()) {
-                Log.d(TAG, "Кэш содержит пустое расписание")
+                Log.d(TAG, "❌ Кэш содержит пустое расписание для $groupFile/$college")
                 return null
             }
             
-            Log.d(TAG, "Расписание загружено из кэша: ${schedules.size} дней (возраст: $ageHours часов)")
+            Log.d(TAG, "✅ Расписание загружено из кэша: ${schedules.size} дней для $groupFile/$college (возраст: $ageHours часов)")
             return schedules
         } catch (e: Exception) {
-            Log.e(TAG, "Ошибка при загрузке расписания из кэша", e)
+            Log.e(TAG, "❌ Ошибка при загрузке расписания из кэша для $groupFile/$college", e)
             return null
         }
     }
@@ -114,37 +169,125 @@ class ScheduleCache(context: Context) {
      * Проверить, есть ли валидный кэш
      */
     fun hasValidCache(groupFile: String, college: String): Boolean {
-        val cachedGroupFile = prefs.getString(KEY_GROUP_FILE, "")
-        val cachedCollege = prefs.getString(KEY_COLLEGE, "")
-        
-        if (cachedGroupFile != groupFile || cachedCollege != college) {
+        if (groupFile.isBlank() || college.isBlank()) {
             return false
         }
         
-        val timestamp = prefs.getLong(KEY_CACHE_TIMESTAMP, 0)
-        val ageHours = (System.currentTimeMillis() - timestamp) / (1000 * 60 * 60)
-        
-        return ageHours <= CACHE_EXPIRY_HOURS
+        try {
+            val timestampKey = getTimestampKey(college, groupFile)
+            val timestamp = prefs.getLong(timestampKey, 0)
+            
+            if (timestamp <= 0) {
+                return false
+            }
+            
+            val ageHours = (System.currentTimeMillis() - timestamp) / (1000 * 60 * 60)
+            return ageHours <= CACHE_EXPIRY_HOURS
+        } catch (e: Exception) {
+            Log.e(TAG, "Ошибка при проверке кэша", e)
+            return false
+        }
     }
     
     /**
-     * Очистить кэш
+     * Очистить кэш для конкретной группы
+     */
+    fun clearCacheForGroup(groupFile: String, college: String) {
+        if (groupFile.isBlank() || college.isBlank()) {
+            return
+        }
+        
+        try {
+            val scheduleKey = getScheduleKey(college, groupFile)
+            val timestampKey = getTimestampKey(college, groupFile)
+            
+            prefs.edit()
+                .remove(scheduleKey)
+                .remove(timestampKey)
+                .apply()
+            
+            Log.d(TAG, "Кэш очищен для группы $groupFile/$college")
+        } catch (e: Exception) {
+            Log.e(TAG, "Ошибка при очистке кэша", e)
+        }
+    }
+    
+    /**
+     * Очистить весь кэш
      */
     fun clearCache() {
-        prefs.edit().clear().apply()
-        Log.d(TAG, "Кэш очищен")
+        try {
+            val allKeys = prefs.all.keys
+            val editor = prefs.edit()
+            
+            // Удаляем только ключи, связанные с кэшем расписания
+            allKeys.forEach { key ->
+                if (key.startsWith(PREFIX_SCHEDULE) || 
+                    key.startsWith(PREFIX_TIMESTAMP) ||
+                    key.startsWith(PREFIX_LAST_GROUP) ||
+                    key.startsWith(PREFIX_LAST_COLLEGE)) {
+                    editor.remove(key)
+                }
+            }
+            
+            editor.apply()
+            Log.d(TAG, "Весь кэш очищен")
+        } catch (e: Exception) {
+            Log.e(TAG, "Ошибка при очистке всего кэша", e)
+        }
     }
     
     /**
-     * Получить возраст кэша в часах
+     * Получить возраст кэша в часах для конкретной группы
      */
-    fun getCacheAgeHours(): Long {
-        val timestamp = prefs.getLong(KEY_CACHE_TIMESTAMP, 0)
-        return if (timestamp > 0) {
-            (System.currentTimeMillis() - timestamp) / (1000 * 60 * 60)
-        } else {
-            -1
+    fun getCacheAgeHours(groupFile: String, college: String): Long {
+        if (groupFile.isBlank() || college.isBlank()) {
+            return -1
         }
+        
+        try {
+            val timestampKey = getTimestampKey(college, groupFile)
+            val timestamp = prefs.getLong(timestampKey, 0)
+            return if (timestamp > 0) {
+                (System.currentTimeMillis() - timestamp) / (1000 * 60 * 60)
+            } else {
+                -1
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Ошибка при получении возраста кэша", e)
+            return -1
+        }
+    }
+    
+    /**
+     * Получить список всех закэшированных групп
+     */
+    fun getCachedGroups(): List<Pair<String, String>> {
+        val groups = mutableListOf<Pair<String, String>>()
+        
+        try {
+            val allKeys = prefs.all.keys
+            val scheduleKeys = allKeys.filter { it.startsWith(PREFIX_SCHEDULE) }
+            
+            scheduleKeys.forEach { key ->
+                // Извлекаем college и groupFile из ключа
+                val cacheKey = key.removePrefix(PREFIX_SCHEDULE)
+                val parts = cacheKey.split("_", limit = 2)
+                if (parts.size == 2) {
+                    try {
+                        val college = java.net.URLDecoder.decode(parts[0], StandardCharsets.UTF_8.toString())
+                        val groupFile = java.net.URLDecoder.decode(parts[1], StandardCharsets.UTF_8.toString())
+                        groups.add(Pair(college, groupFile))
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Не удалось декодировать ключ кэша: $key", e)
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Ошибка при получении списка закэшированных групп", e)
+        }
+        
+        return groups
     }
 }
 
