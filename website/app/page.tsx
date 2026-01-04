@@ -1,5 +1,9 @@
 'use client';
 
+// Отключаем статическую генерацию
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { DaySchedule, College, Theme } from '@/lib/types';
 import { loadSchedule } from '@/lib/scheduleParser';
