@@ -1,5 +1,8 @@
 import { College, Theme } from './config';
 
+// Реэкспортируем типы, чтобы их можно было импортировать из '@/lib/types'
+export type { College, Theme } from './config';
+
 export interface Group {
   file: string;
   name: string;
