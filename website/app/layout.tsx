@@ -2,9 +2,6 @@ import type { Metadata } from 'next'
 import { Inter, Space_Grotesk } from 'next/font/google'
 import './globals.css'
 
-// Отключаем статическую генерацию для layout
-export const dynamic = 'force-dynamic'
-
 const inter = Inter({ 
   subsets: ['latin', 'cyrillic'],
   variable: '--font-inter',

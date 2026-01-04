@@ -33,13 +33,14 @@ const nextConfig = {
     ];
   },
   
-  // Отключаем проверку типов во время сборки (ускоряет деплой)
+  // Настройки TypeScript и ESLint
   typescript: {
+    // Не игнорируем ошибки типов - важно для качества кода
     ignoreBuildErrors: false,
   },
   
-  // Отключаем проверку ESLint во время сборки (если нужно)
   eslint: {
+    // Не игнорируем ESLint ошибки
     ignoreDuringBuilds: false,
   },
 }
