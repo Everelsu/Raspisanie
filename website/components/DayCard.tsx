@@ -101,11 +101,12 @@ function DayCard({ daySchedule, college, showBreaks, showLunch }: DayCardProps) 
             const itemsLength = items.length;
             for (let idx = 0; idx < itemsLength; idx++) {
               const item = items[idx];
+              const times = lessonTimes[item.lessonNumber as keyof typeof lessonTimes];
               result.push(
                 <LessonItem
                   key={`lesson-${lessonNum}-${idx}`}
                   item={item}
-                  lessonTimes={lessonTimes[item.lessonNumber]}
+                  lessonTimes={times}
                 />
               );
             }
