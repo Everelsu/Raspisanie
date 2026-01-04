@@ -41,6 +41,11 @@ function Statistics({ schedules, groupFile, college }: StatisticsProps) {
   }, [groupFile, college]);
   
   const stats = realStats || scheduleStats;
+  
+  // Type guard для проверки типа статистики
+  const isScheduleStats = (s: typeof stats): s is ReturnType<typeof calculateStatistics> => {
+    return 'teachers' in s && 'classrooms' in s;
+  };
 
   if (loadingStats) {
     return (
@@ -249,7 +254,7 @@ function Statistics({ schedules, groupFile, college }: StatisticsProps) {
       )}
 
       {/* Преподаватели */}
-      {stats.teachers.length > 0 && (
+      {isScheduleStats(stats) && stats.teachers.length > 0 && (
         <div className="section">
           <h3 className="text-lg font-semibold mb-3 text-[var(--text-primary)]">Преподаватели</h3>
           <div className="grid grid-cols-1 gap-2">
@@ -271,7 +276,7 @@ function Statistics({ schedules, groupFile, college }: StatisticsProps) {
       )}
 
       {/* Аудитории */}
-      {stats.classrooms.length > 0 && (
+      {isScheduleStats(stats) && stats.classrooms.length > 0 && (
         <div className="section">
           <h3 className="text-lg font-semibold mb-3 text-[var(--text-primary)]">Аудитории</h3>
           <div className="grid grid-cols-2 gap-2">
@@ -289,7 +294,7 @@ function Statistics({ schedules, groupFile, college }: StatisticsProps) {
       )}
 
       {/* Дни недели */}
-      {Object.keys(stats.lessonsPerDay).length > 0 && (
+      {isScheduleStats(stats) && Object.keys(stats.lessonsPerDay).length > 0 && (
         <div className="section">
           <h3 className="text-lg font-semibold mb-3 text-[var(--text-primary)]">Нагрузка по дням</h3>
           <div className="space-y-2">
@@ -305,14 +310,14 @@ function Statistics({ schedules, groupFile, college }: StatisticsProps) {
                     <div
                       className="h-full bg-[var(--accent)] rounded-full transition-all duration-500"
                       style={{
-                        width: `${(count / Math.max(...Object.values(stats.lessonsPerDay))) * 100}%`,
+                        width: isScheduleStats(stats) ? `${(count / Math.max(...Object.values(stats.lessonsPerDay))) * 100}%` : '0%',
                       }}
                     />
                   </div>
                 </div>
               ))}
           </div>
-          {stats.mostBusyDay && (
+          {isScheduleStats(stats) && stats.mostBusyDay && (
             <div className="mt-4 p-3 bg-[var(--bg-card)] border border-[var(--accent)]/30 rounded-lg">
               <div className="text-sm text-[var(--text-secondary)]">
                 Самый загруженный день: <span className="font-semibold text-[var(--accent)]">{stats.mostBusyDay}</span>

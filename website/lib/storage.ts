@@ -1,4 +1,5 @@
-import { AppState, College, Theme } from './config';
+import { AppState } from './types';
+import { College, Theme } from './config';
 
 export function getStoredState(): Partial<AppState> {
   if (typeof window === 'undefined') {

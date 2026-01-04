@@ -16,13 +16,18 @@ export const metadata: Metadata = {
   title: 'Расписание - ЧТОТиБ и ЗАБГК',
   description: 'Расписание занятий для студентов ЧТОТиБ и ЗАБГК. Быстрый доступ к актуальному расписанию.',
   keywords: 'расписание, ЧТОТиБ, ЗАБГК, занятия, студенты',
-  viewport: 'width=device-width, initial-scale=1, maximum-scale=5',
-  themeColor: '#000000',
   openGraph: {
     title: 'Расписание - ЧТОТиБ и ЗАБГК',
     description: 'Расписание занятий для студентов',
     type: 'website',
   },
+}
+
+export const viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 5,
+  themeColor: '#000000',
 }
 
 export default function RootLayout({
