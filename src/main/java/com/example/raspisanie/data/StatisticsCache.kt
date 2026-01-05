@@ -24,31 +24,33 @@ class StatisticsCache(context: Context) {
     }
     
     /**
-     * Создать уникальный ключ для groupFile
+     * Создать уникальный ключ для groupFile и college
      */
-    private fun createCacheKey(groupFile: String): String {
+    private fun createCacheKey(groupFile: String, college: String = PreferencesManager.COLLEGE_CHTOTIB): String {
         // Используем URL encoding для безопасного создания ключа
-        return URLEncoder.encode(groupFile, StandardCharsets.UTF_8.toString())
+        // Включаем college в ключ, чтобы кэш разных колледжей не смешивался
+        val combined = "${college}_$groupFile"
+        return URLEncoder.encode(combined, StandardCharsets.UTF_8.toString())
     }
     
     /**
      * Получить ключ для хранения статистики
      */
-    private fun getStatisticsKey(groupFile: String): String {
-        return PREFIX_STATISTICS + createCacheKey(groupFile)
+    private fun getStatisticsKey(groupFile: String, college: String = PreferencesManager.COLLEGE_CHTOTIB): String {
+        return PREFIX_STATISTICS + createCacheKey(groupFile, college)
     }
     
     /**
      * Получить ключ для хранения timestamp
      */
-    private fun getTimestampKey(groupFile: String): String {
-        return PREFIX_TIMESTAMP + createCacheKey(groupFile)
+    private fun getTimestampKey(groupFile: String, college: String = PreferencesManager.COLLEGE_CHTOTIB): String {
+        return PREFIX_TIMESTAMP + createCacheKey(groupFile, college)
     }
     
     /**
      * Сохранить статистику в кэш
      */
-    fun cacheStatistics(statistics: GroupStatistics, groupFile: String) {
+    fun cacheStatistics(statistics: GroupStatistics, groupFile: String, college: String = PreferencesManager.COLLEGE_CHTOTIB) {
         if (groupFile.isBlank()) {
             Log.w(TAG, "Попытка кэширования с пустым groupFile")
             return
@@ -71,8 +73,8 @@ class StatisticsCache(context: Context) {
                 return
             }
             
-            val statisticsKey = getStatisticsKey(groupFile)
-            val timestampKey = getTimestampKey(groupFile)
+            val statisticsKey = getStatisticsKey(groupFile, college)
+            val timestampKey = getTimestampKey(groupFile, college)
             val timestamp = System.currentTimeMillis()
             
             // Используем commit() для гарантированного сохранения
@@ -95,15 +97,15 @@ class StatisticsCache(context: Context) {
     /**
      * Получить статистику из кэша
      */
-    fun getCachedStatistics(groupFile: String): GroupStatistics? {
+    fun getCachedStatistics(groupFile: String, college: String = PreferencesManager.COLLEGE_CHTOTIB): GroupStatistics? {
         if (groupFile.isBlank()) {
             Log.w(TAG, "❌ Пустой groupFile при запросе кэша")
             return null
         }
         
         try {
-            val statisticsKey = getStatisticsKey(groupFile)
-            val timestampKey = getTimestampKey(groupFile)
+            val statisticsKey = getStatisticsKey(groupFile, college)
+            val timestampKey = getTimestampKey(groupFile, college)
             
             // Проверить наличие timestamp
             val timestamp = prefs.getLong(timestampKey, 0)
@@ -158,13 +160,13 @@ class StatisticsCache(context: Context) {
     /**
      * Проверить, есть ли валидный кэш
      */
-    fun hasValidCache(groupFile: String): Boolean {
+    fun hasValidCache(groupFile: String, college: String = PreferencesManager.COLLEGE_CHTOTIB): Boolean {
         if (groupFile.isBlank()) {
             return false
         }
         
         try {
-            val timestampKey = getTimestampKey(groupFile)
+            val timestampKey = getTimestampKey(groupFile, college)
             val timestamp = prefs.getLong(timestampKey, 0)
             
             if (timestamp <= 0) {
@@ -182,14 +184,14 @@ class StatisticsCache(context: Context) {
     /**
      * Очистить кэш для конкретной группы
      */
-    fun clearCacheForGroup(groupFile: String) {
+    fun clearCacheForGroup(groupFile: String, college: String = PreferencesManager.COLLEGE_CHTOTIB) {
         if (groupFile.isBlank()) {
             return
         }
         
         try {
-            val statisticsKey = getStatisticsKey(groupFile)
-            val timestampKey = getTimestampKey(groupFile)
+            val statisticsKey = getStatisticsKey(groupFile, college)
+            val timestampKey = getTimestampKey(groupFile, college)
             
             prefs.edit()
                 .remove(statisticsKey)
@@ -225,4 +227,11 @@ class StatisticsCache(context: Context) {
         }
     }
 }
+
+
+
+
+
+
+
 

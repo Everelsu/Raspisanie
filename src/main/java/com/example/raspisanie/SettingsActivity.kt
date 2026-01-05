@@ -44,6 +44,14 @@ class SettingsActivity : AppCompatActivity() {
         supportActionBar?.setDisplayHomeAsUpEnabled(true)
         binding.toolbar.setNavigationOnClickListener { finish() }
         binding.toolbar.title = getString(R.string.settings_title)
+        
+        // Долгое нажатие на toolbar - скролл вверх (как в Telegram)
+        binding.toolbar.setOnLongClickListener {
+            binding.nestedScrollView.smoothScrollTo(0, 0)
+            // Haptic feedback
+            binding.toolbar.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS)
+            true
+        }
 
         ViewCompat.setOnApplyWindowInsetsListener(binding.root) { v, insets ->
             val systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
@@ -435,7 +443,7 @@ class SettingsActivity : AppCompatActivity() {
         setupThemeCard(
             R.id.themeLight,
             "Светлая",
-            "Яркий белый фон",
+            "Яркий белый фон(блять)",
             R.drawable.theme_preview_light,
             PreferencesManager.THEME_LIGHT,
             currentTheme == PreferencesManager.THEME_LIGHT
@@ -477,6 +485,24 @@ class SettingsActivity : AppCompatActivity() {
             PreferencesManager.THEME_NEW_YEAR,
             currentTheme == PreferencesManager.THEME_NEW_YEAR
         )
+
+        setupThemeCard(
+            R.id.themeBlue,
+            "Синяя",
+            "Темная с синими акцентами",
+            R.drawable.theme_preview_blue,
+            PreferencesManager.THEME_BLUE,
+            currentTheme == PreferencesManager.THEME_BLUE
+        )
+
+        setupThemeCard(
+            R.id.themeGray,
+            "Серая",
+            "Темная с серыми акцентами",
+            R.drawable.theme_preview_gray,
+            PreferencesManager.THEME_GRAY,
+            currentTheme == PreferencesManager.THEME_GRAY
+        )
         
         setupThemeCard(
             R.id.themeNothing,
@@ -512,6 +538,8 @@ class SettingsActivity : AppCompatActivity() {
         val textPrimaryColor = when (prefs.theme) {
             PreferencesManager.THEME_LIGHT -> resources.getColor(R.color.light_textColorPrimary, theme)
             PreferencesManager.THEME_DARK -> resources.getColor(R.color.dark_textColorPrimary, theme)
+            PreferencesManager.THEME_BLUE -> resources.getColor(R.color.blue_textColorPrimary, theme)
+            PreferencesManager.THEME_GRAY -> resources.getColor(R.color.gray_textColorPrimary, theme)
             PreferencesManager.THEME_PURPLE -> resources.getColor(R.color.system_textColorPrimary, theme)
             PreferencesManager.THEME_HALLOWEEN -> resources.getColor(R.color.custom_textColorPrimary, theme)
             PreferencesManager.THEME_NOTHING -> resources.getColor(R.color.nothing_textColorPrimary, theme)
@@ -528,6 +556,8 @@ class SettingsActivity : AppCompatActivity() {
         val textSecondaryColor = when (prefs.theme) {
             PreferencesManager.THEME_LIGHT -> resources.getColor(R.color.light_textColorSecondary, theme)
             PreferencesManager.THEME_DARK -> resources.getColor(R.color.dark_textColorSecondary, theme)
+            PreferencesManager.THEME_BLUE -> resources.getColor(R.color.blue_textColorSecondary, theme)
+            PreferencesManager.THEME_GRAY -> resources.getColor(R.color.gray_textColorSecondary, theme)
             PreferencesManager.THEME_PURPLE -> resources.getColor(R.color.system_textColorSecondary, theme)
             PreferencesManager.THEME_HALLOWEEN -> resources.getColor(R.color.custom_textColorSecondary, theme)
             PreferencesManager.THEME_NOTHING -> resources.getColor(R.color.nothing_textColorSecondary, theme)
@@ -562,6 +592,13 @@ class SettingsActivity : AppCompatActivity() {
             
             // Save theme
             prefs.theme = themeKey
+            
+            // Widgets don't update automatically on theme change
+            try {
+                com.example.raspisanie.widget.WidgetUpdateHelper.updateAll(applicationContext)
+            } catch (_: Exception) {
+                // ignore
+            }
             
             // Apply theme and recreate activity
             applyTheme(themeKey)
@@ -673,9 +710,10 @@ class SettingsActivity : AppCompatActivity() {
                 android.view.ViewGroup.LayoutParams.WRAP_CONTENT
             )
         }
+        val fontSizeMultiplier = getFontSizeMultiplier()
         val textView = android.widget.TextView(context).apply {
             setPadding(48, 32, 48, 32)
-            textSize = 14f
+            textSize = 14f * fontSizeMultiplier
             layoutParams = android.view.ViewGroup.LayoutParams(
                 android.view.ViewGroup.LayoutParams.MATCH_PARENT,
                 android.view.ViewGroup.LayoutParams.WRAP_CONTENT
@@ -770,10 +808,6 @@ class SettingsActivity : AppCompatActivity() {
             openAuthorProfile()
         }
         
-        // Установить имя второго разработчика
-        val developer2Name = findViewById<android.widget.TextView>(R.id.developer2Name)
-        developer2Name?.text = getString(R.string.developer_2)
-        
         // Установить имя бета-тестера
         val betaTesterName = findViewById<android.widget.TextView>(R.id.betaTesterName)
         betaTesterName?.text = getString(R.string.beta_tester_name)
@@ -847,6 +881,8 @@ class SettingsActivity : AppCompatActivity() {
         val themeResId = when (themeKey) {
             PreferencesManager.THEME_LIGHT -> R.style.Theme_Raspisanie_Light
             PreferencesManager.THEME_DARK -> R.style.Theme_Raspisanie_Dark
+            PreferencesManager.THEME_BLUE -> R.style.Theme_Raspisanie_Blue
+            PreferencesManager.THEME_GRAY -> R.style.Theme_Raspisanie_Gray
             PreferencesManager.THEME_PURPLE -> R.style.Theme_Raspisanie_System
             PreferencesManager.THEME_HALLOWEEN -> R.style.Theme_Raspisanie_Custom
             PreferencesManager.THEME_NOTHING -> R.style.Theme_Raspisanie_Nothing
@@ -858,6 +894,16 @@ class SettingsActivity : AppCompatActivity() {
             }
         }
         setTheme(themeResId)
+    }
+    
+    private fun getFontSizeMultiplier(): Float {
+        return when (prefs.fontSize) {
+            PreferencesManager.FONT_SIZE_SMALL -> 0.85f
+            PreferencesManager.FONT_SIZE_NORMAL -> 1.0f
+            PreferencesManager.FONT_SIZE_LARGE -> 1.15f
+            PreferencesManager.FONT_SIZE_EXTRA_LARGE -> 1.3f
+            else -> 1.0f
+        }
     }
 }
 

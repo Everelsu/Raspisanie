@@ -83,18 +83,28 @@ class DownloadCompleteReceiver : BroadcastReceiver() {
                     
                     try {
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                            // Android 10+: использовать URI из DownloadManager
+                            // Android 10+: использовать content URI из DownloadManager напрямую
                             fileUri = try {
-                                downloadManager.getUriForDownloadedFile(downloadId)
+                                val uri = downloadManager.getUriForDownloadedFile(downloadId)
+                                Log.d(TAG, "Получен content URI из DownloadManager: $uri")
+                                uri
                             } catch (e: Exception) {
-                                Log.w(TAG, "Ошибка при получении URI из DownloadManager", e)
+                                Log.e(TAG, "Ошибка при получении URI из DownloadManager", e)
                                 null
                             }
-                            // Попробовать получить файл из URI
+                            
+                            // Попробовать получить файл из URI (не обязательно для установки, но полезно для логирования)
                             if (fileUri != null) {
-                                val filePath = getFilePathFromUri(context, fileUri)
-                                if (filePath != null) {
-                                    apkFile = File(filePath)
+                                try {
+                                    val filePath = getFilePathFromUri(context, fileUri)
+                                    if (filePath != null) {
+                                        apkFile = File(filePath)
+                                        Log.d(TAG, "Найден файл по пути: ${apkFile?.absolutePath}")
+                                    } else {
+                                        Log.d(TAG, "Не удалось получить путь из content URI (это нормально для Android 10+)")
+                                    }
+                                } catch (e: Exception) {
+                                    Log.w(TAG, "Ошибка при получении пути из URI", e)
                                 }
                             }
                         } else {
@@ -190,33 +200,27 @@ class DownloadCompleteReceiver : BroadcastReceiver() {
                         }
                     }
                     
-                    // Для Android 10+ можно использовать content URI напрямую
+                    // Извлечь версию из описания или использовать дефолтную
+                    val descriptionIndex = cursor.getColumnIndex(DownloadManager.COLUMN_DESCRIPTION)
+                    val versionName = if (descriptionIndex != -1) {
+                        val description = cursor.getString(descriptionIndex)
+                        description?.substringAfter("версии ")?.takeIf { it.isNotBlank() } 
+                            ?: "новой версии"
+                    } else {
+                        "новой версии"
+                    }
+                    
+                    // Остановить Service отслеживания прогресса
+                    try {
+                        val serviceIntent = Intent(context, DownloadProgressService::class.java)
+                        context.stopService(serviceIntent)
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Ошибка при остановке DownloadProgressService", e)
+                    }
+                    
+                    // Для Android 10+ используем content URI напрямую из DownloadManager
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && fileUri != null) {
-                        // Остановить Service отслеживания прогресса
-                        try {
-                            val serviceIntent = Intent(context, DownloadProgressService::class.java)
-                            context.stopService(serviceIntent)
-                        } catch (e: Exception) {
-                            Log.w(TAG, "Ошибка при остановке DownloadProgressService", e)
-                        }
-                        
-                        // Извлечь версию из описания или использовать дефолтную
-                        val descriptionIndex = cursor.getColumnIndex(DownloadManager.COLUMN_DESCRIPTION)
-                        val versionName = if (descriptionIndex != -1) {
-                            val description = cursor.getString(descriptionIndex)
-                            description?.substringAfter("версии ")?.takeIf { it.isNotBlank() } 
-                                ?: "новой версии"
-                        } else {
-                            "новой версии"
-                        }
-                        
-                        // Попробовать получить файл из URI для уведомления
-                        val tempFile = if (apkFile != null && apkFile.exists()) {
-                            apkFile
-                        } else {
-                            // Создать временный файл для уведомления (не обязательно)
-                            null
-                        }
+                        Log.d(TAG, "Android 10+: Использую content URI напрямую: $fileUri")
                         
                         // Показать уведомление о завершении скачивания с content URI
                         try {
@@ -225,27 +229,11 @@ class DownloadCompleteReceiver : BroadcastReceiver() {
                             Log.e(TAG, "Ошибка при показе уведомления о завершении", e)
                         }
                         
-                        Log.d(TAG, "Начинаю установку APK через content URI: $fileUri")
+                        // Установить APK через content URI
                         installApkFromUri(context, fileUri, versionName)
                     } else if (fileUri != null && apkFile != null && apkFile.exists() && apkFile.isFile && apkFile.canRead()) {
-                        // Для старых версий Android используем File напрямую
-                        // Остановить Service отслеживания прогресса
-                        try {
-                            val serviceIntent = Intent(context, DownloadProgressService::class.java)
-                            context.stopService(serviceIntent)
-                        } catch (e: Exception) {
-                            Log.w(TAG, "Ошибка при остановке DownloadProgressService", e)
-                        }
-                        
-                        // Извлечь версию из описания или использовать дефолтную
-                        val descriptionIndex = cursor.getColumnIndex(DownloadManager.COLUMN_DESCRIPTION)
-                        val versionName = if (descriptionIndex != -1) {
-                            val description = cursor.getString(descriptionIndex)
-                            description?.substringAfter("версии ")?.takeIf { it.isNotBlank() } 
-                                ?: "новой версии"
-                        } else {
-                            "новой версии"
-                        }
+                        // Для старых версий Android (до Android 10) используем File напрямую
+                        Log.d(TAG, "Android < 10: Использую File напрямую: ${apkFile.absolutePath}")
                         
                         // Показать уведомление о завершении скачивания
                         try {
@@ -254,14 +242,30 @@ class DownloadCompleteReceiver : BroadcastReceiver() {
                             Log.e(TAG, "Ошибка при показе уведомления о завершении", e)
                         }
                         
-                        Log.d(TAG, "Начинаю установку APK: $fileUri")
+                        // Установить APK через File
+                        Log.d(TAG, "Начинаю установку APK через File: $fileUri")
                         installApk(context, fileUri)
                     } else {
-                        Log.e(TAG, "Не удалось получить валидный файл. fileUri=$fileUri, apkFile=$apkFile, exists=${apkFile?.exists()}, isFile=${apkFile?.isFile}, canRead=${apkFile?.canRead()}")
-                        AppUpdateManager.showDownloadErrorNotification(
-                            context, 
-                            "Не удалось найти загруженный файл"
-                        )
+                        // Если не удалось получить файл, попробовать использовать URI напрямую (для Android 10+)
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && fileUri != null) {
+                            Log.w(TAG, "Не удалось получить File, но есть content URI. Попробую установить через URI: $fileUri")
+                            try {
+                                showDownloadCompleteNotificationWithUri(context, versionName, fileUri)
+                                installApkFromUri(context, fileUri, versionName)
+                            } catch (e: Exception) {
+                                Log.e(TAG, "Ошибка при установке через content URI", e)
+                                AppUpdateManager.showDownloadErrorNotification(
+                                    context, 
+                                    "Не удалось найти загруженный файл. URI: $fileUri"
+                                )
+                            }
+                        } else {
+                            Log.e(TAG, "Не удалось получить валидный файл. fileUri=$fileUri, apkFile=$apkFile, exists=${apkFile?.exists()}, isFile=${apkFile?.isFile}, canRead=${apkFile?.canRead()}")
+                            AppUpdateManager.showDownloadErrorNotification(
+                                context, 
+                                "Не удалось найти загруженный файл. Проверьте папку Загрузки."
+                            )
+                        }
                     }
                 } else if (status == DownloadManager.STATUS_FAILED && title == "Обновление приложения") {
                     // Остановить Service отслеживания прогресса
@@ -342,23 +346,33 @@ class DownloadCompleteReceiver : BroadcastReceiver() {
     
     private fun installApkFromUri(context: Context, apkUri: Uri, versionName: String) {
         try {
-            // Для Android 10+ используем content URI напрямую
+            Log.d(TAG, "Начинаю установку APK из URI: $apkUri, scheme: ${apkUri.scheme}")
+            
+            // Проверить разрешение на установку для Android 8.0+
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                if (!context.packageManager.canRequestPackageInstalls()) {
-                    Log.w(TAG, "Нет разрешения на установку неизвестных источников")
-                    AppUpdateManager.showDownloadErrorNotification(context, "Разрешите установку из неизвестных источников в настройках")
+                try {
+                    if (!context.packageManager.canRequestPackageInstalls()) {
+                        Log.w(TAG, "Нет разрешения на установку неизвестных источников")
+                        AppUpdateManager.showInstallPermissionNotification(context)
+                        return
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Ошибка при проверке разрешения на установку", e)
+                    AppUpdateManager.showDownloadErrorNotification(context, "Ошибка при проверке разрешений: ${e.message}")
                     return
                 }
             }
             
+            // Создать Intent для установки
             val intent = Intent(Intent.ACTION_VIEW).apply {
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION
                 setDataAndType(apkUri, "application/vnd.android.package-archive")
             }
             
-            // Предоставить временные разрешения на чтение URI
+            // Для Android 7.0+ нужно предоставить разрешения на чтение URI
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
                 try {
+                    // Найти все приложения, которые могут обработать этот Intent
                     val resInfoList = context.packageManager.queryIntentActivities(
                         intent, 
                         android.content.pm.PackageManager.MATCH_DEFAULT_ONLY
@@ -366,46 +380,75 @@ class DownloadCompleteReceiver : BroadcastReceiver() {
                     
                     if (resInfoList.isEmpty()) {
                         Log.e(TAG, "Не найдено приложений для установки APK")
-                        AppUpdateManager.showDownloadErrorNotification(context, "Не найдено приложение для установки. Включите установку из неизвестных источников в настройках.")
+                        AppUpdateManager.showDownloadErrorNotification(
+                            context, 
+                            "Не найдено приложение для установки. Включите установку из неизвестных источников в настройках."
+                        )
                         return
                     }
                     
+                    Log.d(TAG, "Найдено ${resInfoList.size} приложений для установки")
+                    
+                    // Предоставить временные разрешения на чтение URI для всех найденных приложений
                     for (resolveInfo in resInfoList) {
                         try {
                             val packageName = resolveInfo.activityInfo.packageName
                             if (!packageName.isNullOrBlank()) {
+                                Log.d(TAG, "Предоставляю разрешение на чтение URI для: $packageName")
                                 context.grantUriPermission(
                                     packageName,
                                     apkUri,
-                                    Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                                    Intent.FLAG_GRANT_READ_URI_PERMISSION
                                 )
                             }
                         } catch (e: Exception) {
-                            Log.w(TAG, "Ошибка при предоставлении разрешения для пакета", e)
+                            Log.w(TAG, "Ошибка при предоставлении разрешения для пакета ${resolveInfo.activityInfo.packageName}", e)
+                            // Продолжаем для других приложений
                         }
                     }
                 } catch (e: Exception) {
                     Log.w(TAG, "Ошибка при предоставлении URI разрешений", e)
+                    // Продолжаем, возможно система сама обработает
                 }
             }
             
             // Запустить установку
             try {
+                Log.d(TAG, "Запускаю установку APK через Intent: $intent")
                 context.startActivity(intent)
                 Log.d(TAG, "✅ Запущена установка APK из content URI: $apkUri")
             } catch (e: android.content.ActivityNotFoundException) {
                 Log.e(TAG, "Не найдено приложение для установки APK", e)
-                AppUpdateManager.showDownloadErrorNotification(context, "Не найдено приложение для установки. Включите установку из неизвестных источников в настройках.")
+                AppUpdateManager.showDownloadErrorNotification(
+                    context, 
+                    "Не найдено приложение для установки. Включите установку из неизвестных источников в настройках."
+                )
             } catch (e: SecurityException) {
                 Log.e(TAG, "Ошибка безопасности при установке APK", e)
-                AppUpdateManager.showDownloadErrorNotification(context, "Ошибка безопасности. Проверьте разрешения в настройках.")
+                AppUpdateManager.showDownloadErrorNotification(
+                    context, 
+                    "Ошибка безопасности при установке. Проверьте разрешения в настройках: ${e.message}"
+                )
+            } catch (e: IllegalStateException) {
+                Log.e(TAG, "Ошибка состояния при установке APK (возможно, приложение в фоне)", e)
+                // Попробовать снова через уведомление
+                AppUpdateManager.showDownloadErrorNotification(
+                    context,
+                    "Не удалось запустить установку. Нажмите на уведомление для установки."
+                )
             } catch (e: Exception) {
                 Log.e(TAG, "Ошибка при запуске установки APK", e)
-                AppUpdateManager.showDownloadErrorNotification(context, "Ошибка при установке: ${e.message ?: "Неизвестная ошибка"}")
+                AppUpdateManager.showDownloadErrorNotification(
+                    context, 
+                    "Ошибка при установке: ${e.message ?: "Неизвестная ошибка"}"
+                )
             }
         } catch (e: Exception) {
             Log.e(TAG, "Критическая ошибка при установке APK из URI", e)
-            AppUpdateManager.showDownloadErrorNotification(context, "Критическая ошибка при установке: ${e.message ?: "Неизвестная ошибка"}")
+            AppUpdateManager.showDownloadErrorNotification(
+                context, 
+                "Критическая ошибка при установке: ${e.message ?: "Неизвестная ошибка"}"
+            )
         }
     }
     
@@ -563,6 +606,33 @@ class DownloadCompleteReceiver : BroadcastReceiver() {
             } catch (e: Exception) {
                 Log.e(TAG, "Ошибка при создании Intent для установки", e)
                 return
+            }
+            
+            // Предоставить разрешения на чтение URI для PackageInstaller (Android 7.0+)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                try {
+                    val resInfoList = context.packageManager.queryIntentActivities(
+                        installIntent,
+                        android.content.pm.PackageManager.MATCH_DEFAULT_ONLY
+                    )
+                    
+                    for (resolveInfo in resInfoList) {
+                        try {
+                            val packageName = resolveInfo.activityInfo.packageName
+                            if (!packageName.isNullOrBlank()) {
+                                context.grantUriPermission(
+                                    packageName,
+                                    apkUri,
+                                    Intent.FLAG_GRANT_READ_URI_PERMISSION
+                                )
+                            }
+                        } catch (e: Exception) {
+                            Log.w(TAG, "Ошибка при предоставлении разрешения для пакета в уведомлении", e)
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.w(TAG, "Ошибка при предоставлении URI разрешений для уведомления", e)
+                }
             }
             
             val installPendingIntent = try {

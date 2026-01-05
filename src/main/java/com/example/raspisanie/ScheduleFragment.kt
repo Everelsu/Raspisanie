@@ -1,16 +1,19 @@
 package com.example.raspisanie
 
 import android.content.Context
+import android.content.SharedPreferences
 import android.os.Bundle
 import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.TextView
+import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.RecyclerView
 import com.example.raspisanie.adapter.ScheduleAdapter
 import com.example.raspisanie.data.AutoRefreshManager
 import com.example.raspisanie.data.PreferencesManager
@@ -19,6 +22,7 @@ import com.example.raspisanie.viewmodel.ScheduleViewModel
 import com.example.raspisanie.viewmodel.ScheduleViewModelFactory
 import com.example.raspisanie.widget.CurrentLessonWidgetProvider
 import com.example.raspisanie.widget.DayScheduleWidgetProvider
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
 class ScheduleFragment : Fragment() {
@@ -35,6 +39,33 @@ class ScheduleFragment : Fragment() {
     private lateinit var adapter: ScheduleAdapter
     private lateinit var prefs: PreferencesManager
     private var lastKnownGroupFile: String = ""
+    private val prefsChangeListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+        if (!::prefs.isInitialized) return@OnSharedPreferenceChangeListener
+        
+        // Widgets need explicit refresh for theme/font changes
+        if (key == "theme" || key == "font_size") {
+            try {
+                com.example.raspisanie.widget.WidgetUpdateHelper.updateAll(requireContext())
+            } catch (_: Exception) {
+                // ignore
+            }
+        }
+        
+        if (prefs.isGroupOrCollegeKey(key)) {
+            if (prefs.isGroupSelected()) {
+                lastKnownGroupFile = prefs.selectedGroupFile
+                viewLifecycleOwner.lifecycleScope.launch {
+                    viewModel.refreshSchedule(prefs.selectedGroupFile, prefs.college)
+                }
+            } else {
+                viewLifecycleOwner.lifecycleScope.launch {
+                    if (::adapter.isInitialized) {
+                        adapter.updateSchedules(emptyList())
+                    }
+                }
+            }
+        }
+    }
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -51,6 +82,7 @@ class ScheduleFragment : Fragment() {
         try {
             prefs = PreferencesManager(requireContext())
             lastKnownGroupFile = prefs.selectedGroupFile
+            prefs.registerChangeListener(prefsChangeListener)
             
             setupToolbar()
             setupRecyclerView()
@@ -127,6 +159,12 @@ class ScheduleFragment : Fragment() {
                     try {
                         if (::adapter.isInitialized) {
                             adapter.forceUpdateProgress()
+                            // Обновляем статусы при возврате на страницу и возобновляем обновления
+                            val safeBinding = _binding
+                            if (safeBinding != null) {
+                                adapter.resumeUpdates(safeBinding.recyclerView)
+                                adapter.forceUpdateStatuses(safeBinding.recyclerView)
+                            }
                         }
                     } catch (e: Exception) {
                         Log.e(TAG, "Ошибка при обновлении прогресса: ${e.message}", e)
@@ -227,6 +265,16 @@ class ScheduleFragment : Fragment() {
             binding.errorText.visibility = View.VISIBLE
             binding.emptyState.visibility = View.GONE
             binding.recyclerView.visibility = View.GONE
+            
+            // Плавная анимация появления ошибки (как в Telegram)
+            binding.errorText.alpha = 0f
+            binding.errorText.translationY = -20f
+            binding.errorText.animate()
+                .alpha(1f)
+                .translationY(0f)
+                .setDuration(300)
+                .setInterpolator(android.view.animation.OvershootInterpolator(1.1f))
+                .start()
         } catch (e: Exception) {
             Log.e(TAG, "Ошибка при отображении ошибки: ${e.message}", e)
         }
@@ -237,6 +285,35 @@ class ScheduleFragment : Fragment() {
             adapter = ScheduleAdapter(context = requireContext())
             binding.recyclerView.layoutManager = LinearLayoutManager(requireContext())
             binding.recyclerView.adapter = adapter
+            
+            // Фишка из Telegram: улучшенный overscroll эффект
+            binding.recyclerView.overScrollMode = View.OVER_SCROLL_ALWAYS
+            
+            // Фишка из Telegram: плавный скролл с инерцией
+            binding.recyclerView.isNestedScrollingEnabled = true
+            
+            // Фишка из Telegram: улучшенный edge effect (цветной overscroll)
+            try {
+                val edgeEffectField = RecyclerView::class.java.getDeclaredField("mTopGlow")
+                edgeEffectField.isAccessible = true
+                val topGlow = edgeEffectField.get(binding.recyclerView) as? android.widget.EdgeEffect
+                topGlow?.let {
+                    val prefs = PreferencesManager(requireContext())
+                    val color = when (prefs.theme) {
+                        PreferencesManager.THEME_LIGHT -> ContextCompat.getColor(requireContext(), R.color.light_colorPrimary)
+                        PreferencesManager.THEME_DARK -> ContextCompat.getColor(requireContext(), R.color.dark_colorPrimary)
+                        PreferencesManager.THEME_PURPLE -> ContextCompat.getColor(requireContext(), R.color.system_colorPrimary)
+                        PreferencesManager.THEME_HALLOWEEN -> ContextCompat.getColor(requireContext(), R.color.custom_colorPrimary)
+                        PreferencesManager.THEME_NOTHING -> ContextCompat.getColor(requireContext(), R.color.nothing_colorPrimary)
+                        PreferencesManager.THEME_GREEN -> ContextCompat.getColor(requireContext(), R.color.green_colorPrimary)
+                        PreferencesManager.THEME_NEW_YEAR -> ContextCompat.getColor(requireContext(), R.color.newyear_colorPrimary)
+                        else -> ContextCompat.getColor(requireContext(), R.color.dark_colorPrimary)
+                    }
+                    it.color = color
+                }
+            } catch (e: Exception) {
+                // Игнорируем ошибки рефлексии
+            }
         } catch (e: Exception) {
             Log.e(TAG, "Ошибка при настройке RecyclerView: ${e.message}", e)
         }
@@ -248,6 +325,39 @@ class ScheduleFragment : Fragment() {
             toolbar.menu.clear()
             toolbar.setOnMenuItemClickListener(null)
             toolbar.setNavigationOnClickListener(null)
+            
+            // Прикольная анимация появления toolbar
+            toolbar.alpha = 0f
+            toolbar.translationY = -20f
+            toolbar.animate()
+                .alpha(1f)
+                .translationY(0f)
+                .setDuration(400)
+                .setStartDelay(100)
+                .setInterpolator(android.view.animation.DecelerateInterpolator())
+                .start()
+            
+            // Долгое нажатие на toolbar - скролл вверх (как в Telegram)
+            toolbar.setOnLongClickListener {
+                // Haptic feedback
+                toolbar.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS)
+                // Плавная прокрутка вверх до самого верха
+                binding.recyclerView.smoothScrollToPosition(0)
+                // После завершения прокрутки делаем финальную корректировку с учетом padding
+                binding.recyclerView.addOnScrollListener(object : RecyclerView.OnScrollListener() {
+                    override fun onScrollStateChanged(recyclerView: RecyclerView, newState: Int) {
+                        if (newState == RecyclerView.SCROLL_STATE_IDLE) {
+                            val layoutManager = recyclerView.layoutManager as? androidx.recyclerview.widget.LinearLayoutManager
+                            val paddingTop = recyclerView.paddingTop
+                            if (layoutManager != null && paddingTop > 0) {
+                                layoutManager.scrollToPositionWithOffset(0, paddingTop)
+                            }
+                            recyclerView.removeOnScrollListener(this)
+                        }
+                    }
+                })
+                true
+            }
         } catch (e: Exception) {
             Log.e(TAG, "Ошибка при настройке тулбара: ${e.message}", e)
         }
@@ -255,18 +365,52 @@ class ScheduleFragment : Fragment() {
 
     private fun setupSwipeRefresh() {
         try {
+            // Улучшенная анимация обновления
+            binding.swipeRefresh.setProgressViewOffset(false, 0, 100)
+            binding.swipeRefresh.setSlingshotDistance(200)
+            
             binding.swipeRefresh.setOnRefreshListener {
                 try {
                     if (prefs.isGroupSelected()) {
+                        // Добавляем плавную анимацию начала обновления
+                        binding.recyclerView.animate()
+                            .alpha(0.7f)
+                            .setDuration(200)
+                            .start()
+                        
                         // Всегда вызываем refreshSchedule - он сам разберется с кэшем и сетью
                         // Если нет интернета, загрузится из кэша (если включен и есть)
                         viewModel.refreshSchedule(prefs.selectedGroupFile, prefs.college)
+                        
+                        // Добавляем таймаут на случай, если isLoading не обновится
+                        binding.swipeRefresh.postDelayed({
+                            val safeBinding = _binding
+                            if (safeBinding != null && safeBinding.swipeRefresh.isRefreshing) {
+                                Log.w(TAG, "Таймаут обновления, останавливаем swipe refresh")
+                                safeBinding.swipeRefresh.isRefreshing = false
+                                safeBinding.recyclerView.animate()
+                                    .alpha(1f)
+                                    .setDuration(200)
+                                    .start()
+                            }
+                        }, 10000) // 10 секунд таймаут
                     } else {
                         binding.swipeRefresh.isRefreshing = false
+                        binding.recyclerView.animate()
+                            .alpha(1f)
+                            .setDuration(200)
+                            .start()
                     }
                 } catch (e: Exception) {
                     Log.e(TAG, "Ошибка при обновлении расписания: ${e.message}", e)
-                    binding.swipeRefresh.isRefreshing = false
+                    val safeBinding = _binding
+                    if (safeBinding != null) {
+                        safeBinding.swipeRefresh.isRefreshing = false
+                        safeBinding.recyclerView.animate()
+                            .alpha(1f)
+                            .setDuration(200)
+                            .start()
+                    }
                     showError("Ошибка обновления: ${e.message}")
                 }
             }
@@ -324,6 +468,25 @@ class ScheduleFragment : Fragment() {
                             binding.recyclerView.visibility = View.VISIBLE
                             Log.d(TAG, "Расписание отображается, всего дней: ${schedules.size}")
                             
+                            // Прикольная анимация появления RecyclerView
+                            binding.recyclerView.alpha = 0f
+                            binding.recyclerView.scaleX = 0.95f
+                            binding.recyclerView.scaleY = 0.95f
+                            binding.recyclerView.animate()
+                                .alpha(1f)
+                                .scaleX(1f)
+                                .scaleY(1f)
+                                .setDuration(400)
+                                .setInterpolator(android.view.animation.OvershootInterpolator(0.8f))
+                                .start()
+                            
+                            // Обновляем статусы после загрузки расписания
+                            try {
+                                adapter.forceUpdateStatuses(binding.recyclerView)
+                            } catch (e: Exception) {
+                                Log.e(TAG, "Ошибка при обновлении статусов: ${e.message}", e)
+                            }
+                            
                             try {
                                 updateWidgets()
                             } catch (e: Exception) {
@@ -334,6 +497,17 @@ class ScheduleFragment : Fragment() {
                             if (viewModel.error.value == null) {
                                 binding.emptyState.visibility = View.VISIBLE
                                 binding.errorText.visibility = View.GONE
+                                
+                                // Плавная анимация появления пустого состояния (как в Telegram)
+                                binding.emptyState.alpha = 0f
+                                binding.emptyState.translationY = 20f
+                                binding.emptyState.animate()
+                                    .alpha(1f)
+                                    .translationY(0f)
+                                    .setDuration(300)
+                                    .setInterpolator(android.view.animation.OvershootInterpolator(1.1f))
+                                    .start()
+                                
                                 Log.d(TAG, "Расписание пустое, показываю состояние загрузки")
                             }
                         }
@@ -341,6 +515,8 @@ class ScheduleFragment : Fragment() {
                         Log.e(TAG, "Ошибка при обработке расписания: ${e.message}", e)
                     }
                 }
+            } catch (e: CancellationException) {
+                Log.d(TAG, "Collect schedule cancelled")
             } catch (e: Exception) {
                 Log.e(TAG, "Ошибка в корутине schedule: ${e.message}", e)
             }
@@ -350,17 +526,52 @@ class ScheduleFragment : Fragment() {
             try {
                 viewModel.isLoading.collect { isLoading ->
                     try {
+                        val binding = _binding ?: return@collect
                         binding.swipeRefresh.isRefreshing = isLoading
+                        binding.swipeRefresh.isEnabled = !isLoading
                         if (isLoading) {
                             binding.emptyState.visibility = View.GONE
+                            // Плавно уменьшаем прозрачность при загрузке
+                            binding.recyclerView.animate()
+                                .alpha(0.7f)
+                                .setDuration(200)
+                                .start()
                             binding.errorText.visibility = View.GONE
+                        } else {
+                            // Прикольная анимация при завершении загрузки
+                            binding.recyclerView.animate()
+                                .alpha(1f)
+                                .setDuration(300)
+                                .setInterpolator(android.view.animation.DecelerateInterpolator())
+                                .start()
+                            
+                            // Гарантируем остановку swipe refresh при завершении загрузки
+                            binding.swipeRefresh.post {
+                                if (_binding != null) {
+                                    binding.swipeRefresh.isRefreshing = false
+                                    // Плавно возвращаем прозрачность
+                                    binding.recyclerView.animate()
+                                        .alpha(1f)
+                                        .setDuration(300)
+                                        .setInterpolator(android.view.animation.DecelerateInterpolator())
+                                        .start()
+                                }
+                            }
                         }
                     } catch (e: Exception) {
                         Log.e(TAG, "Ошибка при обработке загрузки: ${e.message}", e)
+                        // Гарантируем остановку при ошибке
+                        _binding?.swipeRefresh?.isRefreshing = false
                     }
                 }
+            } catch (e: CancellationException) {
+                Log.d(TAG, "Collect isLoading cancelled")
+                // Гарантируем остановку при отмене
+                _binding?.swipeRefresh?.isRefreshing = false
             } catch (e: Exception) {
                 Log.e(TAG, "Ошибка в корутине isLoading: ${e.message}", e)
+                // Гарантируем остановку при ошибке
+                _binding?.swipeRefresh?.isRefreshing = false
             }
         }
 
@@ -381,14 +592,39 @@ class ScheduleFragment : Fragment() {
                         Log.e(TAG, "Ошибка при обработке ошибки: ${e.message}", e)
                     }
                 }
+            } catch (e: CancellationException) {
+                Log.d(TAG, "Collect error cancelled")
             } catch (e: Exception) {
                 Log.e(TAG, "Ошибка в корутине error: ${e.message}", e)
             }
         }
     }
     
+    override fun onPause() {
+        super.onPause()
+        // Останавливаем обновления для экономии ресурсов
+        try {
+            if (::adapter.isInitialized) {
+                adapter.pauseUpdates()
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Ошибка при остановке обновлений: ${e.message}", e)
+        }
+    }
+    
     override fun onDestroyView() {
         super.onDestroyView()
+        if (::prefs.isInitialized) {
+            prefs.unregisterChangeListener(prefsChangeListener)
+        }
+        // Останавливаем все обновления при уничтожении view
+        try {
+            if (::adapter.isInitialized) {
+                adapter.stopAllUpdates()
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Ошибка при остановке обновлений в onDestroyView: ${e.message}", e)
+        }
         _binding = null
     }
 }

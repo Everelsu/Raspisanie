@@ -1,10 +1,15 @@
 package com.example.raspisanie
 
+import android.animation.AnimatorSet
+import android.animation.ObjectAnimator
 import android.os.Bundle
 import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.view.animation.DecelerateInterpolator
+import android.view.animation.OvershootInterpolator
+import androidx.core.view.isVisible
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -14,6 +19,8 @@ import com.example.raspisanie.data.GroupStatistics
 import com.example.raspisanie.data.PreferencesManager
 import com.example.raspisanie.data.StatisticsParser
 import com.example.raspisanie.databinding.FragmentStatisticsBinding
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
 class StatisticsFragment : Fragment() {
@@ -25,6 +32,8 @@ class StatisticsFragment : Fragment() {
     private val binding get() = _binding!!
     private lateinit var prefs: PreferencesManager
     private lateinit var parser: StatisticsParser
+    private var statisticsJob: Job? = null
+    private var hasAnimatedSummaryCards = false // Флаг для предотвращения повторной анимации итоговых карточек
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -40,6 +49,7 @@ class StatisticsFragment : Fragment() {
         
         prefs = PreferencesManager(requireContext())
         parser = StatisticsParser(requireContext())
+        binding.progressIndicator.setVisibilityAfterHide(View.GONE)
         
         // Применяем тему сразу после создания view
         view.post {
@@ -48,91 +58,132 @@ class StatisticsFragment : Fragment() {
             }
         }
         
-        // Показываем только для ЧТОТиБ
-        if (prefs.college != PreferencesManager.COLLEGE_CHTOTIB) {
-            binding.emptyState.text = getString(R.string.statistics_only_chtotib)
-            binding.emptyState.visibility = View.VISIBLE
-            return
+        // Применяем шрифт Ndot для красной темы
+        applyNothingFontIfNeeded()
+        
+        // Долгое нажатие на заголовок "Статистика" - скролл вверх (как в Telegram)
+        binding.statisticsTitle.setOnLongClickListener {
+            binding.statisticsRecyclerView.smoothScrollToPosition(0)
+            // Haptic feedback
+            binding.statisticsTitle.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS)
+            true
         }
         
+        // Настраиваем swipe refresh
+        setupSwipeRefresh()
+        
+        // Статистика доступна для всех колледжей
         loadStatistics()
     }
     
     private fun loadStatistics() {
+        val binding = _binding ?: return
+
         if (!prefs.isGroupSelected()) {
-            binding.emptyState.visibility = View.VISIBLE
-            binding.errorText.visibility = View.GONE
-            binding.statisticsRecyclerView.visibility = View.GONE
+            binding.emptyState.isVisible = true
+            binding.errorText.isVisible = false
+            binding.statisticsRecyclerView.isVisible = false
+            setLoading(binding, false)
             return
         }
         
-        binding.emptyState.visibility = View.GONE
-        binding.errorText.visibility = View.GONE
-        binding.statisticsRecyclerView.visibility = View.GONE
-        binding.progressIndicator.visibility = View.VISIBLE
+        binding.emptyState.isVisible = false
+        binding.errorText.isVisible = false
+        binding.statisticsRecyclerView.isVisible = false
         
-        lifecycleScope.launch {
+        val isSwipeRefresh = binding.swipeRefresh.isRefreshing
+        
+        if (!isSwipeRefresh) {
+            setLoading(binding, true)
+        }
+        
+        statisticsJob?.cancel()
+        statisticsJob = viewLifecycleOwner.lifecycleScope.launch {
+            val safeBinding = _binding ?: return@launch
             try {
-                // Сначала пытаемся загрузить из кэша (быстро)
-                val cachedStatistics = parser.fetchStatistics(prefs.selectedGroupFile, useCache = true)
-                
-                // Если есть кэш, показываем его сразу
-                if (cachedStatistics != null) {
-                    binding.progressIndicator.visibility = View.GONE
-                    if (cachedStatistics.disciplines.isNotEmpty() || 
-                        cachedStatistics.totalHours != null || 
-                        cachedStatistics.completedHours != null) {
-                        displayStatistics(cachedStatistics)
-                        binding.statisticsRecyclerView.visibility = View.VISIBLE
+                // Если swipe refresh активен, не показываем кэш, сразу загружаем свежие данные
+                if (!isSwipeRefresh) {
+                    // Сначала пытаемся загрузить из кэша (быстро)
+                    val cachedStatistics = parser.fetchStatistics(prefs.selectedGroupFile, prefs.college, useCache = true)
+                    
+                    // Если есть кэш, показываем его сразу
+                    if (cachedStatistics != null) {
+                        setLoading(safeBinding, false)
+                        if (cachedStatistics.disciplines.isNotEmpty() || 
+                            cachedStatistics.totalHours != null || 
+                            cachedStatistics.completedHours != null) {
+                            displayStatistics(cachedStatistics)
+                            safeBinding.statisticsRecyclerView.isVisible = true
+                        }
+                    } else {
+                        // Если кэша нет, показываем прогресс
+                        setLoading(safeBinding, true)
                     }
-                } else {
-                    // Если кэша нет, показываем прогресс
-                    binding.progressIndicator.visibility = View.VISIBLE
                 }
                 
                 // Затем загружаем свежие данные с сервера (обновляем кэш)
-                val statistics = parser.fetchStatistics(prefs.selectedGroupFile, useCache = false)
+                val statistics = parser.fetchStatistics(prefs.selectedGroupFile, prefs.college, useCache = false)
                 
-                binding.progressIndicator.visibility = View.GONE
+                setLoading(safeBinding, false)
+                safeBinding.swipeRefresh.isRefreshing = false
                 
                 if (statistics != null && (statistics.disciplines.isNotEmpty() || 
                     statistics.totalHours != null || 
                     statistics.completedHours != null)) {
                     displayStatistics(statistics)
-                    binding.statisticsRecyclerView.visibility = View.VISIBLE
-                } else if (cachedStatistics == null) {
-                    // Показываем ошибку только если нет кэша
-                    binding.errorText.text = getString(R.string.statistics_loading_error)
-                    binding.errorText.visibility = View.VISIBLE
-                    binding.statisticsRecyclerView.visibility = View.GONE
+                    safeBinding.statisticsRecyclerView.isVisible = true
+                } else if (!isSwipeRefresh) {
+                    // Показываем ошибку только если не было кэша
+                    val cachedStatistics = parser.fetchStatistics(prefs.selectedGroupFile, prefs.college, useCache = true)
+                    if (cachedStatistics == null) {
+                        safeBinding.errorText.text = getString(R.string.statistics_loading_error)
+                        safeBinding.errorText.isVisible = true
+                        safeBinding.statisticsRecyclerView.isVisible = false
+                    }
                 }
+            } catch (ce: CancellationException) {
+                setLoading(safeBinding, false)
+                safeBinding.swipeRefresh.isRefreshing = false
+                throw ce
             } catch (e: Exception) {
                 Log.e(TAG, "Ошибка при загрузке статистики", e)
-                binding.progressIndicator.visibility = View.GONE
+                setLoading(safeBinding, false)
+                safeBinding.swipeRefresh.isRefreshing = false
                 
                 // При ошибке пытаемся показать кэш, если он есть
                 try {
-                    val cachedStatistics = parser.fetchStatistics(prefs.selectedGroupFile, useCache = true)
+                    val cachedStatistics = parser.fetchStatistics(prefs.selectedGroupFile, prefs.college, useCache = true)
                     if (cachedStatistics != null && (cachedStatistics.disciplines.isNotEmpty() || 
                         cachedStatistics.totalHours != null || 
                         cachedStatistics.completedHours != null)) {
                         displayStatistics(cachedStatistics)
-                        binding.statisticsRecyclerView.visibility = View.VISIBLE
+                        safeBinding.statisticsRecyclerView.isVisible = true
                         return@launch
                     }
+                } catch (cacheException: CancellationException) {
+                    throw cacheException
                 } catch (cacheException: Exception) {
                     Log.e(TAG, "Ошибка при загрузке из кэша", cacheException)
                 }
                 
-                binding.errorText.text = "Ошибка загрузки: ${e.message}"
-                binding.errorText.visibility = View.VISIBLE
-                binding.statisticsRecyclerView.visibility = View.GONE
+                safeBinding.errorText.text = "Ошибка загрузки: ${e.message}"
+                safeBinding.errorText.isVisible = true
+                safeBinding.statisticsRecyclerView.isVisible = false
             }
         }
     }
     
     private fun displayStatistics(statistics: GroupStatistics) {
+        val binding = _binding ?: return
         binding.groupNameText.text = statistics.groupName.ifEmpty { prefs.selectedGroupName }
+        
+        // Долгое нажатие на название группы - скролл вверх (как в Telegram)
+        binding.groupNameText.setOnLongClickListener {
+            binding.statisticsRecyclerView.smoothScrollToPosition(0)
+            // Haptic feedback
+            binding.groupNameText.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS)
+            true
+        }
         
         // Отображаем итоговые значения
         binding.totalHoursText.text = statistics.totalHours?.toString() ?: "—"
@@ -143,6 +194,26 @@ class StatisticsFragment : Fragment() {
         // Применяем тему к итоговым карточкам
         applyThemeToSummaryCards()
         
+        // Анимируем появление итоговых карточек только один раз
+        if (!hasAnimatedSummaryCards) {
+            animateSummaryCards(binding)
+            hasAnimatedSummaryCards = true
+        } else {
+            // Если уже анимировали, просто устанавливаем финальное состояние
+            val cards = listOf(
+                binding.totalHoursCard,
+                binding.completedHoursCard,
+                binding.remainingHoursCard,
+                binding.plannedHoursCard
+            )
+            cards.forEach { card ->
+                card.alpha = 1f
+                card.translationY = 0f
+                card.scaleX = 1f
+                card.scaleY = 1f
+            }
+        }
+        
         // Настраиваем RecyclerView для отображения таблицы дисциплин
         val layoutManager = LinearLayoutManager(requireContext())
         binding.statisticsRecyclerView.layoutManager = layoutManager
@@ -151,7 +222,57 @@ class StatisticsFragment : Fragment() {
         // Верхние карточки теперь закреплены и не скрываются при прокрутке
     }
     
+    /**
+     * Анимация появления итоговых карточек с эффектом stagger
+     */
+    private fun animateSummaryCards(binding: FragmentStatisticsBinding) {
+        val cards = listOf(
+            binding.totalHoursCard,
+            binding.completedHoursCard,
+            binding.remainingHoursCard,
+            binding.plannedHoursCard
+        )
+        
+        cards.forEachIndexed { index, card ->
+            // Начальное состояние: карточка смещена вверх и прозрачна
+            card.alpha = 0f
+            card.translationY = -30f
+            card.scaleX = 0.9f
+            card.scaleY = 0.9f
+            
+            // Задержка для stagger эффекта
+            val delay = index * 80L
+            
+            card.postDelayed({
+                if (card.isAttachedToWindow) {
+                    val animatorSet = AnimatorSet().apply {
+                        playTogether(
+                            ObjectAnimator.ofFloat(card, "alpha", 0f, 1f).apply {
+                                duration = 400
+                                interpolator = DecelerateInterpolator()
+                            },
+                            ObjectAnimator.ofFloat(card, "translationY", -30f, 0f).apply {
+                                duration = 500
+                                interpolator = OvershootInterpolator(0.8f)
+                            },
+                            ObjectAnimator.ofFloat(card, "scaleX", 0.9f, 1f).apply {
+                                duration = 500
+                                interpolator = OvershootInterpolator(0.8f)
+                            },
+                            ObjectAnimator.ofFloat(card, "scaleY", 0.9f, 1f).apply {
+                                duration = 500
+                                interpolator = OvershootInterpolator(0.8f)
+                            }
+                        )
+                    }
+                    animatorSet.start()
+                }
+            }, delay)
+        }
+    }
+    
     private fun applyThemeToSummaryCards() {
+        val binding = _binding ?: return
         val context = requireContext()
         val resources = context.resources
         
@@ -159,6 +280,8 @@ class StatisticsFragment : Fragment() {
         val bgResId = when (prefs.theme) {
             PreferencesManager.THEME_LIGHT -> R.drawable.card_background_light
             PreferencesManager.THEME_DARK -> R.drawable.card_background_dark
+            PreferencesManager.THEME_BLUE -> R.drawable.card_background_blue
+            PreferencesManager.THEME_GRAY -> R.drawable.card_background_gray
             PreferencesManager.THEME_PURPLE -> R.drawable.card_background_purple
             PreferencesManager.THEME_HALLOWEEN -> R.drawable.card_background_halloween
             PreferencesManager.THEME_NOTHING -> R.drawable.card_background_nothing
@@ -173,9 +296,12 @@ class StatisticsFragment : Fragment() {
         binding.plannedHoursCard.setBackgroundResource(bgResId)
         
         // Применяем цвета текста для цифр в зависимости от темы
+        // Для светлой темы используем темный цвет текста для лучшей читаемости на белом фоне
         val primaryColor = when (prefs.theme) {
-            PreferencesManager.THEME_LIGHT -> resources.getColor(R.color.light_colorPrimary, null)
+            PreferencesManager.THEME_LIGHT -> resources.getColor(R.color.light_textColorPrimary, null)
             PreferencesManager.THEME_DARK -> resources.getColor(R.color.dark_colorPrimary, null)
+            PreferencesManager.THEME_BLUE -> resources.getColor(R.color.blue_colorPrimary, null)
+            PreferencesManager.THEME_GRAY -> resources.getColor(R.color.gray_colorPrimary, null)
             PreferencesManager.THEME_PURPLE -> resources.getColor(R.color.system_colorPrimary, null)
             PreferencesManager.THEME_HALLOWEEN -> resources.getColor(R.color.custom_colorPrimary, null)
             PreferencesManager.THEME_NOTHING -> resources.getColor(R.color.nothing_colorPrimary, null)
@@ -198,6 +324,7 @@ class StatisticsFragment : Fragment() {
         // Применяем тему при возврате на экран (на случай изменения темы)
         if (::prefs.isInitialized) {
             applyThemeToSummaryCards()
+            applyNothingFontIfNeeded()
         }
         
         // Обновляем статистику при возврате на экран
@@ -208,7 +335,100 @@ class StatisticsFragment : Fragment() {
     
     override fun onDestroyView() {
         super.onDestroyView()
+        statisticsJob?.cancel()
+        statisticsJob = null
         _binding = null
+    }
+
+    private fun setLoading(binding: FragmentStatisticsBinding, show: Boolean) {
+        if (show) {
+            if (!binding.progressIndicator.isVisible) {
+                binding.progressIndicator.isVisible = true
+            }
+            binding.progressIndicator.show()
+        } else {
+            binding.progressIndicator.hide()
+            binding.progressIndicator.isVisible = false
+        }
+    }
+    
+    private fun setupSwipeRefresh() {
+        try {
+            binding.swipeRefresh.setOnRefreshListener {
+                try {
+                    if (prefs.isGroupSelected()) {
+                        // Обновляем статистику
+                        loadStatistics()
+                        
+                        // Добавляем таймаут на случай, если загрузка не завершится
+                        binding.swipeRefresh.postDelayed({
+                            val safeBinding = _binding
+                            if (safeBinding != null && safeBinding.swipeRefresh.isRefreshing) {
+                                Log.w(TAG, "Таймаут обновления статистики, останавливаем swipe refresh")
+                                safeBinding.swipeRefresh.isRefreshing = false
+                            }
+                        }, 15000) // 15 секунд таймаут
+                    } else {
+                        binding.swipeRefresh.isRefreshing = false
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Ошибка при обновлении статистики: ${e.message}", e)
+                    val safeBinding = _binding
+                    if (safeBinding != null) {
+                        safeBinding.swipeRefresh.isRefreshing = false
+                    }
+                }
+            }
+            
+            // Настраиваем цвет индикатора обновления
+            try {
+                val refreshColor = when (prefs.theme) {
+                    PreferencesManager.THEME_LIGHT -> resources.getColor(android.R.color.black, null)
+                    PreferencesManager.THEME_DARK -> resources.getColor(android.R.color.white, null)
+                    PreferencesManager.THEME_NOTHING -> resources.getColor(R.color.primaryNothing, null)
+                    PreferencesManager.THEME_PURPLE -> resources.getColor(R.color.system_colorPrimary, null)
+                    PreferencesManager.THEME_HALLOWEEN -> resources.getColor(R.color.custom_colorPrimary, null)
+                    PreferencesManager.THEME_GREEN -> resources.getColor(R.color.green_colorPrimary, null)
+                    PreferencesManager.THEME_NEW_YEAR -> resources.getColor(R.color.newyear_colorPrimary, null)
+                    else -> resources.getColor(android.R.color.black, null)
+                }
+                binding.swipeRefresh.setColorSchemeColors(refreshColor)
+            } catch (e: Exception) {
+                Log.e(TAG, "Ошибка при настройке цвета refresh: ${e.message}", e)
+                binding.swipeRefresh.setColorSchemeColors(resources.getColor(android.R.color.black, null))
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Ошибка при настройке SwipeRefresh: ${e.message}", e)
+        }
+    }
+    
+    private fun applyNothingFontIfNeeded() {
+        if (prefs.theme == PreferencesManager.THEME_NOTHING) {
+            try {
+                val ndotFont = resources.getFont(R.font.ndot)
+                val rootView = _binding?.root ?: return
+                rootView.post {
+                    if (_binding != null && isAdded) {
+                        _binding?.root?.let { root ->
+                            applyFontRecursive(root, ndotFont)
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                // Fallback
+            }
+        }
+    }
+    
+    private fun applyFontRecursive(view: View, font: android.graphics.Typeface) {
+        if (view is android.widget.TextView) {
+            view.typeface = font
+        }
+        if (view is ViewGroup) {
+            for (i in 0 until view.childCount) {
+                applyFontRecursive(view.getChildAt(i), font)
+            }
+        }
     }
 }
 

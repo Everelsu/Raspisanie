@@ -1,10 +1,15 @@
 package com.example.raspisanie.adapter
 
+import android.animation.Animator
+import android.animation.AnimatorListenerAdapter
+import android.animation.AnimatorSet
+import android.animation.ObjectAnimator
 import android.animation.ValueAnimator
 import android.content.Context
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.view.animation.AccelerateDecelerateInterpolator
 import android.view.animation.DecelerateInterpolator
 import android.view.animation.OvershootInterpolator
 import android.widget.TextView
@@ -20,6 +25,10 @@ class StatisticsAdapter(
     
     private val prefs: PreferencesManager? = context?.let { PreferencesManager(it) }
     
+    // Отслеживание анимированных позиций на уровне адаптера (не сбрасывается при переиспользовании ViewHolder)
+    private val animatedPositions = mutableSetOf<Int>()
+    private val animatedProgressPositions = mutableSetOf<Int>()
+    
     // Получать настройки динамически при каждом обращении для актуальности
     private val isNothingTheme: Boolean get() = prefs?.theme == PreferencesManager.THEME_NOTHING
     private val isHalloweenTheme: Boolean get() = prefs?.theme == PreferencesManager.THEME_HALLOWEEN
@@ -28,8 +37,20 @@ class StatisticsAdapter(
     private val isPurpleTheme: Boolean get() = prefs?.theme == PreferencesManager.THEME_PURPLE
     private val isGreenTheme: Boolean get() = prefs?.theme == PreferencesManager.THEME_GREEN
     private val isNewYearTheme: Boolean get() = prefs?.theme == PreferencesManager.THEME_NEW_YEAR
+    
+    // Font size multiplier based on preference
+    private fun getFontSizeMultiplier(): Float {
+        return when (prefs?.fontSize) {
+            PreferencesManager.FONT_SIZE_SMALL -> 0.85f
+            PreferencesManager.FONT_SIZE_NORMAL -> 1.0f
+            PreferencesManager.FONT_SIZE_LARGE -> 1.15f
+            PreferencesManager.FONT_SIZE_EXTRA_LARGE -> 1.3f
+            else -> 1.0f
+        }
+    }
 
     class StatisticsViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
+        val numberBg: View = itemView.findViewById(R.id.statNumberBg)
         val numberText: TextView = itemView.findViewById(R.id.statNumberText)
         val disciplineText: TextView = itemView.findViewById(R.id.statDisciplineText)
         val teacherText: TextView = itemView.findViewById(R.id.statTeacherText)
@@ -46,9 +67,9 @@ class StatisticsAdapter(
         val additionalInfo: View = itemView.findViewById(R.id.statAdditionalInfo)
         val cardBackground: View = itemView.findViewById(R.id.cardBackground)
         
-        // Флаги для отслеживания состояния анимаций
-        var hasAnimatedAppearance: Boolean = false
-        var hasAnimatedProgress: Boolean = false
+        // Флаги для отслеживания состояния
+        var isExpanded: Boolean = false
+        var currentAnimator: Animator? = null
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): StatisticsViewHolder {
@@ -61,28 +82,42 @@ class StatisticsAdapter(
         super.onViewRecycled(holder)
         // Отменяем все анимации при переиспользовании ViewHolder
         try {
+            holder.currentAnimator?.cancel()
+            holder.currentAnimator = null
             holder.itemView.clearAnimation()
             holder.itemView.animate().cancel()
             holder.progressFill.clearAnimation()
             holder.progressFill.animate().cancel()
             holder.additionalInfo.clearAnimation()
             holder.additionalInfo.animate().cancel()
+            // Сбрасываем состояние
+            holder.itemView.alpha = 1f
+            holder.itemView.translationY = 0f
+            holder.itemView.scaleX = 1f
+            holder.itemView.scaleY = 1f
+            holder.progressFill.alpha = 0.4f
         } catch (e: Exception) {
             // Игнорируем ошибки при очистке
         }
-        // Сбрасываем флаги анимаций при переиспользовании
-        holder.hasAnimatedAppearance = false
-        holder.hasAnimatedProgress = false
+        // НЕ сбрасываем флаги анимаций - они отслеживаются на уровне адаптера через animatedPositions
+        // Сбрасываем только локальные флаги ViewHolder
+        holder.isExpanded = false
     }
 
     override fun onBindViewHolder(holder: StatisticsViewHolder, position: Int) {
         val discipline = disciplines[position]
+        
+        // Отменяем предыдущую анимацию, если есть
+        holder.currentAnimator?.cancel()
+        holder.currentAnimator = null
         
         // Применяем тему к карточке
         if (context != null) {
             val bgResId = when (prefs?.theme) {
                 PreferencesManager.THEME_LIGHT -> R.drawable.card_background_light
                 PreferencesManager.THEME_DARK -> R.drawable.card_background_dark
+                PreferencesManager.THEME_BLUE -> R.drawable.card_background_blue
+                PreferencesManager.THEME_GRAY -> R.drawable.card_background_gray
                 PreferencesManager.THEME_PURPLE -> R.drawable.card_background_purple
                 PreferencesManager.THEME_HALLOWEEN -> R.drawable.card_background_halloween
                 PreferencesManager.THEME_NOTHING -> R.drawable.card_background_nothing
@@ -92,10 +127,26 @@ class StatisticsAdapter(
             }
             holder.cardBackground.setBackgroundResource(bgResId)
             
+            val numberBgResId = when (prefs?.theme) {
+                PreferencesManager.THEME_LIGHT -> R.drawable.widget_lesson_number_bg_light
+                PreferencesManager.THEME_DARK -> R.drawable.widget_lesson_number_bg_dark
+                PreferencesManager.THEME_BLUE -> R.drawable.widget_lesson_number_bg_blue
+                PreferencesManager.THEME_GRAY -> R.drawable.widget_lesson_number_bg_gray
+                PreferencesManager.THEME_PURPLE -> R.drawable.widget_lesson_number_bg_purple
+                PreferencesManager.THEME_HALLOWEEN -> R.drawable.widget_lesson_number_bg_halloween
+                PreferencesManager.THEME_NOTHING -> R.drawable.widget_lesson_number_bg_nothing
+                PreferencesManager.THEME_GREEN -> R.drawable.widget_lesson_number_bg_green
+                PreferencesManager.THEME_NEW_YEAR -> R.drawable.widget_lesson_number_bg_newyear
+                else -> R.drawable.widget_lesson_number_bg_dark
+            }
+            holder.numberBg.setBackgroundResource(numberBgResId)
+            
             // Применяем цвет к номеру дисциплины в зависимости от темы
             val numberTextColor = when (prefs?.theme) {
                 PreferencesManager.THEME_LIGHT -> context.getColor(R.color.light_textColorPrimary)
                 PreferencesManager.THEME_DARK -> context.getColor(R.color.dark_textColorPrimary)
+                PreferencesManager.THEME_BLUE -> context.getColor(R.color.blue_textColorPrimary)
+                PreferencesManager.THEME_GRAY -> context.getColor(R.color.gray_textColorPrimary)
                 PreferencesManager.THEME_PURPLE -> context.getColor(R.color.system_textColorPrimary)
                 PreferencesManager.THEME_HALLOWEEN -> context.getColor(R.color.custom_textColorPrimary)
                 PreferencesManager.THEME_NOTHING -> context.getColor(R.color.nothing_textColorPrimary)
@@ -109,6 +160,8 @@ class StatisticsAdapter(
             val hoursTextColor = when (prefs?.theme) {
                 PreferencesManager.THEME_LIGHT -> context.getColor(R.color.light_textColorPrimary)
                 PreferencesManager.THEME_DARK -> context.getColor(R.color.dark_textColorPrimary)
+                PreferencesManager.THEME_BLUE -> context.getColor(R.color.blue_textColorPrimary)
+                PreferencesManager.THEME_GRAY -> context.getColor(R.color.gray_textColorPrimary)
                 PreferencesManager.THEME_PURPLE -> context.getColor(R.color.system_textColorPrimary)
                 PreferencesManager.THEME_HALLOWEEN -> context.getColor(R.color.custom_textColorPrimary)
                 PreferencesManager.THEME_NOTHING -> context.getColor(R.color.nothing_textColorPrimary)
@@ -121,6 +174,21 @@ class StatisticsAdapter(
             holder.factHoursText.setTextColor(hoursTextColor)
             holder.remainingHoursText.setTextColor(hoursTextColor)
         }
+        
+        // Применяем размер шрифта ко всем TextView
+        val fontSizeMultiplier = getFontSizeMultiplier()
+        holder.numberText.textSize = 18f * fontSizeMultiplier
+        holder.disciplineText.textSize = 16f * fontSizeMultiplier
+        holder.teacherText.textSize = 13f * fontSizeMultiplier
+        holder.lessonTypeText.textSize = 12f * fontSizeMultiplier
+        holder.totalHoursText.textSize = 12f * fontSizeMultiplier
+        holder.plannedHoursText.textSize = 12f * fontSizeMultiplier
+        holder.factHoursText.textSize = 12f * fontSizeMultiplier
+        holder.remainingHoursText.textSize = 12f * fontSizeMultiplier
+        holder.plannedIn2WeeksText.textSize = 11f * fontSizeMultiplier
+        holder.factIn2WeeksText.textSize = 11f * fontSizeMultiplier
+        holder.completionDateText.textSize = 11f * fontSizeMultiplier
+        holder.completionPercentText.textSize = 20f * fontSizeMultiplier
         
         holder.numberText.text = discipline.number.ifEmpty { (position + 1).toString() }
         holder.disciplineText.text = discipline.discipline.ifEmpty { "—" }
@@ -136,7 +204,6 @@ class StatisticsAdapter(
         
         // Вычисляем процент выполнения
         val percent = if (discipline.completionPercent != null && discipline.completionPercent.isNotEmpty()) {
-            // Пробуем извлечь число из строки процента (может быть "94%" или "94")
             val percentMatch = Regex("(\\d+)").find(discipline.completionPercent)
             percentMatch?.groupValues?.get(1)?.toIntOrNull() ?: discipline.getCompletionPercentInt()
         } else {
@@ -145,7 +212,6 @@ class StatisticsAdapter(
         
         // Устанавливаем текст процента
         holder.completionPercentText.text = if (discipline.completionPercent != null && discipline.completionPercent.isNotEmpty()) {
-            // Если процент уже содержит %, оставляем как есть, иначе добавляем %
             if (discipline.completionPercent.contains("%")) {
                 discipline.completionPercent
             } else {
@@ -160,6 +226,8 @@ class StatisticsAdapter(
             val progressResId = when (prefs?.theme) {
                 PreferencesManager.THEME_LIGHT -> R.drawable.statistics_progress_fill_light
                 PreferencesManager.THEME_DARK -> R.drawable.statistics_progress_fill_dark
+                PreferencesManager.THEME_BLUE -> R.drawable.statistics_progress_fill_blue
+                PreferencesManager.THEME_GRAY -> R.drawable.statistics_progress_fill_gray
                 PreferencesManager.THEME_PURPLE -> R.drawable.statistics_progress_fill_purple
                 PreferencesManager.THEME_HALLOWEEN -> R.drawable.statistics_progress_fill_halloween
                 PreferencesManager.THEME_NOTHING -> R.drawable.statistics_progress_fill_nothing
@@ -170,170 +238,272 @@ class StatisticsAdapter(
             holder.progressFill.setBackgroundResource(progressResId)
         }
         
-        // Устанавливаем прогресс сразу (без анимации для стабильности)
-        holder.itemView.post {
-            if (holder.itemView.isAttachedToWindow) {
-                val cardWidth = holder.itemView.width
-                if (cardWidth > 0) {
-                    val targetWidth = (cardWidth * percent / 100).toInt()
-                    val layoutParams = holder.progressFill.layoutParams
-                    layoutParams.width = targetWidth
-                    holder.progressFill.layoutParams = layoutParams
+        // Проверяем, была ли позиция уже анимирована
+        val shouldAnimateAppearance = !animatedPositions.contains(position)
+        val shouldAnimateProgress = !animatedProgressPositions.contains(position)
+        
+        // Устанавливаем финальное состояние, если позиция уже была анимирована
+        if (!shouldAnimateAppearance) {
+            holder.itemView.alpha = 1f
+            holder.itemView.translationY = 0f
+            holder.itemView.scaleX = 1f
+            holder.itemView.scaleY = 1f
+        } else {
+            // Сбрасываем состояние карточки для анимации
+            holder.itemView.alpha = 0f
+            holder.itemView.translationY = 40f
+            holder.itemView.scaleX = 0.9f
+            holder.itemView.scaleY = 0.9f
+        }
+        
+        // Устанавливаем прогресс
+        if (!shouldAnimateProgress) {
+            // Если прогресс уже был анимирован, устанавливаем финальное значение сразу
+            holder.itemView.post {
+                if (holder.itemView.isAttachedToWindow && holder.itemView.width > 0) {
+                    val cardWidth = holder.itemView.width
+                    val targetWidth = (cardWidth * percent / 100).coerceAtLeast(0).coerceAtMost(cardWidth)
+                    val params = holder.progressFill.layoutParams
+                    params.width = targetWidth
+                    holder.progressFill.layoutParams = params
                     holder.progressFill.alpha = 0.4f
-                    
-                    // Анимируем заполнение только один раз при первой загрузке (первые 5 карточек)
-                    if (!holder.hasAnimatedProgress && position < 5) {
-                        holder.hasAnimatedProgress = true
-                        holder.itemView.postDelayed({
-                            if (holder.itemView.isAttachedToWindow) {
-                                holder.progressFill.alpha = 0f
-                                val layoutParams2 = holder.progressFill.layoutParams
-                                layoutParams2.width = 0
-                                holder.progressFill.layoutParams = layoutParams2
-                                
-                                animateProgressFill(holder, percent)
-                            }
-                        }, 100 + (position * 30).toLong())
-                    }
+                }
+            }
+        } else {
+            holder.progressFill.alpha = 0f
+            holder.progressFill.layoutParams.width = 0
+        }
+        
+        // Инициализируем анимации после измерения
+        holder.itemView.post {
+            if (holder.itemView.isAttachedToWindow && holder.itemView.width > 0) {
+                if (shouldAnimateAppearance) {
+                    animateCardAppearance(holder, position)
+                }
+                if (shouldAnimateProgress) {
+                    animateProgressFill(holder, percent, position)
                 }
             }
         }
         
-        // Убеждаемся, что карточка всегда видна
-        holder.itemView.alpha = 1f
-        holder.itemView.translationY = 0f
-        holder.itemView.scaleX = 1f
-        holder.itemView.scaleY = 1f
-        
-        // Анимируем появление карточки только один раз при первой загрузке (первые 5 карточек)
-        if (!holder.hasAnimatedAppearance && position < 5) {
-            holder.hasAnimatedAppearance = true
-            holder.itemView.postDelayed({
-                if (holder.itemView.isAttachedToWindow) {
-                    animateCardAppearance(holder.itemView, position)
-                }
-            }, 50)
-        }
-        
-        // Показываем дополнительную информацию, если есть данные (скрыта по умолчанию)
+        // Показываем дополнительную информацию, если есть данные
         val hasAdditionalInfo = (discipline.plannedIn2Weeks != null && discipline.plannedIn2Weeks.isNotEmpty()) || 
                                 (discipline.factIn2Weeks != null && discipline.factIn2Weeks.isNotEmpty()) || 
                                 (discipline.completionDate != null && discipline.completionDate.isNotEmpty())
         
-        // Дополнительная информация скрыта по умолчанию, разворачивается по клику
+        // Дополнительная информация скрыта по умолчанию
         holder.additionalInfo.visibility = View.GONE
         holder.additionalInfo.alpha = 0f
+        holder.isExpanded = false
         
         // Добавляем возможность разворачивать/сворачивать дополнительную информацию по клику
         if (hasAdditionalInfo) {
             holder.itemView.setOnClickListener {
-                val isVisible = holder.additionalInfo.visibility == View.VISIBLE
-                animateAdditionalInfo(holder.additionalInfo, !isVisible)
+                // Haptic feedback для лучшего UX (как в Telegram)
+                holder.itemView.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
+                toggleAdditionalInfo(holder)
             }
         } else {
             holder.itemView.setOnClickListener(null)
         }
     }
     
-    private fun animateCardAppearance(view: View, position: Int) {
-        // Сохраняем текущее состояние (карточка уже видна)
-        // Добавляем легкий эффект появления без скрытия карточки
-        view.translationY = 15f
-        view.scaleX = 0.98f
-        view.scaleY = 0.98f
+    /**
+     * Плавная анимация появления карточки с эффектом масштабирования и смещения
+     */
+    private fun animateCardAppearance(holder: StatisticsViewHolder, position: Int) {
+        if (animatedPositions.contains(position) || !holder.itemView.isAttachedToWindow) return
         
-        // Анимация с минимальной задержкой для stagger эффекта (максимум 100мс)
-        val delay = (position * 20).coerceAtMost(100).toLong()
-        view.postDelayed({
-            if (view.isAttachedToWindow) {
-                try {
-                    view.animate()
-                        .translationY(0f)
-                        .scaleX(1f)
-                        .scaleY(1f)
-                        .setDuration(300)
-                        .setInterpolator(DecelerateInterpolator())
-                        .start()
-                } catch (e: Exception) {
-                    // Если анимация не удалась, просто устанавливаем финальное состояние
-                    view.translationY = 0f
-                    view.scaleX = 1f
-                    view.scaleY = 1f
-                }
-            } else {
-                // Если view не прикреплен, просто устанавливаем финальное состояние
-                view.translationY = 0f
-                view.scaleX = 1f
-                view.scaleY = 1f
+        // Отмечаем позицию как анимированную сразу, чтобы избежать повторных запусков
+        animatedPositions.add(position)
+        
+        // Для первых 4 карточек используем задержку для stagger эффекта
+        // Для остальных запускаем сразу, чтобы они успели анимироваться при быстрой прокрутке
+        val delay = if (position < 4) {
+            (position * 50L).coerceAtMost(200L)
+        } else {
+            0L // Нет задержки для карточек, появляющихся при прокрутке
+        }
+        
+        val startAnimation: Runnable = Runnable {
+            if (!holder.itemView.isAttachedToWindow || holder.adapterPosition != position) return@Runnable
+            
+            val animatorSet = AnimatorSet().apply {
+                playTogether(
+                    ObjectAnimator.ofFloat(holder.itemView, "alpha", 0f, 1f).apply {
+                        duration = 400
+                        interpolator = DecelerateInterpolator()
+                    },
+                    ObjectAnimator.ofFloat(holder.itemView, "translationY", 40f, 0f).apply {
+                        duration = 500
+                        interpolator = OvershootInterpolator(0.8f)
+                    },
+                    ObjectAnimator.ofFloat(holder.itemView, "scaleX", 0.9f, 1f).apply {
+                        duration = 500
+                        interpolator = OvershootInterpolator(0.8f)
+                    },
+                    ObjectAnimator.ofFloat(holder.itemView, "scaleY", 0.9f, 1f).apply {
+                        duration = 500
+                        interpolator = OvershootInterpolator(0.8f)
+                    }
+                )
             }
-        }, delay)
+            
+            animatorSet.start()
+            holder.currentAnimator = animatorSet
+        }
+        
+        if (delay > 0) {
+            holder.itemView.postDelayed(startAnimation, delay)
+        } else {
+            // Для карточек без задержки запускаем сразу
+            holder.itemView.post(startAnimation)
+        }
     }
     
-    private fun animateProgressFill(holder: StatisticsViewHolder, percent: Int) {
-        if (!holder.itemView.isAttachedToWindow) return
+    /**
+     * Плавная анимация заполнения прогресс-бара с эффектом волны
+     */
+    private fun animateProgressFill(holder: StatisticsViewHolder, percent: Int, position: Int) {
+        if (animatedProgressPositions.contains(position) || !holder.itemView.isAttachedToWindow) return
         
         val cardWidth = holder.itemView.width
         if (cardWidth <= 0) return
         
-        val targetWidth = (cardWidth * percent / 100).toInt()
-        if (targetWidth <= 0) return
+        val targetWidth = (cardWidth * percent / 100).coerceAtLeast(0).coerceAtMost(cardWidth)
+        if (targetWidth <= 0) {
+            holder.progressFill.alpha = 0f
+            animatedProgressPositions.add(position)
+            return
+        }
         
-        try {
-            // Упрощенная анимация заполнения
-            val widthAnimator = ValueAnimator.ofInt(0, targetWidth)
-            widthAnimator.duration = 500
-            widthAnimator.interpolator = DecelerateInterpolator()
-            widthAnimator.addUpdateListener { animation ->
-                if (holder.itemView.isAttachedToWindow) {
-                    try {
-                        val animatedValue = animation.animatedValue as Int
-                        val params = holder.progressFill.layoutParams
-                        params.width = animatedValue
-                        holder.progressFill.layoutParams = params
-                        
-                        // Одновременно анимируем прозрачность
-                        val progress = animation.animatedFraction
-                        holder.progressFill.alpha = progress * 0.4f
-                    } catch (e: Exception) {
-                        // Игнорируем ошибки при анимации
+        // Отмечаем позицию как анимированную сразу, чтобы избежать повторных запусков
+        animatedProgressPositions.add(position)
+        
+        // Для первых 4 карточек используем задержку для stagger эффекта
+        // Для остальных запускаем сразу, чтобы они успели анимироваться при быстрой прокрутке
+        val delay = if (position < 4) {
+            (position * 50L).coerceAtMost(200L) + 200L
+        } else {
+            100L // Минимальная задержка для карточек, появляющихся при прокрутке
+        }
+        
+        val startAnimation: Runnable = Runnable {
+            if (!holder.itemView.isAttachedToWindow || holder.adapterPosition != position) return@Runnable
+            
+            // Анимация ширины
+            val widthAnimator = ValueAnimator.ofInt(0, targetWidth).apply {
+                duration = 800
+                interpolator = DecelerateInterpolator()
+                addUpdateListener { animation ->
+                    if (holder.itemView.isAttachedToWindow) {
+                        try {
+                            val animatedValue = animation.animatedValue as Int
+                            val params = holder.progressFill.layoutParams
+                            params.width = animatedValue
+                            holder.progressFill.layoutParams = params
+                        } catch (e: Exception) {
+                            // Игнорируем ошибки
+                        }
                     }
                 }
             }
-            widthAnimator.start()
-        } catch (e: Exception) {
-            // Если анимация не удалась, просто устанавливаем финальное значение
-            val params = holder.progressFill.layoutParams
-            params.width = targetWidth
-            holder.progressFill.layoutParams = params
-            holder.progressFill.alpha = 0.4f
+            
+            // Анимация прозрачности с эффектом волны
+            val alphaAnimator = ValueAnimator.ofFloat(0f, 0.6f, 0.4f).apply {
+                duration = 800
+                interpolator = AccelerateDecelerateInterpolator()
+                addUpdateListener { animation ->
+                    if (holder.itemView.isAttachedToWindow) {
+                        try {
+                            holder.progressFill.alpha = animation.animatedValue as Float
+                        } catch (e: Exception) {
+                            // Игнорируем ошибки
+                        }
+                    }
+                }
+            }
+            
+            val animatorSet = AnimatorSet().apply {
+                playTogether(widthAnimator, alphaAnimator)
+            }
+            
+            animatorSet.start()
+            holder.currentAnimator = animatorSet
+        }
+        
+        if (delay > 0) {
+            holder.itemView.postDelayed(startAnimation, delay)
+        } else {
+            // Для карточек без задержки запускаем сразу
+            holder.itemView.post(startAnimation)
         }
     }
     
-    private fun animateAdditionalInfo(view: View, show: Boolean) {
-        if (show) {
-            view.visibility = View.VISIBLE
-            view.alpha = 0f
-            view.translationY = -20f
+    /**
+     * Плавная анимация разворачивания/сворачивания дополнительной информации
+     */
+    private fun toggleAdditionalInfo(holder: StatisticsViewHolder) {
+        if (holder.currentAnimator?.isRunning == true) return
+        
+        val isExpanding = !holder.isExpanded
+        
+        if (isExpanding) {
+            // Разворачиваем
+            holder.additionalInfo.visibility = View.VISIBLE
+            holder.additionalInfo.alpha = 0f
+            holder.additionalInfo.translationY = -20f
+            holder.additionalInfo.scaleY = 0.8f
             
-            view.animate()
-                .alpha(1f)
-                .translationY(0f)
-                .setDuration(300)
-                .setInterpolator(DecelerateInterpolator())
-                .start()
+            val animatorSet = AnimatorSet().apply {
+                playTogether(
+                    ObjectAnimator.ofFloat(holder.additionalInfo, "alpha", 0f, 1f).apply {
+                        duration = 300
+                        interpolator = DecelerateInterpolator()
+                    },
+                    ObjectAnimator.ofFloat(holder.additionalInfo, "translationY", -20f, 0f).apply {
+                        duration = 300
+                        interpolator = OvershootInterpolator(0.8f)
+                    },
+                    ObjectAnimator.ofFloat(holder.additionalInfo, "scaleY", 0.8f, 1f).apply {
+                        duration = 300
+                        interpolator = OvershootInterpolator(0.8f)
+                    }
+                )
+            }
+            
+            animatorSet.start()
+            holder.currentAnimator = animatorSet
+            holder.isExpanded = true
         } else {
-            view.animate()
-                .alpha(0f)
-                .translationY(-20f)
-                .setDuration(250)
-                .setInterpolator(DecelerateInterpolator())
-                .withEndAction {
-                    view.visibility = View.GONE
-                }
-                .start()
+            // Сворачиваем
+            val animatorSet = AnimatorSet().apply {
+                playTogether(
+                    ObjectAnimator.ofFloat(holder.additionalInfo, "alpha", 1f, 0f).apply {
+                        duration = 250
+                        interpolator = DecelerateInterpolator()
+                    },
+                    ObjectAnimator.ofFloat(holder.additionalInfo, "translationY", 0f, -20f).apply {
+                        duration = 250
+                        interpolator = DecelerateInterpolator()
+                    },
+                    ObjectAnimator.ofFloat(holder.additionalInfo, "scaleY", 1f, 0.8f).apply {
+                        duration = 250
+                        interpolator = DecelerateInterpolator()
+                    }
+                )
+                addListener(object : AnimatorListenerAdapter() {
+                    override fun onAnimationEnd(animation: Animator) {
+                        holder.additionalInfo.visibility = View.GONE
+                    }
+                })
+            }
+            
+            animatorSet.start()
+            holder.currentAnimator = animatorSet
+            holder.isExpanded = false
         }
     }
 
     override fun getItemCount(): Int = disciplines.size
 }
-

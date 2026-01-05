@@ -2,6 +2,8 @@ package com.example.raspisanie.data
 
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
 import android.util.Log
@@ -11,10 +13,26 @@ class GroupsListParser {
         private const val TAG = "GroupsListParser"
         private const val GROUPS_LIST_URL_CHTOTIB = "https://www.chtotib.ru/schedule_gl/cg.htm"
         private const val GROUPS_LIST_URL_ZABGC = "https://bbb.zabgc.ru/cg.htm"
+        private const val CACHE_TTL_MS = 5 * 60 * 1000L
+        private val cacheMutex = Mutex()
+        private val cachedGroups = mutableMapOf<String, CachedEntry>()
     }
+
+    private data class CachedEntry(
+        val timestamp: Long,
+        val groups: List<Group>
+    )
 
     suspend fun fetchGroupsList(college: String = PreferencesManager.COLLEGE_CHTOTIB): List<Group> = withContext(Dispatchers.IO) {
         try {
+            cacheMutex.withLock {
+                val cached = cachedGroups[college]
+                if (cached != null && System.currentTimeMillis() - cached.timestamp < CACHE_TTL_MS) {
+                    Log.d(TAG, "Использую кешированный список групп для $college (${cached.groups.size})")
+                    return@withContext cached.groups
+                }
+            }
+
             val groupsListUrl = if (college == PreferencesManager.COLLEGE_ZABGC) {
                 GROUPS_LIST_URL_ZABGC
             } else {
@@ -120,8 +138,12 @@ class GroupsListParser {
                 }
             }
             
-            Log.d(TAG, "Парсинг завершен. Найдено групп: ${groups.size}")
-            return@withContext groups.distinctBy { it.fileName } // Remove duplicates
+            val result = groups.distinctBy { it.fileName }
+            cacheMutex.withLock {
+                cachedGroups[college] = CachedEntry(System.currentTimeMillis(), result)
+            }
+            Log.d(TAG, "Парсинг завершен. Найдено групп: ${result.size}")
+            return@withContext result
         } catch (e: Exception) {
             Log.e(TAG, "Ошибка при парсинге списка групп", e)
             throw e

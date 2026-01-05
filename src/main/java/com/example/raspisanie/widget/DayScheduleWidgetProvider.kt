@@ -69,6 +69,9 @@ class DayScheduleWidgetProvider : AppWidgetProvider() {
                     // Apply theme colors
                     applyThemeColors(context, views, prefs.theme)
                     
+                    // Apply font size
+                    applyFontSize(context, views, prefs.fontSize)
+                    
                     if (!prefs.isGroupSelected()) {
                         views.setViewVisibility(R.id.widget_empty, android.view.View.VISIBLE)
                         views.setViewVisibility(R.id.widget_lessons_list, android.view.View.GONE)
@@ -157,6 +160,20 @@ class DayScheduleWidgetProvider : AppWidgetProvider() {
             views.setTextColor(R.id.widget_empty, textSecondary)
         }
         
+        private fun applyFontSize(context: Context, views: RemoteViews, fontSize: String) {
+            val multiplier = when (fontSize) {
+                PreferencesManager.FONT_SIZE_SMALL -> 0.85f
+                PreferencesManager.FONT_SIZE_NORMAL -> 1.0f
+                PreferencesManager.FONT_SIZE_LARGE -> 1.15f
+                PreferencesManager.FONT_SIZE_EXTRA_LARGE -> 1.3f
+                else -> 1.0f
+            }
+            
+            // Применяем размер шрифта ко всем TextView
+            views.setTextViewTextSize(R.id.widget_day_title, android.util.TypedValue.COMPLEX_UNIT_SP, 16f * multiplier)
+            views.setTextViewTextSize(R.id.widget_empty, android.util.TypedValue.COMPLEX_UNIT_SP, 14f * multiplier)
+        }
+        
         private fun getThemeColors(context: Context, theme: String): Array<Int> {
             return when (theme) {
                 PreferencesManager.THEME_LIGHT -> arrayOf(
@@ -168,6 +185,16 @@ class DayScheduleWidgetProvider : AppWidgetProvider() {
                     context.getColor(R.color.dark_textColorPrimary),
                     context.getColor(R.color.dark_textColorSecondary),
                     R.drawable.widget_background_dark
+                )
+                PreferencesManager.THEME_BLUE -> arrayOf(
+                    context.getColor(R.color.blue_textColorPrimary),
+                    context.getColor(R.color.blue_textColorSecondary),
+                    R.drawable.widget_background_blue
+                )
+                PreferencesManager.THEME_GRAY -> arrayOf(
+                    context.getColor(R.color.gray_textColorPrimary),
+                    context.getColor(R.color.gray_textColorSecondary),
+                    R.drawable.widget_background_gray
                 )
                 PreferencesManager.THEME_PURPLE -> arrayOf(
                     context.getColor(R.color.system_textColorPrimary), // White "Расписание"

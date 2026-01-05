@@ -49,6 +49,16 @@ object ScheduleNotificationManager {
         }
 
         if (schedule.isEmpty() || !prefs.scheduleNotificationsEnabled) return
+        
+        // Проверяем настройку уведомлений об обновлении расписания
+        if (!prefs.scheduleUpdateNotificationsEnabled) {
+            // Обновляем хеш, но не показываем уведомление
+            val newHash = computeScheduleHash(schedule)
+            if (newHash.isNotEmpty()) {
+                prefs.lastScheduleHash = newHash
+            }
+            return
+        }
 
         val newHash = computeScheduleHash(schedule)
         if (newHash.isEmpty()) return
@@ -74,16 +84,22 @@ object ScheduleNotificationManager {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
+        // Улучшенный стиль уведомления с большей информацией
+        val bigText = buildBigTextForScheduleUpdate(context, schedule, message)
+        
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_notification_schedule)
             .setColor(ContextCompat.getColor(context, R.color.dayNamePurple))
             .setContentTitle(title)
             .setContentText(message)
-            .setStyle(NotificationCompat.BigTextStyle().bigText(message))
+            .setStyle(NotificationCompat.BigTextStyle()
+                .bigText(bigText)
+                .setSummaryText(context.getString(R.string.notification_schedule_updated_tap_to_view)))
             .setAutoCancel(true)
             .setCategory(NotificationCompat.CATEGORY_REMINDER)
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
             .setContentIntent(pendingIntent)
+            .setDefaults(NotificationCompat.DEFAULT_ALL)
             .build()
 
         NotificationManagerCompat.from(context).notify(NOTIFICATION_ID, notification)
@@ -186,7 +202,12 @@ object ScheduleNotificationManager {
             return
         }
 
-        if (!prefs.upcomingNotificationsEnabled) {
+        // Проверяем, включены ли хотя бы какие-то уведомления (о парах, обеде или переменах)
+        val hasAnyNotificationsEnabled = prefs.upcomingNotificationsEnabled || 
+                                        prefs.upcomingBreakRemindersEnabled || 
+                                        prefs.upcomingLunchRemindersEnabled
+        
+        if (!hasAnyNotificationsEnabled) {
             cancelUpcomingEventNotifications(context, prefs)
             return
         }
@@ -395,7 +416,9 @@ object ScheduleNotificationManager {
                         }
                         
                         if (endMillisBreak == null || endMillisBreak > now - TimeUnit.MINUTES.toMillis(5)) {
-                            val triggerBreak = adjustTrigger(startMillisBreak, startMillisBreak, now)
+                            // Напоминание о перемене за 2 минуты до начала
+                            val breakReminderOffset = TimeUnit.MINUTES.toMillis(2)
+                            val triggerBreak = adjustTrigger(startMillisBreak - breakReminderOffset, startMillisBreak, now)
                             if (triggerBreak != null) {
                                 val displayRange = if (endTime.isNullOrEmpty()) startTime else "$startTime - $endTime"
                                 val title = context.getString(R.string.notification_next_break_title)
@@ -411,6 +434,7 @@ object ScheduleNotificationManager {
                                     shortLabel = shortLabel,
                                     bigText = message
                                 )
+                                Log.d(TAG, "Добавлено напоминание о перемене: $message на ${java.text.SimpleDateFormat("dd.MM.yyyy HH:mm", Locale.getDefault()).format(Date(triggerBreak))}")
                             }
                         }
                     }
@@ -434,7 +458,9 @@ object ScheduleNotificationManager {
                         }
                         
                         if (endMillisLunch == null || endMillisLunch > now - TimeUnit.MINUTES.toMillis(5)) {
-                            val triggerLunch = adjustTrigger(startMillisLunch, startMillisLunch, now)
+                            // Напоминание об обеде за 5 минут до начала
+                            val lunchReminderOffset = TimeUnit.MINUTES.toMillis(5)
+                            val triggerLunch = adjustTrigger(startMillisLunch - lunchReminderOffset, startMillisLunch, now)
                             if (triggerLunch != null) {
                                 val displayRange = if (endTime.isNullOrEmpty()) startTime else "$startTime - $endTime"
                                 val title = context.getString(R.string.notification_next_lunch_title)
@@ -450,6 +476,7 @@ object ScheduleNotificationManager {
                                     shortLabel = shortLabel,
                                     bigText = message
                                 )
+                                Log.d(TAG, "Добавлено напоминание об обеде: $message на ${java.text.SimpleDateFormat("dd.MM.yyyy HH:mm", Locale.getDefault()).format(Date(triggerLunch))}")
                             }
                         }
                     }
@@ -638,21 +665,62 @@ object ScheduleNotificationManager {
         val contentText = message
         val expandedText = bigText ?: message
 
+        // Улучшенный стиль уведомления о предстоящих событиях
+        val improvedBigText = buildImprovedEventNotificationText(context, eventType, expandedText, contentText)
+        
+        // Определяем приоритет в зависимости от типа события
+        val priority = when (eventType) {
+            EventType.LESSON -> NotificationCompat.PRIORITY_HIGH
+            EventType.BREAK, EventType.LUNCH -> NotificationCompat.PRIORITY_DEFAULT
+            null -> NotificationCompat.PRIORITY_DEFAULT
+        }
+        
         val notification = NotificationCompat.Builder(context, EVENT_CHANNEL_ID)
             .setSmallIcon(getEventIcon(eventType))
             .setColor(ContextCompat.getColor(context, R.color.dayNamePurple))
             .setContentTitle(title)
             .setContentText(contentText)
-            .setStyle(NotificationCompat.BigTextStyle().bigText(expandedText))
+            .setStyle(NotificationCompat.BigTextStyle()
+                .bigText(improvedBigText)
+                .setSummaryText(context.getString(R.string.notification_event_tap_to_view)))
             .setAutoCancel(true)
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setPriority(priority)
             .setCategory(NotificationCompat.CATEGORY_REMINDER)
             .setContentIntent(pendingIntent)
+            .setDefaults(NotificationCompat.DEFAULT_ALL)
             .build()
 
         NotificationManagerCompat.from(context).notify(notificationId, notification)
     }
 
+    private fun buildImprovedEventNotificationText(
+        context: Context,
+        eventType: EventType?,
+        expandedText: String,
+        contentText: String
+    ): String {
+        val builder = StringBuilder()
+        
+        // Добавляем эмодзи для лучшей визуализации
+        val emoji = when (eventType) {
+            EventType.LESSON -> "📚"
+            EventType.BREAK -> "☕"
+            EventType.LUNCH -> "🍽️"
+            null -> "📅"
+        }
+        
+        builder.append("$emoji ")
+        builder.append(expandedText)
+        
+        // Добавляем разделитель для лучшей читаемости
+        if (expandedText.contains("\n")) {
+            builder.append("\n\n")
+            builder.append(context.getString(R.string.notification_event_tap_to_view))
+        }
+        
+        return builder.toString()
+    }
+    
     private fun getEventIcon(type: EventType?): Int {
         return R.drawable.ic_notification_schedule
     }
@@ -662,12 +730,8 @@ object ScheduleNotificationManager {
         val upcomingDay = findUpcomingDay(schedule)
         val message = if (upcomingDay != null) {
             val lessonsCount = upcomingDay.items.count { it.subject?.isNotBlank() == true }
-            context.getString(
-                R.string.notification_schedule_updated_message,
-                upcomingDay.day,
-                upcomingDay.date,
-                lessonsCount
-            )
+            // Упрощённый текст: только день и количество пар
+            "${upcomingDay.day}, ${upcomingDay.date} — $lessonsCount ${if (lessonsCount == 1) "пара" else if (lessonsCount in 2..4) "пары" else "пар"}"
         } else {
             context.getString(R.string.notification_schedule_updated_generic)
         }
@@ -710,6 +774,27 @@ object ScheduleNotificationManager {
             ?.second ?: schedule.firstOrNull()
     }
 
+    private fun buildBigTextForScheduleUpdate(context: Context, schedule: List<DaySchedule>, baseMessage: String): String {
+        val upcomingDay = findUpcomingDay(schedule) ?: return baseMessage
+        
+        // Упрощённый текст: только основные предметы без деталей
+        val subjects = upcomingDay.items
+            .mapNotNull { it.subject?.trim()?.takeIf { s -> s.isNotEmpty() } }
+            .distinct()
+            .take(5)
+        
+        return if (subjects.isNotEmpty()) {
+            val subjectsText = if (subjects.size <= 3) {
+                subjects.joinToString(", ")
+            } else {
+                "${subjects.take(3).joinToString(", ")} и ещё ${subjects.size - 3}"
+            }
+            "$baseMessage\n\n$subjectsText"
+        } else {
+            baseMessage
+        }
+    }
+    
     private fun computeScheduleHash(schedule: List<DaySchedule>): String {
         return runCatching {
             val json = gson.toJson(schedule)

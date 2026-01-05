@@ -39,7 +39,8 @@ class SnowfallView @JvmOverloads constructor(
 
     private fun createSnowflakes(width: Int, height: Int) {
         snowflakes.clear()
-        val count = (width * height / 15000).coerceIn(30, 60) // Adaptive count based on size
+        // Оптимизация: уменьшено количество снежинок для экономии ресурсов
+        val count = (width * height / 15000).coerceIn(30, 60) // Уменьшено с 50-100 до 30-60
         
         val density = resources.displayMetrics.density
         
@@ -48,9 +49,10 @@ class SnowfallView @JvmOverloads constructor(
                 Snowflake(
                     x = Random.nextFloat() * width,
                     y = Random.nextFloat() * height,
-                    size = (Random.nextFloat() * 3 + 1) * density, // 1-4 dp converted to pixels
-                    speed = (Random.nextFloat() * 2 + 1) * density, // 1-3 dp per frame
-                    opacity = Random.nextFloat() * 0.4f + 0.6f // 0.6-1.0 for better visibility
+                    size = (Random.nextFloat() * 4 + 1) * density, // 1-5 dp converted to pixels
+                    speed = (Random.nextFloat() * 3 + 0.5f) * density, // 0.5-3.5 dp per frame
+                    opacity = Random.nextFloat() * 0.5f + 0.5f, // 0.5-1.0 for better visibility
+                    drift = Random.nextFloat() * 0.3f - 0.15f // Горизонтальный дрейф
                 )
             )
         }
@@ -82,18 +84,19 @@ class SnowfallView @JvmOverloads constructor(
             // Move snowflake down
             flake.y += flake.speed
             
-            // Add slight horizontal drift (wind effect)
-            flake.x += (Math.sin(flake.y * 0.01) * 0.5).toFloat()
+            // Add realistic horizontal drift with wind effect (как в exteraGram)
+            val windEffect = (Math.sin((flake.y * 0.01 + System.currentTimeMillis() * 0.0001).toDouble()) * 0.8).toFloat()
+            flake.x += flake.drift + windEffect
             
             // Reset if off screen
             if (flake.y > height) {
-                flake.y = -flake.size
+                flake.y = -flake.size * 2
                 flake.x = Random.nextFloat() * width
             }
             
             // Wrap around horizontally
-            if (flake.x < 0) flake.x = width
-            if (flake.x > width) flake.x = 0f
+            if (flake.x < -flake.size) flake.x = width + flake.size
+            if (flake.x > width + flake.size) flake.x = -flake.size
         }
     }
 
@@ -115,8 +118,14 @@ class SnowfallView @JvmOverloads constructor(
 
     override fun onAttachedToWindow() {
         super.onAttachedToWindow()
-        if (width > 0 && height > 0) {
-            startAnimation()
+        // Используем post для гарантии, что размеры view известны
+        post {
+            if (width > 0 && height > 0 && visibility == View.VISIBLE) {
+                if (snowflakes.isEmpty()) {
+                    createSnowflakes(width, height)
+                }
+                startAnimation()
+            }
         }
     }
 
@@ -138,7 +147,23 @@ class SnowfallView @JvmOverloads constructor(
 
     fun resume() {
         if (visibility == View.VISIBLE && !isAnimating) {
-            startAnimation()
+            // Убеждаемся, что снежинки созданы
+            if (width > 0 && height > 0) {
+                if (snowflakes.isEmpty()) {
+                    createSnowflakes(width, height)
+                }
+                startAnimation()
+            } else {
+                // Если размеры еще не известны, ждем
+                post {
+                    if (width > 0 && height > 0) {
+                        if (snowflakes.isEmpty()) {
+                            createSnowflakes(width, height)
+                        }
+                        startAnimation()
+                    }
+                }
+            }
         }
     }
 
@@ -147,7 +172,8 @@ class SnowfallView @JvmOverloads constructor(
         var y: Float,
         val size: Float,
         val speed: Float,
-        val opacity: Float
+        val opacity: Float,
+        val drift: Float // Горизонтальный дрейф для каждой снежинки
     )
 }
 

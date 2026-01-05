@@ -444,7 +444,7 @@ object AppUpdateManager {
             // Создать Intent для установки
             val intent = try {
                 Intent(Intent.ACTION_VIEW).apply {
-                    flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION
                     setDataAndType(uri, "application/vnd.android.package-archive")
                 }
             } catch (e: Exception) {
@@ -469,18 +469,21 @@ object AppUpdateManager {
                         return
                     }
                     
+                    Log.d(TAG, "Найдено ${resInfoList.size} приложений для установки")
+                    
                     for (resolveInfo in resInfoList) {
                         try {
                             val packageName = resolveInfo.activityInfo.packageName
                             if (!packageName.isNullOrBlank()) {
+                                Log.d(TAG, "Предоставляю разрешение на чтение URI для: $packageName")
                                 context.grantUriPermission(
                                     packageName,
                                     uri,
-                                    Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                                    Intent.FLAG_GRANT_READ_URI_PERMISSION
                                 )
                             }
                         } catch (e: Exception) {
-                            Log.w(TAG, "Ошибка при предоставлении разрешения для пакета", e)
+                            Log.w(TAG, "Ошибка при предоставлении разрешения для пакета ${resolveInfo.activityInfo.packageName}", e)
                             // Продолжаем для других приложений
                         }
                     }
@@ -492,6 +495,7 @@ object AppUpdateManager {
             
             // Запустить установку
             try {
+                Log.d(TAG, "Запускаю установку APK через Intent: $intent, URI: $uri")
                 context.startActivity(intent)
                 Log.d(TAG, "✅ Запущена установка APK: ${apkFile.absolutePath}")
                 
@@ -506,8 +510,12 @@ object AppUpdateManager {
             } catch (e: SecurityException) {
                 isInstalling = false
                 Log.e(TAG, "Ошибка безопасности при установке APK", e)
-                showDownloadErrorNotification(context, "Ошибка безопасности. Проверьте разрешения в настройках.")
-        } catch (e: Exception) {
+                showDownloadErrorNotification(context, "Ошибка безопасности при установке. Проверьте разрешения в настройках: ${e.message}")
+            } catch (e: IllegalStateException) {
+                isInstalling = false
+                Log.e(TAG, "Ошибка состояния при установке APK (возможно, приложение в фоне)", e)
+                showDownloadErrorNotification(context, "Не удалось запустить установку. Нажмите на уведомление для установки.")
+            } catch (e: Exception) {
                 isInstalling = false
                 Log.e(TAG, "Ошибка при запуске установки APK", e)
                 showDownloadErrorNotification(context, "Ошибка при установке: ${e.message ?: "Неизвестная ошибка"}")
@@ -522,7 +530,7 @@ object AppUpdateManager {
     /**
      * Показать уведомление о необходимости разрешения на установку
      */
-    private fun showInstallPermissionNotification(context: Context) {
+    fun showInstallPermissionNotification(context: Context) {
         try {
             val notificationManager = try {
                 context.getSystemService(Context.NOTIFICATION_SERVICE) as? android.app.NotificationManager
@@ -826,6 +834,33 @@ object AppUpdateManager {
             } catch (e: Exception) {
                 Log.e(TAG, "Ошибка при создании Intent для установки", e)
                 return
+            }
+            
+            // Предоставить разрешения на чтение URI для PackageInstaller (Android 7.0+)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                try {
+                    val resInfoList = context.packageManager.queryIntentActivities(
+                        installIntent,
+                        android.content.pm.PackageManager.MATCH_DEFAULT_ONLY
+                    )
+                    
+                    for (resolveInfo in resInfoList) {
+                        try {
+                            val packageName = resolveInfo.activityInfo.packageName
+                            if (!packageName.isNullOrBlank()) {
+                                context.grantUriPermission(
+                                    packageName,
+                                    uri,
+                                    Intent.FLAG_GRANT_READ_URI_PERMISSION
+                                )
+                            }
+                        } catch (e: Exception) {
+                            Log.w(TAG, "Ошибка при предоставлении разрешения для пакета в уведомлении", e)
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.w(TAG, "Ошибка при предоставлении URI разрешений для уведомления", e)
+                }
             }
             
             val installPendingIntent = try {

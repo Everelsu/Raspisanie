@@ -42,14 +42,15 @@ class StatisticsParser(private val context: android.content.Context? = null) {
     companion object {
         private const val TAG = "StatisticsParser"
         private const val BASE_URL_CHTOTIB = "https://www.chtotib.ru/schedule_gl/"
+        private const val BASE_URL_ZABGC = "https://bbb.zabgc.ru/"
     }
     
     private val cache: StatisticsCache? = context?.let { StatisticsCache(it) }
 
-    suspend fun fetchStatistics(groupFile: String = "cg36.htm", useCache: Boolean = true): GroupStatistics? = withContext(Dispatchers.IO) {
+    suspend fun fetchStatistics(groupFile: String = "cg36.htm", college: String = PreferencesManager.COLLEGE_CHTOTIB, useCache: Boolean = true): GroupStatistics? = withContext(Dispatchers.IO) {
         // Сначала пытаемся загрузить из кэша
         if (useCache && cache != null) {
-            val cachedStatistics = cache.getCachedStatistics(groupFile)
+            val cachedStatistics = cache.getCachedStatistics(groupFile, college)
             if (cachedStatistics != null) {
                 Log.d(TAG, "✅ Статистика загружена из кэша для $groupFile")
                 // Загружаем свежие данные в фоне, но возвращаем кэш
@@ -60,18 +61,39 @@ class StatisticsParser(private val context: android.content.Context? = null) {
         
         // Если кэша нет или он отключен, загружаем с сервера
         try {
+            // Определяем базовый URL в зависимости от колледжа
+            val baseUrl = if (college == PreferencesManager.COLLEGE_ZABGC) {
+                BASE_URL_ZABGC
+            } else {
+                BASE_URL_CHTOTIB
+            }
+            
             // Преобразуем cg36.htm -> vg36.htm для страницы с итогами
             val statisticsFile = groupFile.replace("cg", "vg")
-            val statisticsUrl = "$BASE_URL_CHTOTIB$statisticsFile"
-            Log.d(TAG, "Загрузка статистики с $statisticsUrl (из $groupFile)")
+            val statisticsUrl = "$baseUrl$statisticsFile"
+            Log.d(TAG, "Загрузка статистики с $statisticsUrl (из $groupFile, колледж: $college)")
             
-            val doc: Document = Jsoup.connect(statisticsUrl)
-                .timeout(20000)
-                .userAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
-                .followRedirects(true)
-                .parser(org.jsoup.parser.Parser.htmlParser())
-                .maxBodySize(10 * 1024 * 1024)
-                .get()
+            val doc: Document = try {
+                Jsoup.connect(statisticsUrl)
+                    .timeout(20000)
+                    .userAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+                    .followRedirects(true)
+                    .parser(org.jsoup.parser.Parser.htmlParser())
+                    .maxBodySize(10 * 1024 * 1024)
+                    .get()
+            } catch (e: java.net.SocketTimeoutException) {
+                Log.e(TAG, "Таймаут при подключении к $statisticsUrl", e)
+                throw e
+            } catch (e: java.net.UnknownHostException) {
+                Log.e(TAG, "Не удалось разрешить хост для $statisticsUrl", e)
+                throw e
+            } catch (e: java.io.IOException) {
+                Log.e(TAG, "Ошибка ввода/вывода при загрузке $statisticsUrl", e)
+                throw e
+            } catch (e: Exception) {
+                Log.e(TAG, "Неожиданная ошибка при загрузке $statisticsUrl", e)
+                throw e
+            }
             
             // Ищем таблицу с итогами
             // Сначала пробуем найти таблицу с классом "inf"
@@ -269,7 +291,7 @@ class StatisticsParser(private val context: android.content.Context? = null) {
             
             // Сохраняем в кэш
             if (cache != null) {
-                cache.cacheStatistics(statistics, groupFile)
+                cache.cacheStatistics(statistics, groupFile, college)
             }
             
             return@withContext statistics
@@ -278,7 +300,7 @@ class StatisticsParser(private val context: android.content.Context? = null) {
             
             // При ошибке сети пытаемся загрузить из кэша
             if (useCache && cache != null) {
-                val cachedStatistics = cache.getCachedStatistics(groupFile)
+                val cachedStatistics = cache.getCachedStatistics(groupFile, college)
                 if (cachedStatistics != null) {
                     Log.d(TAG, "✅ Используем кэш из-за ошибки сети для $groupFile")
                     return@withContext cachedStatistics

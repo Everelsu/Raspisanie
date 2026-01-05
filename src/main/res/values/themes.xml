@@ -410,6 +410,100 @@
         <item name="lessonNumberStroke">@color/green_lessonNumberStroke</item>
     </style>
 
+    <!-- Blue Theme - Темная основа с синими акцентами -->
+    <style name="Theme.Raspisanie.Blue" parent="Theme.Material3.DayNight.NoActionBar">
+        <item name="android:windowBackground">@color/blue_windowBackground</item>
+        <item name="colorPrimary">@color/blue_colorPrimary</item>
+        <item name="colorOnPrimary">@color/blue_colorOnPrimary</item>
+        <item name="colorPrimaryVariant">@color/blue_colorPrimaryVariant</item>
+
+        <item name="colorSecondary">@color/blue_colorPrimary</item>
+        <item name="colorTertiary">@color/blue_colorPrimary</item>
+        <item name="colorPrimaryContainer">@color/blue_colorPrimary</item>
+        <item name="colorSecondaryContainer">@color/blue_colorPrimary</item>
+        <item name="colorTertiaryContainer">@color/blue_colorPrimary</item>
+
+        <item name="colorSurface">@color/blue_colorSurface</item>
+        <item name="colorOnSurface">@color/blue_colorOnSurface</item>
+        <item name="settingsCardBg">@color/blue_settingsCardBg</item>
+
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@color/blue_navigationBarColor</item>
+        <item name="android:windowLightStatusBar">false</item>
+
+        <item name="android:fontFamily">@font/inter</item>
+        <item name="android:textColor">@color/blue_textColor</item>
+        <item name="android:textColorPrimary">@color/blue_textColorPrimary</item>
+        <item name="android:textColorSecondary">@color/blue_textColorSecondary</item>
+
+        <item name="android:colorBackground">@color/blue_colorBackground</item>
+        <item name="colorOnBackground">@color/blue_colorOnBackground</item>
+
+        <item name="colorControlActivated">@color/blue_colorPrimary</item>
+        <item name="colorControlNormal">@color/blue_textColorSecondary</item>
+        <item name="android:colorControlActivated">@color/blue_colorPrimary</item>
+        <item name="android:colorControlNormal">@color/blue_textColorSecondary</item>
+        <item name="materialButtonStyle">@style/Widget.Raspisanie.Button</item>
+        <item name="buttonStyle">@style/Widget.Raspisanie.Button</item>
+
+        <item name="switchThumbTint">@color/switch_thumb_blue</item>
+        <item name="switchTrackTint">@color/switch_track_blue</item>
+        <item name="thumbTint">@color/switch_thumb_blue</item>
+        <item name="trackTint">@color/switch_track_blue</item>
+        <item name="colorControlHighlight">@color/switch_ripple</item>
+        <item name="android:colorControlHighlight">@color/switch_ripple</item>
+
+        <item name="lessonNumberBg">@color/blue_lessonNumberBg</item>
+        <item name="lessonNumberStroke">@color/blue_lessonNumberStroke</item>
+    </style>
+
+    <!-- Gray Theme - Темная основа с серыми акцентами -->
+    <style name="Theme.Raspisanie.Gray" parent="Theme.Material3.DayNight.NoActionBar">
+        <item name="android:windowBackground">@color/gray_windowBackground</item>
+        <item name="colorPrimary">@color/gray_colorPrimary</item>
+        <item name="colorOnPrimary">@color/gray_colorOnPrimary</item>
+        <item name="colorPrimaryVariant">@color/gray_colorPrimaryVariant</item>
+
+        <item name="colorSecondary">@color/gray_colorPrimary</item>
+        <item name="colorTertiary">@color/gray_colorPrimary</item>
+        <item name="colorPrimaryContainer">@color/gray_colorPrimary</item>
+        <item name="colorSecondaryContainer">@color/gray_colorPrimary</item>
+        <item name="colorTertiaryContainer">@color/gray_colorPrimary</item>
+
+        <item name="colorSurface">@color/gray_colorSurface</item>
+        <item name="colorOnSurface">@color/gray_colorOnSurface</item>
+        <item name="settingsCardBg">@color/gray_settingsCardBg</item>
+
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@color/gray_navigationBarColor</item>
+        <item name="android:windowLightStatusBar">false</item>
+
+        <item name="android:fontFamily">@font/inter</item>
+        <item name="android:textColor">@color/gray_textColor</item>
+        <item name="android:textColorPrimary">@color/gray_textColorPrimary</item>
+        <item name="android:textColorSecondary">@color/gray_textColorSecondary</item>
+
+        <item name="android:colorBackground">@color/gray_colorBackground</item>
+        <item name="colorOnBackground">@color/gray_colorOnBackground</item>
+
+        <item name="colorControlActivated">@color/gray_colorPrimary</item>
+        <item name="colorControlNormal">@color/gray_textColorSecondary</item>
+        <item name="android:colorControlActivated">@color/gray_colorPrimary</item>
+        <item name="android:colorControlNormal">@color/gray_textColorSecondary</item>
+        <item name="materialButtonStyle">@style/Widget.Raspisanie.Button</item>
+        <item name="buttonStyle">@style/Widget.Raspisanie.Button</item>
+
+        <item name="switchThumbTint">@color/switch_thumb_gray</item>
+        <item name="switchTrackTint">@color/switch_track_gray</item>
+        <item name="thumbTint">@color/switch_thumb_gray</item>
+        <item name="trackTint">@color/switch_track_gray</item>
+        <item name="colorControlHighlight">@color/switch_ripple</item>
+        <item name="android:colorControlHighlight">@color/switch_ripple</item>
+
+        <item name="lessonNumberBg">@color/gray_lessonNumberBg</item>
+        <item name="lessonNumberStroke">@color/gray_lessonNumberStroke</item>
+    </style>
+
     <!-- New Year Theme - Праздничная тема с красным, белым и зелёным -->
     <style name="Theme.Raspisanie.NewYear" parent="Theme.Material3.DayNight.NoActionBar">
         <!-- Фон окна (тёмно-зелёно-красный) -->

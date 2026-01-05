@@ -25,6 +25,7 @@ class ScheduleWidgetService : RemoteViewsService() {
         private var lessons: List<ScheduleItem> = emptyList()
         private var themeColors: Array<Int> = arrayOf(0, 0, 0)
         private var lessonNumberBg: Int = R.drawable.widget_lesson_number_bg_dark
+        private var fontSizeMultiplier: Float = 1.0f
         
         // Thread-safe date formatter
         private val dateFormatter = ThreadLocal.withInitial {
@@ -44,6 +45,7 @@ class ScheduleWidgetService : RemoteViewsService() {
                     lessons = todaySchedule?.items?.sortedBy { it.lessonNumber } ?: emptyList()
                     themeColors = getThemeColors(context, prefs.theme)
                     lessonNumberBg = getLessonNumberBg(prefs.theme)
+                    fontSizeMultiplier = getFontSizeMultiplier(prefs.fontSize)
                 } catch (e: Exception) {
                     android.util.Log.e("ScheduleWidgetService", "Error in onDataSetChanged", e)
                     lessons = emptyList()
@@ -100,6 +102,12 @@ class ScheduleWidgetService : RemoteViewsService() {
                     lessonView.setTextColor(R.id.lesson_details, colors[2]) // Details color
                 }
                 lessonView.setInt(R.id.lesson_number, "setBackgroundResource", bg)
+                
+                // Apply font size
+                val multiplier = dataLock.read { fontSizeMultiplier }
+                lessonView.setTextViewTextSize(R.id.lesson_number, android.util.TypedValue.COMPLEX_UNIT_SP, 15f * multiplier)
+                lessonView.setTextViewTextSize(R.id.lesson_subject, android.util.TypedValue.COMPLEX_UNIT_SP, 14f * multiplier)
+                lessonView.setTextViewTextSize(R.id.lesson_details, android.util.TypedValue.COMPLEX_UNIT_SP, 12f * multiplier)
 
                 lessonView
             } catch (e: Exception) {
@@ -149,6 +157,16 @@ class ScheduleWidgetService : RemoteViewsService() {
                     context.getColor(R.color.dark_textColorPrimary), // White subject
                     context.getColor(R.color.dark_textColorSecondary) // Gray details
                 )
+                PreferencesManager.THEME_BLUE -> arrayOf(
+                    context.getColor(R.color.blue_colorPrimary), // Blue number
+                    context.getColor(R.color.blue_textColorPrimary), // White subject
+                    context.getColor(R.color.blue_textColorSecondary) // Blue-ish details
+                )
+                PreferencesManager.THEME_GRAY -> arrayOf(
+                    context.getColor(R.color.gray_colorPrimary), // Gray number
+                    context.getColor(R.color.gray_textColorPrimary), // White subject
+                    context.getColor(R.color.gray_textColorSecondary) // Gray details
+                )
                 PreferencesManager.THEME_PURPLE -> arrayOf(
                     context.getColor(R.color.system_colorPrimary), // Purple number
                     context.getColor(R.color.system_textColorPrimary), // White subject
@@ -189,12 +207,24 @@ class ScheduleWidgetService : RemoteViewsService() {
             return when (theme) {
                 PreferencesManager.THEME_LIGHT -> R.drawable.widget_lesson_number_bg_light
                 PreferencesManager.THEME_DARK -> R.drawable.widget_lesson_number_bg_dark
+                PreferencesManager.THEME_BLUE -> R.drawable.widget_lesson_number_bg_blue
+                PreferencesManager.THEME_GRAY -> R.drawable.widget_lesson_number_bg_gray
                 PreferencesManager.THEME_PURPLE -> R.drawable.widget_lesson_number_bg_purple
                 PreferencesManager.THEME_HALLOWEEN -> R.drawable.widget_lesson_number_bg_halloween
                 PreferencesManager.THEME_NOTHING -> R.drawable.widget_lesson_number_bg_nothing
                 PreferencesManager.THEME_GREEN -> R.drawable.widget_lesson_number_bg_green
                 PreferencesManager.THEME_NEW_YEAR -> R.drawable.widget_lesson_number_bg_newyear
                 else -> R.drawable.widget_lesson_number_bg_dark
+            }
+        }
+        
+        private fun getFontSizeMultiplier(fontSize: String): Float {
+            return when (fontSize) {
+                PreferencesManager.FONT_SIZE_SMALL -> 0.85f
+                PreferencesManager.FONT_SIZE_NORMAL -> 1.0f
+                PreferencesManager.FONT_SIZE_LARGE -> 1.15f
+                PreferencesManager.FONT_SIZE_EXTRA_LARGE -> 1.3f
+                else -> 1.0f
             }
         }
     }

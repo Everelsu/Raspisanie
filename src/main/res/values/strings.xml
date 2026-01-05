@@ -1,6 +1,27 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Расписание</string>
+    
+    <!-- App icon customization -->
+    <string name="app_icon_title">Иконка приложения</string>
+    <string name="app_icon_default">По умолчанию</string>
+    <string name="app_icon_book">Книга</string>
+    <string name="app_icon_calendar">Календарь</string>
+    <string name="app_icon_clock">Часы</string>
+    <string name="app_icon_graduation">Диплом</string>
+    <string name="app_icon_black">Синяя</string>
+    <string name="app_icon_white">Белая</string>
+    <string name="app_icon_halloween">Хэллоуин</string>
+    <string name="app_icon_light">Светлая</string>
+    <string name="app_icon_dark">Серая</string>
+    <string name="app_icon_purple">Фиолетовая</string>
+    <string name="app_icon_green">Зелёная</string>
+    <string name="app_icon_newyear">Темно-зелёная</string>
+    <string name="app_icon_nothing">Красная</string>
+    <string name="app_icon_selected">Выбрано</string>
+    <string name="app_name_default">Расписание</string>
+    <string name="app_name_short">Расп</string>
+    <string name="app_name_schedule">Schedule</string>
     <string name="select_group">Выберите группу</string>
     <string name="loading_groups">Загрузка групп...</string>
     <string name="no_group_selected">Не выбрано</string>
@@ -8,18 +29,19 @@
     
     <string name="widget_current_lesson_description">Текущая пара</string>
     <string name="widget_day_schedule_description">Расписание на день</string>
+    <string name="widget_loading">Обновляем...</string>
+    <string name="widget_error">Ошибка обновления</string>
     
     <!-- Информация об авторе и версии -->
     <string name="developed_by">Разработано</string>
     <string name="author_name">@Relsev</string>
     <string name="author_profile_url">https://everelsu.github.io/RelsevLink/</string>
-    <string name="developer_2">Александр Деревцов</string>
     <string name="beta_tester">Бета-тестер</string>
     <string name="beta_tester_name">@skromniyvadya</string>
     <string name="version_format">Версия %1$s</string>
     <string name="version_placeholder">Версия 1.0.0</string>
     <string name="cannot_open_profile">Не удалось открыть профиль</string>
-    <string name="view_changelog">Патчноуты</string>
+    <string name="view_changelog">Патчноуты и другие версии</string>
     <string name="changelog_url">https://github.com/Everelsu/Raspisanie/releases</string>
     <string name="settings_title">Настройки</string>
     <string name="share_day">Поделиться (изображение)</string>
@@ -32,10 +54,14 @@
     <string name="share_schedule_ready">Готово! Выберите чат, куда отправить расписание.</string>
     <string name="share_copy_success">Расписание скопировано в буфер обмена</string>
     <string name="share_menu_hint">Выберите действие</string>
-    <string name="notification_settings_title">Напоминания</string>
-    <string name="notification_settings_description">Настройте, о чем и за сколько минут заранее напоминать.</string>
-    <string name="notification_settings_enable">Включить напоминания о дне</string>
-    <string name="notification_settings_offset_label">Пары напоминать</string>
+    <string name="notification_settings_title">Настройки уведомлений</string>
+    <string name="notification_settings_description">Настройте уведомления о парах, переменах, обеде и обновлениях расписания.</string>
+    <string name="notification_section_lessons">Напоминания о парах</string>
+    <string name="notification_section_breaks">Перемены и обед</string>
+    <string name="notification_section_updates">Обновления расписания</string>
+    <string name="notification_settings_enable">Напоминать о предстоящих парах</string>
+    <string name="notification_settings_enable_description">Получать уведомления перед началом пар</string>
+    <string name="notification_settings_offset_label">За сколько минут напоминать</string>
     <string name="notification_settings_offset_now">в момент начала</string>
     <string name="notification_settings_minutes">за %1$d мин</string>
     <string name="notification_offset_0">в момент начала</string>
@@ -43,7 +69,13 @@
     <string name="notification_offset_10">за 10 мин</string>
     <string name="notification_offset_15">за 15 мин</string>
     <string name="notification_settings_breaks">Напоминать о переменах</string>
+    <string name="notification_settings_breaks_description">Уведомления о переменах между парами (за 2 минуты до начала)</string>
     <string name="notification_settings_lunch">Напоминать об обеде</string>
+    <string name="notification_settings_lunch_description">Уведомления об обеденном перерыве (за 5 минут до начала)</string>
+    <string name="notification_permissions_info">Для работы уведомлений необходимо разрешение на их отображение. Проверьте настройки приложения, если уведомления не приходят.</string>
+    <string name="notification_settings_schedule_updates_title">Обновления расписания</string>
+    <string name="notification_settings_schedule_updates">Уведомлять об обновлении расписания</string>
+    <string name="notification_settings_schedule_updates_description">Получать уведомления, когда расписание вашей группы изменяется</string>
     <string name="notification_settings_save">Сохранить</string>
     <string name="notification_settings_cancel">Отмена</string>
     <string name="notification_settings_saved">Настройки напоминаний сохранены</string>
@@ -52,11 +84,17 @@
     <string name="lesson_status_remaining">осталось %1$d мин.</string>
     <string name="lesson_status_passed">прошло %1$d мин.</string>
     <string name="lesson_status_starts_in">начнётся через %1$d мин.</string>
+    <string name="lesson_status_just_ended">закончилась %1$d мин. назад</string>
     <string name="notification_schedule_channel_name">Обновления расписания</string>
     <string name="notification_schedule_channel_desc">Сообщаем, когда появляются изменения в выбранной группе.</string>
     <string name="notification_schedule_updated_title">Расписание обновлено</string>
     <string name="notification_schedule_updated_message">%1$s — %2$s (%3$d занятий)</string>
+    <string name="notification_schedule_updated_detailed">%1$s — %2$s\n%3$d занятий: %4$s</string>
     <string name="notification_schedule_updated_generic">Расписание изменилось. Откройте приложение, чтобы узнать подробности.</string>
+    <string name="notification_schedule_updated_lessons_header">Расписание на день:</string>
+    <string name="notification_schedule_updated_and_more">… и ещё %1$d пар</string>
+    <string name="notification_schedule_updated_tap_to_view">Нажмите, чтобы открыть расписание</string>
+    <string name="notification_event_tap_to_view">Нажмите для просмотра</string>
     <string name="notification_events_channel_name">Напоминания о занятиях</string>
     <string name="notification_events_channel_desc">Уведомления о предстоящих парах, переменах и обедах.</string>
     <string name="notification_next_lesson_title">Следующая пара</string>

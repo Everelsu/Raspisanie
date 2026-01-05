@@ -1,10 +1,12 @@
 package com.example.raspisanie
 
+import android.content.Context
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.view.ViewGroup.LayoutParams
+import android.widget.LinearLayout
 import android.widget.ArrayAdapter
 import android.widget.RadioButton
 import android.widget.RadioGroup
@@ -12,6 +14,7 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.content.res.AppCompatResources
+import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
@@ -20,8 +23,11 @@ import com.example.raspisanie.data.AppUpdateManager
 import com.example.raspisanie.data.AppVersionInfo
 import com.example.raspisanie.data.Group
 import com.example.raspisanie.data.GroupsListParser
+import com.example.raspisanie.adapter.AppIconAdapter
 import com.example.raspisanie.data.PreferencesManager
 import com.example.raspisanie.data.ScheduleNotificationManager
+import com.example.raspisanie.util.AppIconManager
+import androidx.recyclerview.widget.GridLayoutManager
 import com.example.raspisanie.databinding.ActivitySettingsBinding
 import com.example.raspisanie.databinding.FragmentSettingsBinding
 import com.example.raspisanie.viewmodel.ScheduleViewModel
@@ -77,6 +83,18 @@ class SettingsFragment : Fragment() {
         toolbar.title = getString(R.string.settings_title)
         toolbar.menu.clear()
         toolbar.inflateMenu(R.menu.settings_toolbar_menu)
+        
+        // Долгое нажатие на toolbar - скролл вверх (как в Telegram)
+        toolbar.setOnLongClickListener {
+            settingsBinding.nestedScrollView.smoothScrollTo(0, 0)
+            // Haptic feedback
+            toolbar.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS)
+            true
+        }
+        
+        // Применяем тему к иконке уведомления
+        applyThemeToNotificationIcon(toolbar)
+        
         toolbar.setOnMenuItemClickListener { item ->
             when (item.itemId) {
                 R.id.action_notification_settings -> {
@@ -90,6 +108,13 @@ class SettingsFragment : Fragment() {
         toolbar.navigationIcon = null
         toolbar.setNavigationOnClickListener(null)
         
+        // Применяем тему к иконке уведомления после создания меню
+        toolbar.post {
+            if (isAdded && context != null) {
+                applyThemeToNotificationIcon(toolbar)
+            }
+        }
+        
         // Инициализируем настройки
         setupSwitches()
         setupAdditionalSettings()
@@ -97,14 +122,20 @@ class SettingsFragment : Fragment() {
         setupGroupSelection()
         setupFavoriteButton()
         setupThemeSelection()
+        setupAppIconAndName()
         setupAppAutoUpdate()
         setupAppInfo()
         applyNothingFontIfNeeded()
-        // Restore scroll position after layout
-        if (savedScrollPosition > 0) {
-            settingsBinding.nestedScrollView.post {
-                settingsBinding.nestedScrollView.scrollTo(0, savedScrollPosition)
-                savedScrollPosition = 0
+        
+        // Восстанавливаем позицию прокрутки только после смены темы
+        val savedPosition = prefs.settingsScrollPosition
+        if (savedPosition > 0) {
+            _binding?.settingsLayout?.nestedScrollView?.post {
+                if (_binding != null && isAdded) {
+                    _binding?.settingsLayout?.nestedScrollView?.scrollTo(0, savedPosition)
+                    // Сбрасываем сохраненную позицию после восстановления
+                    prefs.settingsScrollPosition = 0
+                }
             }
         }
     }
@@ -115,66 +146,204 @@ class SettingsFragment : Fragment() {
         val switchNotifications = dialogView.findViewById<MaterialSwitch>(R.id.switchNotifications)
         val switchBreaks = dialogView.findViewById<MaterialSwitch>(R.id.switchBreaks)
         val switchLunch = dialogView.findViewById<MaterialSwitch>(R.id.switchLunch)
+        val switchScheduleUpdates = dialogView.findViewById<MaterialSwitch>(R.id.switchScheduleUpdates)
         val radioGroup = dialogView.findViewById<RadioGroup>(R.id.radioGroupOffsets)
 
         val scheduleNotificationsEnabled = prefs.scheduleNotificationsEnabled
         switchNotifications.isChecked = prefs.upcomingNotificationsEnabled && scheduleNotificationsEnabled
         switchBreaks.isChecked = prefs.upcomingBreakRemindersEnabled
         switchLunch.isChecked = prefs.upcomingLunchRemindersEnabled
+        switchScheduleUpdates.isChecked = prefs.scheduleUpdateNotificationsEnabled
         selectOffsetRadio(radioGroup, prefs.upcomingLessonOffsetMinutes)
 
         if (!scheduleNotificationsEnabled) {
             switchNotifications.isEnabled = false
         }
 
+        val lessonsSettingsContainer = dialogView.findViewById<LinearLayout>(R.id.lessonsSettingsContainer)
+        val lessonsSettingsDivider = dialogView.findViewById<View>(R.id.lessonsSettingsDivider)
+        
         updateNotificationControlsEnabled(
             switchNotifications.isChecked && scheduleNotificationsEnabled,
             radioGroup,
             switchBreaks,
-            switchLunch
+            switchLunch,
+            lessonsSettingsContainer,
+            lessonsSettingsDivider
         )
 
         switchNotifications.setOnCheckedChangeListener { _, isChecked ->
-            updateNotificationControlsEnabled(isChecked, radioGroup, switchBreaks, switchLunch)
+            updateNotificationControlsEnabled(
+                isChecked && scheduleNotificationsEnabled,
+                radioGroup,
+                switchBreaks,
+                switchLunch,
+                lessonsSettingsContainer,
+                lessonsSettingsDivider
+            )
         }
 
-        MaterialAlertDialogBuilder(context)
+        // Применяем тему к диалогу
+        val dialogBuilder = MaterialAlertDialogBuilder(context, getDialogTheme(context))
             .setTitle(R.string.notification_settings_title)
             .setView(dialogView)
-            .setPositiveButton(R.string.notification_settings_save) { _, _ ->
+        
+        // Применяем тему к элементам внутри диалога
+        applyThemeToNotificationDialog(dialogView, context)
+        
+        dialogBuilder.setPositiveButton(R.string.notification_settings_save) { _, _ ->
                 val enabled = switchNotifications.isChecked && scheduleNotificationsEnabled
                 prefs.upcomingNotificationsEnabled = enabled
 
+                // Сохраняем настройки напоминаний об обеде и переменах независимо от общего состояния
+                val minutes = extractOffsetFromSelection(radioGroup)
+                prefs.upcomingLessonOffsetMinutes = minutes
+                prefs.upcomingBreakRemindersEnabled = switchBreaks.isChecked
+                prefs.upcomingLunchRemindersEnabled = switchLunch.isChecked
+                prefs.scheduleUpdateNotificationsEnabled = switchScheduleUpdates.isChecked
+
                 if (enabled) {
-                    val minutes = extractOffsetFromSelection(radioGroup)
-                    prefs.upcomingLessonOffsetMinutes = minutes
-                    prefs.upcomingBreakRemindersEnabled = switchBreaks.isChecked
-                    prefs.upcomingLunchRemindersEnabled = switchLunch.isChecked
                     Toast.makeText(context, R.string.notification_settings_saved, Toast.LENGTH_SHORT).show()
                 } else {
                     Toast.makeText(context, R.string.notification_settings_disabled, Toast.LENGTH_SHORT).show()
                 }
 
+                // Перепланируем уведомления при изменении настроек
                 ScheduleNotificationManager.scheduleUpcomingEventNotifications(
                     context.applicationContext,
                     scheduleViewModel.schedule.value
                 )
             }
             .setNegativeButton(R.string.notification_settings_cancel, null)
-            .show()
+        
+        val dialog = dialogBuilder.create()
+        
+        // Получаем цвет для кнопок в зависимости от темы
+        val buttonTextColor = when (prefs.theme) {
+            PreferencesManager.THEME_LIGHT -> ContextCompat.getColor(context, R.color.light_colorPrimary)
+            PreferencesManager.THEME_DARK -> ContextCompat.getColor(context, R.color.dark_colorPrimary)
+            PreferencesManager.THEME_BLUE -> ContextCompat.getColor(context, R.color.blue_colorPrimary)
+            PreferencesManager.THEME_GRAY -> ContextCompat.getColor(context, R.color.gray_colorPrimary)
+            PreferencesManager.THEME_PURPLE -> ContextCompat.getColor(context, R.color.system_colorPrimary)
+            PreferencesManager.THEME_HALLOWEEN -> ContextCompat.getColor(context, R.color.custom_colorPrimary)
+            PreferencesManager.THEME_NOTHING -> ContextCompat.getColor(context, R.color.nothing_colorPrimary)
+            PreferencesManager.THEME_GREEN -> ContextCompat.getColor(context, R.color.green_colorPrimary)
+            PreferencesManager.THEME_NEW_YEAR -> ContextCompat.getColor(context, R.color.newyear_colorPrimary)
+            else -> ContextCompat.getColor(context, R.color.dark_colorPrimary)
+        }
+        
+        dialog.show()
+        
+        // Применяем правильные цвета к кнопкам диалога после показа
+        dialog.window?.decorView?.post {
+            val positiveButton = dialog.getButton(androidx.appcompat.app.AlertDialog.BUTTON_POSITIVE)
+            val negativeButton = dialog.getButton(androidx.appcompat.app.AlertDialog.BUTTON_NEGATIVE)
+            
+            positiveButton?.setTextColor(buttonTextColor)
+            negativeButton?.setTextColor(buttonTextColor)
+        }
+        
+        // Убеждаемся, что диалог не обрезается
+        dialog.window?.let { window ->
+            // MaterialAlertDialogBuilder автоматически управляет размерами диалога
+            // ScrollView в layout файле обеспечит прокрутку при необходимости
+            window.setLayout(
+                android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                android.view.ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+        }
+    }
+    
+    /**
+     * Получить тему для MaterialAlertDialogBuilder в зависимости от выбранной темы приложения
+     */
+    private fun getDialogTheme(context: Context): Int {
+        return when (prefs.theme) {
+            PreferencesManager.THEME_LIGHT -> com.google.android.material.R.style.ThemeOverlay_Material3_Light
+            PreferencesManager.THEME_DARK -> com.google.android.material.R.style.ThemeOverlay_Material3_Dark
+            PreferencesManager.THEME_BLUE -> com.google.android.material.R.style.ThemeOverlay_Material3_Dark
+            PreferencesManager.THEME_GRAY -> com.google.android.material.R.style.ThemeOverlay_Material3_Dark
+            PreferencesManager.THEME_PURPLE -> com.google.android.material.R.style.ThemeOverlay_Material3_Dark
+            PreferencesManager.THEME_HALLOWEEN -> com.google.android.material.R.style.ThemeOverlay_Material3_Dark
+            PreferencesManager.THEME_NOTHING -> com.google.android.material.R.style.ThemeOverlay_Material3_Dark
+            PreferencesManager.THEME_GREEN -> com.google.android.material.R.style.ThemeOverlay_Material3_Dark
+            PreferencesManager.THEME_NEW_YEAR -> com.google.android.material.R.style.ThemeOverlay_Material3_Dark
+            else -> com.google.android.material.R.style.ThemeOverlay_Material3_Dark
+        }
+    }
+    
+    /**
+     * Применить тему к элементам внутри диалога уведомлений
+     */
+    private fun applyThemeToNotificationDialog(dialogView: View, context: Context) {
+        // Применяем цвета текста
+        val textPrimaryColor = when (prefs.theme) {
+            PreferencesManager.THEME_LIGHT -> ContextCompat.getColor(context, R.color.light_textColorPrimary)
+            PreferencesManager.THEME_DARK -> ContextCompat.getColor(context, R.color.dark_textColorPrimary)
+            PreferencesManager.THEME_BLUE -> ContextCompat.getColor(context, R.color.blue_textColorPrimary)
+            PreferencesManager.THEME_GRAY -> ContextCompat.getColor(context, R.color.gray_textColorPrimary)
+            PreferencesManager.THEME_PURPLE -> ContextCompat.getColor(context, R.color.system_textColorPrimary)
+            PreferencesManager.THEME_HALLOWEEN -> ContextCompat.getColor(context, R.color.custom_textColorPrimary)
+            PreferencesManager.THEME_NOTHING -> ContextCompat.getColor(context, R.color.nothing_textColorPrimary)
+            PreferencesManager.THEME_GREEN -> ContextCompat.getColor(context, R.color.green_textColorPrimary)
+            PreferencesManager.THEME_NEW_YEAR -> ContextCompat.getColor(context, R.color.newyear_textColorPrimary)
+            else -> ContextCompat.getColor(context, R.color.dark_textColorPrimary)
+        }
+        
+        val textSecondaryColor = when (prefs.theme) {
+            PreferencesManager.THEME_LIGHT -> ContextCompat.getColor(context, R.color.light_textColorSecondary)
+            PreferencesManager.THEME_DARK -> ContextCompat.getColor(context, R.color.dark_textColorSecondary)
+            PreferencesManager.THEME_BLUE -> ContextCompat.getColor(context, R.color.blue_textColorSecondary)
+            PreferencesManager.THEME_GRAY -> ContextCompat.getColor(context, R.color.gray_textColorSecondary)
+            PreferencesManager.THEME_PURPLE -> ContextCompat.getColor(context, R.color.system_textColorSecondary)
+            PreferencesManager.THEME_HALLOWEEN -> ContextCompat.getColor(context, R.color.custom_textColorSecondary)
+            PreferencesManager.THEME_NOTHING -> ContextCompat.getColor(context, R.color.nothing_textColorSecondary)
+            PreferencesManager.THEME_GREEN -> ContextCompat.getColor(context, R.color.green_textColorSecondary)
+            PreferencesManager.THEME_NEW_YEAR -> ContextCompat.getColor(context, R.color.newyear_textColorSecondary)
+            else -> ContextCompat.getColor(context, R.color.dark_textColorSecondary)
+        }
+        
+        dialogView.findViewById<TextView>(R.id.notificationsDescription)?.setTextColor(textSecondaryColor)
+        
+        // Применяем цвета к MaterialSwitch
+        dialogView.findViewById<MaterialSwitch>(R.id.switchNotifications)?.apply {
+            setTextColor(textPrimaryColor)
+        }
+        dialogView.findViewById<MaterialSwitch>(R.id.switchBreaks)?.apply {
+            setTextColor(textPrimaryColor)
+        }
+        dialogView.findViewById<MaterialSwitch>(R.id.switchLunch)?.apply {
+            setTextColor(textPrimaryColor)
+        }
+        
+        // Применяем цвета к RadioButton
+        val radioGroup = dialogView.findViewById<RadioGroup>(R.id.radioGroupOffsets)
+        for (i in 0 until radioGroup.childCount) {
+            val radioButton = radioGroup.getChildAt(i) as? RadioButton
+            radioButton?.setTextColor(textPrimaryColor)
+        }
     }
 
     private fun updateNotificationControlsEnabled(
         enabled: Boolean,
         radioGroup: RadioGroup,
         switchBreaks: MaterialSwitch,
-        switchLunch: MaterialSwitch
+        switchLunch: MaterialSwitch,
+        lessonsSettingsContainer: LinearLayout? = null,
+        lessonsSettingsDivider: View? = null
     ) {
+        // Включаем/отключаем настройки времени напоминаний о парах
+        radioGroup.isEnabled = enabled
         for (i in 0 until radioGroup.childCount) {
             radioGroup.getChildAt(i).isEnabled = enabled
         }
-        switchBreaks.isEnabled = enabled
-        switchLunch.isEnabled = enabled
+        
+        // Показываем/скрываем настройки времени напоминаний
+        lessonsSettingsContainer?.visibility = if (enabled) View.VISIBLE else View.GONE
+        lessonsSettingsDivider?.visibility = if (enabled) View.VISIBLE else View.GONE
+        
+        // Перемены и обед можно включать независимо от напоминаний о парах
+        // Они остаются всегда доступными
     }
 
     private fun selectOffsetRadio(radioGroup: RadioGroup, minutes: Int) {
@@ -203,25 +372,23 @@ class SettingsFragment : Fragment() {
     
     override fun onSaveInstanceState(outState: Bundle) {
         super.onSaveInstanceState(outState)
-        savedScrollPosition = settingsBinding.nestedScrollView.scrollY
-        outState.putInt("scroll_position", savedScrollPosition)
     }
     
-    override fun onViewStateRestored(savedInstanceState: Bundle?) {
-        super.onViewStateRestored(savedInstanceState)
-        savedInstanceState?.getInt("scroll_position", 0)?.let {
-            if (it > 0) {
-                savedScrollPosition = it
-            }
-        }
+    override fun onPause() {
+        super.onPause()
     }
     
     private fun applyNothingFontIfNeeded() {
         if (prefs.theme == PreferencesManager.THEME_NOTHING) {
             try {
                 val ndotFont = resources.getFont(R.font.ndot)
-                settingsBinding.root.post {
-                    applyFontRecursive(settingsBinding.root, ndotFont)
+                val rootView = _binding?.settingsLayout?.root ?: return
+                rootView.post {
+                    if (_binding != null && isAdded) {
+                        _binding?.settingsLayout?.root?.let { root ->
+                            applyFontRecursive(root, ndotFont)
+                        }
+                    }
                 }
             } catch (e: Exception) {
                 // Fallback
@@ -318,6 +485,55 @@ class SettingsFragment : Fragment() {
                 // Можно обновить расписание если нужно
             }
         }
+        
+        // ========== НАСТРОЙКИ СТАТУСА ПАР ==========
+        
+        // Максимальное время отображения для текущей пары
+        val seekBarCurrentMax = settingsBinding.seekBarLessonStatusCurrentMax
+        val currentMaxValue = settingsBinding.lessonStatusCurrentMaxValue
+        
+        val currentMax = prefs.lessonStatusCurrentMaxMinutes
+        // SeekBar: 0-90, значение: 30-120 (0 -> 30, 90 -> 120)
+        val progress = (currentMax - 30).coerceIn(0, 90)
+        seekBarCurrentMax.progress = progress
+        currentMaxValue.text = currentMax.toString()
+        
+        seekBarCurrentMax.setOnSeekBarChangeListener(object : android.widget.SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(seekBar: android.widget.SeekBar?, progress: Int, fromUser: Boolean) {
+                if (fromUser) {
+                    // progress: 0-90 -> value: 30-120
+                    val value = 30 + progress
+                    currentMaxValue.text = value.toString()
+                    prefs.lessonStatusCurrentMaxMinutes = value
+                }
+            }
+            
+            override fun onStartTrackingTouch(seekBar: android.widget.SeekBar?) {}
+            override fun onStopTrackingTouch(seekBar: android.widget.SeekBar?) {}
+        })
+        
+        // Максимальное время отображения для следующей пары
+        val seekBarNextMax = settingsBinding.seekBarLessonStatusNextMax
+        val nextMaxValue = settingsBinding.lessonStatusNextMaxValue
+        
+        val nextMax = prefs.lessonStatusNextMaxMinutes
+        val nextProgress = (nextMax - 30).coerceIn(0, 90)
+        seekBarNextMax.progress = nextProgress
+        nextMaxValue.text = nextMax.toString()
+        
+        seekBarNextMax.setOnSeekBarChangeListener(object : android.widget.SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(seekBar: android.widget.SeekBar?, progress: Int, fromUser: Boolean) {
+                if (fromUser) {
+                    // progress: 0-90 -> value: 30-120
+                    val value = 30 + progress
+                    nextMaxValue.text = value.toString()
+                    prefs.lessonStatusNextMaxMinutes = value
+                }
+            }
+            
+            override fun onStartTrackingTouch(seekBar: android.widget.SeekBar?) {}
+            override fun onStopTrackingTouch(seekBar: android.widget.SeekBar?) {}
+        })
     }
     
     private fun setupAdditionalSettings() {
@@ -434,6 +650,9 @@ class SettingsFragment : Fragment() {
                     }
                 }
                 
+                // Проверяем, что фрагмент еще активен
+                if (!isAdded || _binding == null) return@launch
+                
                 val noGroupSelected = Group(
                     name = getString(R.string.no_group_selected),
                     url = "",
@@ -491,13 +710,18 @@ class SettingsFragment : Fragment() {
                     override fun onNothingSelected(parent: android.widget.AdapterView<*>?) {}
                 }
                 
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                // Игнорируем отмену корутины - это нормально при уничтожении фрагмента
+                throw e
             } catch (e: Exception) {
-                android.util.Log.e("SettingsFragment", "Ошибка загрузки групп", e)
-                groupSpinner.isEnabled = false
-                selectedGroupName.text = if (prefs.isGroupSelected()) {
-                    "${prefs.selectedGroupName} (ошибка загрузки списка)"
-                } else {
-                    "${getString(R.string.no_group_selected)} (ошибка загрузки списка)"
+                if (isAdded && _binding != null) {
+                    android.util.Log.e("SettingsFragment", "Ошибка загрузки групп", e)
+                    groupSpinner.isEnabled = false
+                    selectedGroupName.text = if (prefs.isGroupSelected()) {
+                        "${prefs.selectedGroupName} (ошибка загрузки списка)"
+                    } else {
+                        "${getString(R.string.no_group_selected)} (ошибка загрузки списка)"
+                    }
                 }
             }
         }
@@ -549,15 +773,17 @@ class SettingsFragment : Fragment() {
     private fun setupThemeSelection() {
         val currentTheme = prefs.theme
         
-        setupThemeCard(settingsBinding.root, R.id.themeDark, "Темная", "Черный фон", R.drawable.theme_preview_dark, PreferencesManager.THEME_DARK, currentTheme == PreferencesManager.THEME_DARK)
-        setupThemeCard(settingsBinding.root, R.id.themeLight, "Светлая", "Яркий белый фон", R.drawable.theme_preview_light, PreferencesManager.THEME_LIGHT, currentTheme == PreferencesManager.THEME_LIGHT)
-        setupThemeCard(settingsBinding.root, R.id.themeFiolet, "Фиолетовая", "ФиолетовАААЯ тема", R.drawable.theme_preview_system, PreferencesManager.THEME_PURPLE, currentTheme == PreferencesManager.THEME_PURPLE)
-        setupThemeCard(settingsBinding.root, R.id.themeCustom, "Хэллоуин", "Оранжевый акцент хе-хе", R.drawable.theme_preview_custom, PreferencesManager.THEME_HALLOWEEN, currentTheme == PreferencesManager.THEME_HALLOWEEN)
-        setupThemeCard(settingsBinding.root, R.id.themeGreen, "Зелёная", "Темная с зелёными акцентами", R.drawable.theme_preview_green, PreferencesManager.THEME_GREEN, currentTheme == PreferencesManager.THEME_GREEN)
+        setupThemeCard(settingsBinding.root, R.id.themeDark, "Темная", "Черный ворон", R.drawable.theme_preview_dark, PreferencesManager.THEME_DARK, currentTheme == PreferencesManager.THEME_DARK)
+        setupThemeCard(settingsBinding.root, R.id.themeLight, "Светлая", "Яркий белый фон(блять)", R.drawable.theme_preview_light, PreferencesManager.THEME_LIGHT, currentTheme == PreferencesManager.THEME_LIGHT)
+        setupThemeCard(settingsBinding.root, R.id.themeFiolet, "Фиолетовая", "Танос тут был", R.drawable.theme_preview_system, PreferencesManager.THEME_PURPLE, currentTheme == PreferencesManager.THEME_PURPLE)
+        setupThemeCard(settingsBinding.root, R.id.themeCustom, "Хэллоуин", "Оранжевая страшилка", R.drawable.theme_preview_custom, PreferencesManager.THEME_HALLOWEEN, currentTheme == PreferencesManager.THEME_HALLOWEEN)
+        setupThemeCard(settingsBinding.root, R.id.themeGreen, "Зелёная", "Ну это больше салатовый", R.drawable.theme_preview_green, PreferencesManager.THEME_GREEN, currentTheme == PreferencesManager.THEME_GREEN)
         setupThemeCard(settingsBinding.root, R.id.themeNewYear, "Новогодняя", "Красный, белый, зелёный со снегом", R.drawable.theme_preview_newyear, PreferencesManager.THEME_NEW_YEAR, currentTheme == PreferencesManager.THEME_NEW_YEAR)
+        setupThemeCard(settingsBinding.root, R.id.themeBlue, "Синяя", "Грязный gay", R.drawable.theme_preview_blue, PreferencesManager.THEME_BLUE, currentTheme == PreferencesManager.THEME_BLUE)
+        setupThemeCard(settingsBinding.root, R.id.themeGray, "Серая", "Грязный серый цвет", R.drawable.theme_preview_gray, PreferencesManager.THEME_GRAY, currentTheme == PreferencesManager.THEME_GRAY)
         setupThemeCard(settingsBinding.root, R.id.themeNothing, "RedDot", "Красный с NDot шрифтом", R.drawable.theme_preview_nothing, PreferencesManager.THEME_NOTHING, currentTheme == PreferencesManager.THEME_NOTHING)
     }
-    
+
     private fun setupThemeCard(
         parent: View,
         cardId: Int,
@@ -569,19 +795,21 @@ class SettingsFragment : Fragment() {
     ) {
         val cardView = parent.findViewById<androidx.cardview.widget.CardView>(cardId) ?: return
         val root = cardView.getChildAt(0) as? androidx.constraintlayout.widget.ConstraintLayout ?: return
-        
+
         val preview = root.findViewById<View>(R.id.themePreview)
         val nameView = root.findViewById<TextView>(R.id.themeName)
         val descView = root.findViewById<TextView>(R.id.themeDescription)
         val indicator = root.findViewById<View>(R.id.radioIndicator)
-        
+
         preview?.background = resources.getDrawable(previewDrawable, null)
         nameView?.text = name
         descView?.text = description
-        
+
         val textPrimaryColor = when (prefs.theme) {
             PreferencesManager.THEME_LIGHT -> resources.getColor(R.color.light_textColorPrimary, null)
             PreferencesManager.THEME_DARK -> resources.getColor(R.color.dark_textColorPrimary, null)
+            PreferencesManager.THEME_BLUE -> resources.getColor(R.color.blue_textColorPrimary, null)
+            PreferencesManager.THEME_GRAY -> resources.getColor(R.color.gray_textColorPrimary, null)
             PreferencesManager.THEME_PURPLE -> resources.getColor(R.color.system_textColorPrimary, null)
             PreferencesManager.THEME_HALLOWEEN -> resources.getColor(R.color.custom_textColorPrimary, null)
             PreferencesManager.THEME_NOTHING -> resources.getColor(R.color.nothing_textColorPrimary, null)
@@ -592,6 +820,8 @@ class SettingsFragment : Fragment() {
         val textSecondaryColor = when (prefs.theme) {
             PreferencesManager.THEME_LIGHT -> resources.getColor(R.color.light_textColorSecondary, null)
             PreferencesManager.THEME_DARK -> resources.getColor(R.color.dark_textColorSecondary, null)
+            PreferencesManager.THEME_BLUE -> resources.getColor(R.color.blue_textColorSecondary, null)
+            PreferencesManager.THEME_GRAY -> resources.getColor(R.color.gray_textColorSecondary, null)
             PreferencesManager.THEME_PURPLE -> resources.getColor(R.color.system_textColorSecondary, null)
             PreferencesManager.THEME_HALLOWEEN -> resources.getColor(R.color.custom_textColorSecondary, null)
             PreferencesManager.THEME_NOTHING -> resources.getColor(R.color.nothing_textColorSecondary, null)
@@ -601,23 +831,98 @@ class SettingsFragment : Fragment() {
         }
         nameView?.setTextColor(textPrimaryColor)
         descView?.setTextColor(textSecondaryColor)
-        
+
         if (isSelected) {
             root.isSelected = true
             indicator?.isSelected = true
             root.refreshDrawableState()
             indicator?.refreshDrawableState()
         }
-        
+
         cardView.setOnClickListener {
-            savedScrollPosition = settingsBinding.nestedScrollView.scrollY
+            // Сохраняем позицию прокрутки перед сменой темы
+            val scrollY = settingsBinding.nestedScrollView.scrollY
+            if (scrollY > 0) {
+                prefs.settingsScrollPosition = scrollY
+            }
             prefs.theme = themeKey
-            (activity as? AppCompatActivity)?.recreate()
+            val activity = activity as? AppCompatActivity
+            // Убираем все анимации при переключении темы
+            activity?.overridePendingTransition(0, 0)
+            activity?.recreate()
         }
         
         root.setOnClickListener {
             cardView.performClick()
         }
+    }
+
+    private fun setupAppIconAndName() {
+        // Настройка RecyclerView для иконок прямо в настройках (как в Telegram)
+        val recyclerViewIcons = settingsBinding.recyclerViewIcons
+        val currentIcon = prefs.appIcon
+        
+        val icons = listOf(
+            AppIconAdapter.IconItem(
+                PreferencesManager.APP_ICON_DEFAULT,
+                getString(R.string.app_icon_default),
+                R.drawable.ic_launcher_foreground
+            ),
+            AppIconAdapter.IconItem(
+                PreferencesManager.APP_ICON_BLACK,
+                getString(R.string.app_icon_black),
+                R.drawable.ic_launcher_blue
+            ),
+            AppIconAdapter.IconItem(
+                PreferencesManager.APP_ICON_DARK,
+                getString(R.string.app_icon_dark),
+                R.drawable.ic_launcher_gray
+            ),
+            AppIconAdapter.IconItem(
+                PreferencesManager.APP_ICON_LIGHT,
+                getString(R.string.app_icon_light),
+                R.drawable.ic_launcher_light
+            ),
+            AppIconAdapter.IconItem(
+                PreferencesManager.APP_ICON_PURPLE,
+                getString(R.string.app_icon_purple),
+                R.drawable.ic_launcher_purple
+            ),
+            AppIconAdapter.IconItem(
+                PreferencesManager.APP_ICON_GREEN,
+                getString(R.string.app_icon_green),
+                R.drawable.ic_launcher_green
+            ),
+            AppIconAdapter.IconItem(
+                PreferencesManager.APP_ICON_NEW_YEAR,
+                getString(R.string.app_icon_newyear),
+                R.drawable.ic_launcher_newyear
+            ),
+            AppIconAdapter.IconItem(
+                PreferencesManager.APP_ICON_NOTHING,
+                getString(R.string.app_icon_nothing),
+                R.drawable.ic_launcher_nothing
+            ),
+            AppIconAdapter.IconItem(
+                PreferencesManager.APP_ICON_HALLOWEEN,
+                getString(R.string.app_icon_halloween),
+                R.drawable.ic_launcher_halloween
+            )
+        )
+        
+        val iconAdapter = AppIconAdapter(icons, currentIcon) { iconId ->
+            // Сохранение выбранной иконки сразу при выборе (как в Telegram)
+            if (prefs.appIcon != iconId) {
+                prefs.appIcon = iconId
+                // Передаём Activity, чтобы гарантированно сработал перезапуск процесса
+                AppIconManager.switchIcon(requireActivity(), iconId)
+                // Приложение перезапустится автоматически
+            }
+        }
+        
+        // Grid layout с 4 колонками (как в Telegram)
+        recyclerViewIcons.layoutManager = GridLayoutManager(requireContext(), 4)
+        recyclerViewIcons.adapter = iconAdapter
     }
 
     private fun setupAppAutoUpdate() {
@@ -679,9 +984,10 @@ class SettingsFragment : Fragment() {
                 LayoutParams.WRAP_CONTENT
             )
         }
+        val fontSizeMultiplier = getFontSizeMultiplier()
         val textView = TextView(context).apply {
             setPadding(48, 32, 48, 32)
-            textSize = 14f
+            textSize = 14f * fontSizeMultiplier
             layoutParams = LayoutParams(
                 LayoutParams.MATCH_PARENT,
                 LayoutParams.WRAP_CONTENT
@@ -702,7 +1008,7 @@ class SettingsFragment : Fragment() {
         // Рендерим Markdown
         markwon.setMarkdown(textView, fullText)
         
-        val builder = MaterialAlertDialogBuilder(context)
+        val builder = MaterialAlertDialogBuilder(context, getDialogTheme(context))
             .setTitle("Доступно обновление")
             .setView(scrollView)
             .setPositiveButton("Обновить") { _, _ ->
@@ -773,10 +1079,6 @@ class SettingsFragment : Fragment() {
             openAuthorProfile()
         }
         
-        // Установить имя второго разработчика
-        val developer2Name = settingsContent.findViewById<TextView>(R.id.developer2Name)
-        developer2Name?.text = getString(R.string.developer_2)
-        
         // Установить имя бета-тестера
         val betaTesterName = settingsContent.findViewById<TextView>(R.id.betaTesterName)
         betaTesterName?.text = getString(R.string.beta_tester_name)
@@ -834,6 +1136,46 @@ class SettingsFragment : Fragment() {
             startActivity(intent)
         } catch (e: Exception) {
             Toast.makeText(requireContext(), "Не удалось открыть патчноты", Toast.LENGTH_SHORT).show()
+        }
+    }
+    
+    /**
+     * Применить тему к иконке уведомления в toolbar
+     */
+    private fun getFontSizeMultiplier(): Float {
+        return when (prefs.fontSize) {
+            PreferencesManager.FONT_SIZE_SMALL -> 0.85f
+            PreferencesManager.FONT_SIZE_NORMAL -> 1.0f
+            PreferencesManager.FONT_SIZE_LARGE -> 1.15f
+            PreferencesManager.FONT_SIZE_EXTRA_LARGE -> 1.3f
+            else -> 1.0f
+        }
+    }
+    
+    private fun applyThemeToNotificationIcon(toolbar: androidx.appcompat.widget.Toolbar) {
+        val notificationItem = toolbar.menu.findItem(R.id.action_notification_settings) ?: return
+        val context = context ?: return
+        
+        // Получаем цвет иконки в зависимости от темы
+        // Для светлой темы используем темный цвет для лучшей видимости
+        val iconColor = when (prefs.theme) {
+            PreferencesManager.THEME_LIGHT -> ContextCompat.getColor(context, R.color.light_textColorPrimary)
+            PreferencesManager.THEME_DARK -> ContextCompat.getColor(context, R.color.dark_textColorPrimary)
+            PreferencesManager.THEME_BLUE -> ContextCompat.getColor(context, R.color.blue_textColorPrimary)
+            PreferencesManager.THEME_GRAY -> ContextCompat.getColor(context, R.color.gray_textColorPrimary)
+            PreferencesManager.THEME_PURPLE -> ContextCompat.getColor(context, R.color.system_textColorPrimary)
+            PreferencesManager.THEME_HALLOWEEN -> ContextCompat.getColor(context, R.color.custom_textColorPrimary)
+            PreferencesManager.THEME_NOTHING -> ContextCompat.getColor(context, R.color.nothing_textColorPrimary)
+            PreferencesManager.THEME_GREEN -> ContextCompat.getColor(context, R.color.green_textColorPrimary)
+            PreferencesManager.THEME_NEW_YEAR -> ContextCompat.getColor(context, R.color.newyear_textColorPrimary)
+            else -> ContextCompat.getColor(context, R.color.dark_textColorPrimary)
+        }
+        
+        // Применяем цвет к иконке
+        val icon = AppCompatResources.getDrawable(context, R.drawable.ic_notification_schedule)
+        icon?.let {
+            it.setTint(iconColor)
+            notificationItem.icon = it
         }
     }
     

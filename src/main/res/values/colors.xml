@@ -45,8 +45,7 @@
     <!-- ============================================ -->
     
     <!-- ===== СВЕТЛАЯ ТЕМА ===== -->
-    <!-- Темная: фон #000000, текст #FFFFFF, primary #FFFFFF -->
-    <!-- Светлая: фон #FFFFFF, текст #000000, primary #000000 -->
+    <!-- Классическая светлая тема: белый фон, черный текст -->
     <color name="light_windowBackground">#FFFFFF</color>
     <color name="light_colorPrimary">#000000</color>
     <color name="light_colorOnPrimary">#FFFFFF</color>
@@ -60,7 +59,7 @@
     <color name="light_textColorSecondary">#757575</color>
     <color name="light_colorBackground">#FFFFFF</color>
     <color name="light_colorOnBackground">#000000</color>
-    <!-- Lesson number colors (инвертированы от темной, обводка того же цвета что фон - не видна) -->
+    <!-- Lesson number colors -->
     <color name="light_lessonNumberBg">#F5F5F5</color>
     <color name="light_lessonNumberStroke">#FFFFFF</color>
     <color name="light_lessonPassedFill">#E0E0E0</color>
@@ -230,6 +229,62 @@
     <color name="green_switchThumbUnchecked">#424242</color>
     <color name="green_switchTrackChecked">#664CAF50</color>
     <color name="green_switchTrackUnchecked">#33FFFFFF</color>
+
+    <!-- ===== СИНЯЯ ТЕМА (Темная основа с синими акцентами) ===== -->
+    <color name="blue_windowBackground">#08101F</color>
+    <color name="blue_colorPrimary">#4C8DFF</color>
+    <color name="blue_colorOnPrimary">#000000</color>
+    <color name="blue_colorPrimaryVariant">#6AA5FF</color>
+    <!-- Slightly lighter so cards are not perceived as pure black -->
+    <color name="blue_colorSurface">#1A2D57</color>
+    <color name="blue_colorOnSurface">#FFFFFF</color>
+    <color name="blue_settingsCardBg">#1A2D57</color>
+    <color name="blue_navigationBarColor">#000000</color>
+    <color name="blue_textColor">#FFFFFF</color>
+    <color name="blue_textColorPrimary">#FFFFFF</color>
+    <color name="blue_textColorSecondary">#A9C5FF</color>
+    <color name="blue_colorBackground">#08101F</color>
+    <color name="blue_colorOnBackground">#FFFFFF</color>
+    <!-- Lesson number colors -->
+    <color name="blue_lessonNumberBg">#1A1A1A</color>
+    <color name="blue_lessonNumberStroke">#333333</color>
+    <!-- Gradient colors -->
+    <color name="blue_lessonNumberBgGradientStart">#22345E</color>
+    <color name="blue_lessonNumberBgGradientCenter">#132241</color>
+    <color name="blue_lessonNumberBgGradientEnd">#08101F</color>
+    <!-- Switch colors -->
+    <color name="blue_switchThumbChecked">#4C8DFF</color>
+    <color name="blue_switchThumbUnchecked">#424242</color>
+    <color name="blue_switchTrackChecked">#664C8DFF</color>
+    <color name="blue_switchTrackUnchecked">#33FFFFFF</color>
+
+    <!-- ===== СЕРАЯ ТЕМА (Темная основа с серыми акцентами) ===== -->
+    <color name="gray_windowBackground">#0D0F12</color>
+    <color name="gray_colorPrimary">#B0B6C2</color>
+    <color name="gray_colorOnPrimary">#000000</color>
+    <color name="gray_colorPrimaryVariant">#D0D5DE</color>
+    <!-- Slightly lighter so cards are not perceived as pure black -->
+    <color name="gray_colorSurface">#242A33</color>
+    <color name="gray_colorOnSurface">#FFFFFF</color>
+    <color name="gray_settingsCardBg">#242A33</color>
+    <color name="gray_navigationBarColor">#000000</color>
+    <color name="gray_textColor">#FFFFFF</color>
+    <color name="gray_textColorPrimary">#FFFFFF</color>
+    <color name="gray_textColorSecondary">#9AA3AD</color>
+    <color name="gray_colorBackground">#0D0F12</color>
+    <color name="gray_colorOnBackground">#FFFFFF</color>
+    <!-- Lesson number colors -->
+    <color name="gray_lessonNumberBg">#1A1A1A</color>
+    <color name="gray_lessonNumberStroke">#333333</color>
+    <!-- Gradient colors -->
+    <color name="gray_lessonNumberBgGradientStart">#2A2F39</color>
+    <color name="gray_lessonNumberBgGradientCenter">#1A1D22</color>
+    <color name="gray_lessonNumberBgGradientEnd">#0D0F12</color>
+    <!-- Switch colors -->
+    <color name="gray_switchThumbChecked">#B0B6C2</color>
+    <color name="gray_switchThumbUnchecked">#424242</color>
+    <color name="gray_switchTrackChecked">#66B0B6C2</color>
+    <color name="gray_switchTrackUnchecked">#33FFFFFF</color>
     
     <!-- ===== НОВОГОДНЯЯ ТЕМА (Красный, белый, зелёный) ===== -->
     <color name="newyear_windowBackground">#0A1A0A</color> <!-- Dark green-red background -->
@@ -261,4 +316,16 @@
     <color name="newyear_switchThumbUnchecked">#424242</color>
     <color name="newyear_switchTrackChecked">#662E7D32</color> <!-- Green with transparency -->
     <color name="newyear_switchTrackUnchecked">#33FFFFFF</color>
+    
+    <!-- ===== ЦВЕТА ДЛЯ ИКОНОК ПРИЛОЖЕНИЯ ===== -->
+    <color name="icon_black_background">#000000</color>
+    <color name="icon_white_background">#FFFFFF</color>
+    <color name="icon_halloween_background">#FF7B4A</color>
+    <color name="icon_light_background">#FFFFFF</color>
+    <color name="icon_purple_background">#6750A4</color>
+    <color name="icon_green_background">#4CAF50</color>
+    <color name="icon_newyear_background">#2E7D32</color>
+    <color name="icon_nothing_background">#FF3333</color>
+    <color name="icon_blue_background">#2F6BFF</color>
+    <color name="icon_gray_background">#6B6B6B</color>
 </resources>

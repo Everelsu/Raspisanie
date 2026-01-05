@@ -3,7 +3,8 @@
     <!-- Settings Section Title -->
     <style name="SettingsSectionTitle">
         <item name="android:textSize">12sp</item>
-        <item name="android:textColor">?android:textColorSecondary</item>
+        <!-- In dark themes this becomes white; in light themes stays readable -->
+        <item name="android:textColor">?android:textColorPrimary</item>
         <item name="android:fontFamily">@font/inter</item>
         <item name="android:textStyle">bold</item>
         <item name="android:letterSpacing">0.02</item>
@@ -29,5 +30,11 @@
     <style name="Widget.Raspisanie.Button.OutlinedButton" parent="Widget.Material3.Button.OutlinedButton">
         <item name="strokeColor">?attr/colorPrimary</item>
         <item name="android:textColor">?attr/colorPrimary</item>
+    </style>
+    
+    <!-- Bottom Sheet Animation Style (как в Telegram) -->
+    <style name="BottomSheetAnimation">
+        <item name="android:windowEnterAnimation">@anim/slide_in_up</item>
+        <item name="android:windowExitAnimation">@anim/slide_out_down</item>
     </style>
 </resources>

@@ -41,6 +41,13 @@ class PreferencesManager(context: Context) {
         private const val KEY_UPCOMING_LESSON_OFFSET_MIN = "upcoming_lesson_offset_min"
         private const val KEY_UPCOMING_BREAK_ENABLED = "upcoming_break_enabled"
         private const val KEY_UPCOMING_LUNCH_ENABLED = "upcoming_lunch_enabled"
+        private const val KEY_SCHEDULE_UPDATE_NOTIFICATIONS_ENABLED = "schedule_update_notifications_enabled"
+        // Настройки статуса пар
+        private const val KEY_LESSON_STATUS_NEXT_MAX_MINUTES = "lesson_status_next_max_minutes"
+        private const val KEY_LESSON_STATUS_CURRENT_MAX_MINUTES = "lesson_status_current_max_minutes"
+        private const val KEY_SETTINGS_SCROLL_POSITION = "settings_scroll_position"
+        private const val KEY_APP_ICON = "app_icon"
+        private const val KEY_APP_NAME = "app_name"
         
         // Font size options
         const val FONT_SIZE_SMALL = "small"
@@ -59,6 +66,8 @@ class PreferencesManager(context: Context) {
         
         const val THEME_LIGHT = "light"
         const val THEME_DARK = "dark"
+        const val THEME_BLUE = "blue"
+        const val THEME_GRAY = "gray"
         const val THEME_PURPLE = "purple"
         const val THEME_HALLOWEEN = "halloween"
         const val THEME_NOTHING = "nothing"
@@ -71,10 +80,42 @@ class PreferencesManager(context: Context) {
         const val COLLEGE_CHTOTIB = "chtotib"
         const val COLLEGE_ZABGC = "zabgc"
         
+        // App icon options
+        // Legacy value kept for backward compatibility: treat as black/default
+        const val APP_ICON_DEFAULT = "default"
+
+        // Current icon options (color variants of the main icon)
+        const val APP_ICON_BLACK = "black" // default = black
+        const val APP_ICON_LIGHT = THEME_LIGHT
+        const val APP_ICON_DARK = THEME_DARK
+        const val APP_ICON_PURPLE = THEME_PURPLE
+        const val APP_ICON_GREEN = THEME_GREEN
+        const val APP_ICON_NEW_YEAR = THEME_NEW_YEAR
+        const val APP_ICON_NOTHING = THEME_NOTHING
+        const val APP_ICON_HALLOWEEN = THEME_HALLOWEEN
+        
+        // App name options
+        const val APP_NAME_DEFAULT = "default"
+        const val APP_NAME_SHORT = "short"
+        const val APP_NAME_SCHEDULE = "schedule"
+        const val APP_NAME_RASPISANIE = "raspisanie"
+        
         // Default values - только для первого запуска
         const val DEFAULT_COLLEGE = COLLEGE_CHTOTIB
         const val DEFAULT_GROUP_FILE = "cg36.htm"
         const val DEFAULT_GROUP_NAME = "ИСиП-23-1п"
+    }
+    fun registerChangeListener(listener: SharedPreferences.OnSharedPreferenceChangeListener) {
+        prefs.registerOnSharedPreferenceChangeListener(listener)
+    }
+
+    fun unregisterChangeListener(listener: SharedPreferences.OnSharedPreferenceChangeListener) {
+        prefs.unregisterOnSharedPreferenceChangeListener(listener)
+    }
+
+    fun isGroupOrCollegeKey(key: String?): Boolean {
+        if (key == null) return false
+        return key == KEY_SELECTED_GROUP || key == KEY_SELECTED_GROUP_NAME || key == KEY_COLLEGE
     }
     
     var showBreaks: Boolean
@@ -245,6 +286,24 @@ class PreferencesManager(context: Context) {
     var upcomingLunchRemindersEnabled: Boolean
         get() = prefs.getBoolean(KEY_UPCOMING_LUNCH_ENABLED, true)
         set(value) = prefs.edit().putBoolean(KEY_UPCOMING_LUNCH_ENABLED, value).apply()
+    
+    var scheduleUpdateNotificationsEnabled: Boolean
+        get() = prefs.getBoolean(KEY_SCHEDULE_UPDATE_NOTIFICATIONS_ENABLED, true)
+        set(value) = prefs.edit().putBoolean(KEY_SCHEDULE_UPDATE_NOTIFICATIONS_ENABLED, value).apply()
+    
+    // ========== НАСТРОЙКИ СТАТУСА ПАР ==========
+    
+    // Максимальное количество минут для отображения статуса текущей пары (сколько осталось)
+    // Диапазон: 30-120 минут
+    var lessonStatusCurrentMaxMinutes: Int
+        get() = prefs.getInt(KEY_LESSON_STATUS_CURRENT_MAX_MINUTES, 60).coerceIn(30, 120)
+        set(value) = prefs.edit().putInt(KEY_LESSON_STATUS_CURRENT_MAX_MINUTES, value.coerceIn(30, 120)).apply()
+    
+    // Максимальное количество минут для отображения статуса следующей пары (через сколько начнётся)
+    // Диапазон: 30-120 минут
+    var lessonStatusNextMaxMinutes: Int
+        get() = prefs.getInt(KEY_LESSON_STATUS_NEXT_MAX_MINUTES, 60).coerceIn(30, 120)
+        set(value) = prefs.edit().putInt(KEY_LESSON_STATUS_NEXT_MAX_MINUTES, value.coerceIn(30, 120)).apply()
 
     var lastScheduleHash: String
         get() = prefs.getString(KEY_LAST_SCHEDULE_HASH, "") ?: ""
@@ -291,5 +350,25 @@ class PreferencesManager(context: Context) {
     fun incrementUpdateCheckErrorCount() {
         updateCheckErrorCount = updateCheckErrorCount + 1
     }
+    
+    var settingsScrollPosition: Int
+        get() = prefs.getInt(KEY_SETTINGS_SCROLL_POSITION, 0)
+        set(value) = prefs.edit().putInt(KEY_SETTINGS_SCROLL_POSITION, value).apply()
+    
+    var appIcon: String
+        get() {
+            val raw = prefs.getString(KEY_APP_ICON, APP_ICON_DEFAULT) ?: APP_ICON_DEFAULT
+            // Backward compatibility for removed icon ids
+            return when (raw) {
+                "book", "calendar", "clock", "graduation" -> APP_ICON_DEFAULT
+                "white" -> APP_ICON_LIGHT
+                else -> raw
+            }
+        }
+        set(value) = prefs.edit().putString(KEY_APP_ICON, value).apply()
+    
+    var appName: String
+        get() = prefs.getString(KEY_APP_NAME, "") ?: ""
+        set(value) = prefs.edit().putString(KEY_APP_NAME, value).apply()
 }
 
