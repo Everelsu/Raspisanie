@@ -801,7 +801,7 @@ class SettingsFragment : Fragment() {
         val descView = root.findViewById<TextView>(R.id.themeDescription)
         val indicator = root.findViewById<View>(R.id.radioIndicator)
 
-        preview?.background = resources.getDrawable(previewDrawable, null)
+        preview?.background = ContextCompat.getDrawable(requireContext(), previewDrawable)
         nameView?.text = name
         descView?.text = description
 
@@ -914,9 +914,8 @@ class SettingsFragment : Fragment() {
             // Сохранение выбранной иконки сразу при выборе (как в Telegram)
             if (prefs.appIcon != iconId) {
                 prefs.appIcon = iconId
-                // Передаём Activity, чтобы гарантированно сработал перезапуск процесса
+                // Передаём Activity для перезапуска
                 AppIconManager.switchIcon(requireActivity(), iconId)
-                // Приложение перезапустится автоматически
             }
         }
         

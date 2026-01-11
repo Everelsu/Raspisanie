@@ -32,7 +32,6 @@ class PreferencesManager(context: Context) {
         private const val KEY_LAST_UPDATE_RESULT = "last_update_result"
         private const val KEY_UPDATE_CHECK_ERROR_COUNT = "update_check_error_count"
         private const val KEY_LAST_UPDATE_CHECK_SUCCESS = "last_update_check_success"
-        private const val KEY_BOTTOM_NAVIGATION_ENABLED = "bottom_navigation_enabled"
         private const val KEY_LAST_SCHEDULE_HASH = "last_schedule_hash"
         private const val KEY_SCHEDULE_NOTIFICATIONS_ENABLED = "schedule_notifications_enabled"
         private const val KEY_FCM_TOKEN = "fcm_token"
@@ -254,10 +253,6 @@ class PreferencesManager(context: Context) {
     var animationsEnabled: Boolean
         get() = prefs.getBoolean(KEY_ANIMATIONS_ENABLED, true)
         set(value) = prefs.edit().putBoolean(KEY_ANIMATIONS_ENABLED, value).apply()
-
-    var bottomNavigationEnabled: Boolean
-        get() = prefs.getBoolean(KEY_BOTTOM_NAVIGATION_ENABLED, true)
-        set(value) = prefs.edit().putBoolean(KEY_BOTTOM_NAVIGATION_ENABLED, value).apply()
     
     var scheduleNotificationsEnabled: Boolean
         get() = prefs.getBoolean(KEY_SCHEDULE_NOTIFICATIONS_ENABLED, true)

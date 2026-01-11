@@ -10,10 +10,9 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:paddingStart="16dp"
-        android:paddingEnd="16dp"
+        android:paddingHorizontal="20dp"
         android:paddingTop="8dp"
-        android:paddingBottom="8dp">
+        android:paddingBottom="16dp">
 
         <!-- Описание -->
         <TextView
@@ -23,28 +22,43 @@
             android:text="@string/notification_settings_description"
             android:textSize="14sp"
             android:textColor="?android:textColorSecondary"
-            android:lineSpacingExtra="2dp"
-            android:layout_marginBottom="20dp" />
+            android:lineSpacingExtra="4dp"
+            android:layout_marginBottom="24dp" />
 
-        <!-- Секция: Напоминания о парах -->
-        <TextView
+        <!-- ===== Секция: Напоминания о парах ===== -->
+        <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="@string/notification_section_lessons"
-            android:textStyle="bold"
-            android:textSize="16sp"
-            android:textColor="?android:textColorPrimary"
-            android:layout_marginTop="4dp"
-            android:layout_marginBottom="8dp" />
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:layout_marginBottom="12dp">
+
+            <ImageView
+                android:layout_width="24dp"
+                android:layout_height="24dp"
+                android:src="@drawable/ic_notification_lesson"
+                android:tint="?attr/colorPrimary"
+                android:contentDescription="@null" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="12dp"
+                android:text="@string/notification_section_lessons"
+                android:textStyle="bold"
+                android:textSize="16sp"
+                android:textColor="?android:textColorPrimary" />
+
+        </LinearLayout>
 
         <com.google.android.material.card.MaterialCardView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginBottom="20dp"
-            app:cardCornerRadius="8dp"
+            android:layout_marginBottom="24dp"
+            app:cardCornerRadius="16dp"
             app:cardElevation="0dp"
-            app:cardBackgroundColor="?android:attr/colorBackground"
-            app:strokeWidth="0dp">
+            app:strokeWidth="1dp"
+            app:strokeColor="?attr/colorOutlineVariant">
 
             <LinearLayout
                 android:layout_width="match_parent"
@@ -58,7 +72,7 @@
                     android:layout_height="wrap_content"
                     android:minHeight="48dp"
                     android:text="@string/notification_settings_enable"
-                    android:textSize="16sp" />
+                    android:textSize="15sp" />
 
                 <TextView
                     android:layout_width="match_parent"
@@ -66,17 +80,16 @@
                     android:text="@string/notification_settings_enable_description"
                     android:textSize="13sp"
                     android:textColor="?android:textColorSecondary"
-                    android:layout_marginStart="16dp"
+                    android:layout_marginStart="48dp"
                     android:layout_marginTop="4dp"
-                    android:layout_marginBottom="16dp" />
+                    android:layout_marginBottom="8dp" />
 
                 <View
                     android:id="@+id/lessonsSettingsDivider"
                     android:layout_width="match_parent"
                     android:layout_height="1dp"
-                    android:background="?android:attr/listDivider"
-                    android:layout_marginTop="8dp"
-                    android:layout_marginBottom="16dp"
+                    android:background="?attr/colorOutlineVariant"
+                    android:layout_marginVertical="12dp"
                     android:visibility="gone" />
 
                 <LinearLayout
@@ -90,7 +103,7 @@
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:text="@string/notification_settings_offset_label"
-                        android:textSize="15sp"
+                        android:textSize="14sp"
                         android:textColor="?android:textColorPrimary"
                         android:layout_marginBottom="12dp" />
 
@@ -98,42 +111,42 @@
                         android:id="@+id/radioGroupOffsets"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:layout_marginStart="8dp">
+                        android:layout_marginStart="4dp">
 
                         <RadioButton
                             android:id="@+id/radioOffset0"
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
-                            android:minHeight="48dp"
+                            android:minHeight="44dp"
                             android:text="@string/notification_offset_0"
-                            android:textSize="15sp"
+                            android:textSize="14sp"
                             android:tag="0" />
 
                         <RadioButton
                             android:id="@+id/radioOffset5"
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
-                            android:minHeight="48dp"
+                            android:minHeight="44dp"
                             android:text="@string/notification_offset_5"
-                            android:textSize="15sp"
+                            android:textSize="14sp"
                             android:tag="5" />
 
                         <RadioButton
                             android:id="@+id/radioOffset10"
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
-                            android:minHeight="48dp"
+                            android:minHeight="44dp"
                             android:text="@string/notification_offset_10"
-                            android:textSize="15sp"
+                            android:textSize="14sp"
                             android:tag="10" />
 
                         <RadioButton
                             android:id="@+id/radioOffset15"
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
-                            android:minHeight="48dp"
+                            android:minHeight="44dp"
                             android:text="@string/notification_offset_15"
-                            android:textSize="15sp"
+                            android:textSize="14sp"
                             android:tag="15" />
                     </RadioGroup>
                 </LinearLayout>
@@ -141,25 +154,40 @@
             </LinearLayout>
         </com.google.android.material.card.MaterialCardView>
 
-        <!-- Секция: Перемены и обед -->
-        <TextView
+        <!-- ===== Секция: Перемены и обед ===== -->
+        <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="@string/notification_section_breaks"
-            android:textStyle="bold"
-            android:textSize="16sp"
-            android:textColor="?android:textColorPrimary"
-            android:layout_marginTop="4dp"
-            android:layout_marginBottom="8dp" />
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:layout_marginBottom="12dp">
+
+            <ImageView
+                android:layout_width="24dp"
+                android:layout_height="24dp"
+                android:src="@drawable/ic_notification_break"
+                android:tint="?attr/colorPrimary"
+                android:contentDescription="@null" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="12dp"
+                android:text="@string/notification_section_breaks"
+                android:textStyle="bold"
+                android:textSize="16sp"
+                android:textColor="?android:textColorPrimary" />
+
+        </LinearLayout>
 
         <com.google.android.material.card.MaterialCardView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginBottom="20dp"
-            app:cardCornerRadius="8dp"
+            android:layout_marginBottom="24dp"
+            app:cardCornerRadius="16dp"
             app:cardElevation="0dp"
-            app:cardBackgroundColor="?android:attr/colorBackground"
-            app:strokeWidth="0dp">
+            app:strokeWidth="1dp"
+            app:strokeColor="?attr/colorOutlineVariant">
 
             <LinearLayout
                 android:layout_width="match_parent"
@@ -173,7 +201,7 @@
                     android:layout_height="wrap_content"
                     android:minHeight="48dp"
                     android:text="@string/notification_settings_breaks"
-                    android:textSize="16sp" />
+                    android:textSize="15sp" />
 
                 <TextView
                     android:layout_width="match_parent"
@@ -181,16 +209,15 @@
                     android:text="@string/notification_settings_breaks_description"
                     android:textSize="13sp"
                     android:textColor="?android:textColorSecondary"
-                    android:layout_marginStart="16dp"
+                    android:layout_marginStart="48dp"
                     android:layout_marginTop="4dp"
-                    android:layout_marginBottom="16dp" />
+                    android:layout_marginBottom="8dp" />
 
                 <View
                     android:layout_width="match_parent"
                     android:layout_height="1dp"
-                    android:background="?android:attr/listDivider"
-                    android:layout_marginTop="8dp"
-                    android:layout_marginBottom="16dp" />
+                    android:background="?attr/colorOutlineVariant"
+                    android:layout_marginVertical="12dp" />
 
                 <com.google.android.material.materialswitch.MaterialSwitch
                     android:id="@+id/switchLunch"
@@ -198,7 +225,7 @@
                     android:layout_height="wrap_content"
                     android:minHeight="48dp"
                     android:text="@string/notification_settings_lunch"
-                    android:textSize="16sp" />
+                    android:textSize="15sp" />
 
                 <TextView
                     android:layout_width="match_parent"
@@ -206,32 +233,46 @@
                     android:text="@string/notification_settings_lunch_description"
                     android:textSize="13sp"
                     android:textColor="?android:textColorSecondary"
-                    android:layout_marginStart="16dp"
-                    android:layout_marginTop="4dp"
-                    android:layout_marginBottom="8dp" />
+                    android:layout_marginStart="48dp"
+                    android:layout_marginTop="4dp" />
 
             </LinearLayout>
         </com.google.android.material.card.MaterialCardView>
 
-        <!-- Секция: Обновления расписания -->
-        <TextView
+        <!-- ===== Секция: Обновления расписания ===== -->
+        <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="@string/notification_section_updates"
-            android:textStyle="bold"
-            android:textSize="16sp"
-            android:textColor="?android:textColorPrimary"
-            android:layout_marginTop="4dp"
-            android:layout_marginBottom="8dp" />
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:layout_marginBottom="12dp">
+
+            <ImageView
+                android:layout_width="24dp"
+                android:layout_height="24dp"
+                android:src="@drawable/ic_notification_update"
+                android:tint="?attr/colorPrimary"
+                android:contentDescription="@null" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="12dp"
+                android:text="@string/notification_section_updates"
+                android:textStyle="bold"
+                android:textSize="16sp"
+                android:textColor="?android:textColorPrimary" />
+
+        </LinearLayout>
 
         <com.google.android.material.card.MaterialCardView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginBottom="20dp"
-            app:cardCornerRadius="8dp"
+            android:layout_marginBottom="24dp"
+            app:cardCornerRadius="16dp"
             app:cardElevation="0dp"
-            app:cardBackgroundColor="?android:attr/colorBackground"
-            app:strokeWidth="0dp">
+            app:strokeWidth="1dp"
+            app:strokeColor="?attr/colorOutlineVariant">
 
             <LinearLayout
                 android:layout_width="match_parent"
@@ -245,7 +286,7 @@
                     android:layout_height="wrap_content"
                     android:minHeight="48dp"
                     android:text="@string/notification_settings_schedule_updates"
-                    android:textSize="16sp" />
+                    android:textSize="15sp" />
 
                 <TextView
                     android:layout_width="match_parent"
@@ -253,42 +294,41 @@
                     android:text="@string/notification_settings_schedule_updates_description"
                     android:textSize="13sp"
                     android:textColor="?android:textColorSecondary"
-                    android:layout_marginStart="16dp"
-                    android:layout_marginTop="4dp"
-                    android:layout_marginBottom="8dp" />
+                    android:layout_marginStart="48dp"
+                    android:layout_marginTop="4dp" />
 
             </LinearLayout>
         </com.google.android.material.card.MaterialCardView>
 
         <!-- Информация о разрешениях -->
-        <com.google.android.material.card.MaterialCardView
+        <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginBottom="8dp"
-            app:cardCornerRadius="8dp"
-            app:cardElevation="0dp"
-            app:cardBackgroundColor="?android:attr/colorBackground"
-            app:strokeWidth="0dp">
+            android:orientation="horizontal"
+            android:padding="16dp"
+            android:gravity="center_vertical"
+            android:background="@drawable/info_card_background">
 
-            <LinearLayout
-                android:layout_width="match_parent"
+            <ImageView
+                android:layout_width="20dp"
+                android:layout_height="20dp"
+                android:src="@drawable/ic_info"
+                android:tint="?android:textColorSecondary"
+                android:contentDescription="@null" />
+
+            <TextView
+                android:layout_width="0dp"
                 android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:padding="16dp"
-                android:gravity="center_vertical">
+                android:layout_weight="1"
+                android:layout_marginStart="12dp"
+                android:text="@string/notification_permissions_info"
+                android:textSize="12sp"
+                android:textColor="?android:textColorSecondary"
+                android:lineSpacingExtra="2dp" />
 
-                <TextView
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:text="@string/notification_permissions_info"
-                    android:textSize="13sp"
-                    android:textColor="?android:textColorSecondary"
-                    android:lineSpacingExtra="2dp" />
-
-            </LinearLayout>
-        </com.google.android.material.card.MaterialCardView>
+        </LinearLayout>
 
     </LinearLayout>
 
 </ScrollView>
+

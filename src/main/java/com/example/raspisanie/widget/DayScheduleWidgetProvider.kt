@@ -150,14 +150,20 @@ class DayScheduleWidgetProvider : AppWidgetProvider() {
             }
         }
         
+        private data class WidgetThemeColors(
+            val textPrimary: Int,
+            val textSecondary: Int,
+            val backgroundDrawable: Int
+        )
+        
         private fun applyThemeColors(context: Context, views: RemoteViews, theme: String) {
-            val (textPrimary, textSecondary, backgroundDrawable) = getThemeColors(context, theme)
+            val colors = getThemeColors(context, theme)
             
             // Apply background drawable
-            views.setInt(R.id.widget_root, "setBackgroundResource", backgroundDrawable)
+            views.setInt(R.id.widget_root, "setBackgroundResource", colors.backgroundDrawable)
             
-            views.setTextColor(R.id.widget_day_title, textPrimary)
-            views.setTextColor(R.id.widget_empty, textSecondary)
+            views.setTextColor(R.id.widget_day_title, colors.textPrimary)
+            views.setTextColor(R.id.widget_empty, colors.textSecondary)
         }
         
         private fun applyFontSize(context: Context, views: RemoteViews, fontSize: String) {
@@ -174,60 +180,58 @@ class DayScheduleWidgetProvider : AppWidgetProvider() {
             views.setTextViewTextSize(R.id.widget_empty, android.util.TypedValue.COMPLEX_UNIT_SP, 14f * multiplier)
         }
         
-        private fun getThemeColors(context: Context, theme: String): Array<Int> {
+        private fun getThemeColors(context: Context, theme: String): WidgetThemeColors {
             return when (theme) {
-                PreferencesManager.THEME_LIGHT -> arrayOf(
+                PreferencesManager.THEME_LIGHT -> WidgetThemeColors(
                     context.getColor(R.color.light_textColorPrimary),
                     context.getColor(R.color.light_textColorSecondary),
                     R.drawable.widget_background_light
                 )
-                PreferencesManager.THEME_DARK -> arrayOf(
+                PreferencesManager.THEME_DARK -> WidgetThemeColors(
                     context.getColor(R.color.dark_textColorPrimary),
                     context.getColor(R.color.dark_textColorSecondary),
                     R.drawable.widget_background_dark
                 )
-                PreferencesManager.THEME_BLUE -> arrayOf(
+                PreferencesManager.THEME_BLUE -> WidgetThemeColors(
                     context.getColor(R.color.blue_textColorPrimary),
                     context.getColor(R.color.blue_textColorSecondary),
                     R.drawable.widget_background_blue
                 )
-                PreferencesManager.THEME_GRAY -> arrayOf(
+                PreferencesManager.THEME_GRAY -> WidgetThemeColors(
                     context.getColor(R.color.gray_textColorPrimary),
                     context.getColor(R.color.gray_textColorSecondary),
                     R.drawable.widget_background_gray
                 )
-                PreferencesManager.THEME_PURPLE -> arrayOf(
-                    context.getColor(R.color.system_textColorPrimary), // White "Расписание"
-                    context.getColor(R.color.system_textColorSecondary), // Gray empty message
+                PreferencesManager.THEME_PURPLE -> WidgetThemeColors(
+                    context.getColor(R.color.system_textColorPrimary),
+                    context.getColor(R.color.system_textColorSecondary),
                     R.drawable.widget_background_system
                 )
-                PreferencesManager.THEME_HALLOWEEN -> arrayOf(
-                    context.getColor(R.color.custom_textColorPrimary), // White "Расписание"
-                    context.getColor(R.color.custom_textColorSecondary), // Gray empty message
+                PreferencesManager.THEME_HALLOWEEN -> WidgetThemeColors(
+                    context.getColor(R.color.custom_textColorPrimary),
+                    context.getColor(R.color.custom_textColorSecondary),
                     R.drawable.widget_background_custom
                 )
-                PreferencesManager.THEME_NOTHING -> arrayOf(
-                    context.getColor(R.color.nothing_textColorPrimary), // White "Расписание"
-                    context.getColor(R.color.nothing_textColorPrimary), // White empty
+                PreferencesManager.THEME_NOTHING -> WidgetThemeColors(
+                    context.getColor(R.color.nothing_textColorPrimary),
+                    context.getColor(R.color.nothing_textColorPrimary),
                     R.drawable.widget_background_nothing
                 )
-                PreferencesManager.THEME_GREEN -> arrayOf(
-                    context.getColor(R.color.green_textColorPrimary), // White "Расписание"
-                    context.getColor(R.color.green_textColorSecondary), // Light green empty message
+                PreferencesManager.THEME_GREEN -> WidgetThemeColors(
+                    context.getColor(R.color.green_textColorPrimary),
+                    context.getColor(R.color.green_textColorSecondary),
                     R.drawable.widget_background_green
                 )
-                PreferencesManager.THEME_NEW_YEAR -> arrayOf(
-                    context.getColor(R.color.newyear_textColorPrimary), // White "Расписание"
-                    context.getColor(R.color.newyear_textColorSecondary), // Light gray empty message
+                PreferencesManager.THEME_NEW_YEAR -> WidgetThemeColors(
+                    context.getColor(R.color.newyear_textColorPrimary),
+                    context.getColor(R.color.newyear_textColorSecondary),
                     R.drawable.widget_background_newyear
                 )
-                else -> { // Fallback to Purple theme
-                    arrayOf(
-                        context.getColor(R.color.system_textColorPrimary),
-                        context.getColor(R.color.system_textColorSecondary),
-                        R.drawable.widget_background_system
-                    )
-                }
+                else -> WidgetThemeColors(
+                    context.getColor(R.color.system_textColorPrimary),
+                    context.getColor(R.color.system_textColorSecondary),
+                    R.drawable.widget_background_system
+                )
             }
         }
         

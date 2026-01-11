@@ -292,27 +292,23 @@ class ScheduleFragment : Fragment() {
             // Фишка из Telegram: плавный скролл с инерцией
             binding.recyclerView.isNestedScrollingEnabled = true
             
-            // Фишка из Telegram: улучшенный edge effect (цветной overscroll)
-            try {
-                val edgeEffectField = RecyclerView::class.java.getDeclaredField("mTopGlow")
-                edgeEffectField.isAccessible = true
-                val topGlow = edgeEffectField.get(binding.recyclerView) as? android.widget.EdgeEffect
-                topGlow?.let {
-                    val prefs = PreferencesManager(requireContext())
-                    val color = when (prefs.theme) {
-                        PreferencesManager.THEME_LIGHT -> ContextCompat.getColor(requireContext(), R.color.light_colorPrimary)
-                        PreferencesManager.THEME_DARK -> ContextCompat.getColor(requireContext(), R.color.dark_colorPrimary)
-                        PreferencesManager.THEME_PURPLE -> ContextCompat.getColor(requireContext(), R.color.system_colorPrimary)
-                        PreferencesManager.THEME_HALLOWEEN -> ContextCompat.getColor(requireContext(), R.color.custom_colorPrimary)
-                        PreferencesManager.THEME_NOTHING -> ContextCompat.getColor(requireContext(), R.color.nothing_colorPrimary)
-                        PreferencesManager.THEME_GREEN -> ContextCompat.getColor(requireContext(), R.color.green_colorPrimary)
-                        PreferencesManager.THEME_NEW_YEAR -> ContextCompat.getColor(requireContext(), R.color.newyear_colorPrimary)
-                        else -> ContextCompat.getColor(requireContext(), R.color.dark_colorPrimary)
+            // Настройка цветного overscroll эффекта через стандартный API
+            binding.recyclerView.edgeEffectFactory = object : RecyclerView.EdgeEffectFactory() {
+                override fun createEdgeEffect(view: RecyclerView, direction: Int): android.widget.EdgeEffect {
+                    return android.widget.EdgeEffect(view.context).apply {
+                        val themeColor = when (prefs.theme) {
+                            PreferencesManager.THEME_LIGHT -> ContextCompat.getColor(requireContext(), R.color.light_colorPrimary)
+                            PreferencesManager.THEME_DARK -> ContextCompat.getColor(requireContext(), R.color.dark_colorPrimary)
+                            PreferencesManager.THEME_PURPLE -> ContextCompat.getColor(requireContext(), R.color.system_colorPrimary)
+                            PreferencesManager.THEME_HALLOWEEN -> ContextCompat.getColor(requireContext(), R.color.custom_colorPrimary)
+                            PreferencesManager.THEME_NOTHING -> ContextCompat.getColor(requireContext(), R.color.nothing_colorPrimary)
+                            PreferencesManager.THEME_GREEN -> ContextCompat.getColor(requireContext(), R.color.green_colorPrimary)
+                            PreferencesManager.THEME_NEW_YEAR -> ContextCompat.getColor(requireContext(), R.color.newyear_colorPrimary)
+                            else -> ContextCompat.getColor(requireContext(), R.color.dark_colorPrimary)
+                        }
+                        color = themeColor
                     }
-                    it.color = color
                 }
-            } catch (e: Exception) {
-                // Игнорируем ошибки рефлексии
             }
         } catch (e: Exception) {
             Log.e(TAG, "Ошибка при настройке RecyclerView: ${e.message}", e)

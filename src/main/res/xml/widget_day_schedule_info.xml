@@ -2,8 +2,11 @@
 <appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
     android:minWidth="294dp"
     android:minHeight="220dp"
+    android:targetCellWidth="4"
+    android:targetCellHeight="3"
     android:updatePeriodMillis="30000"
     android:description="@string/widget_day_schedule_description"
     android:resizeMode="horizontal|vertical"
     android:widgetCategory="home_screen"
-    android:initialLayout="@layout/widget_day_schedule" />
+    android:initialLayout="@layout/widget_day_schedule"
+    android:previewLayout="@layout/widget_day_schedule_preview" />

@@ -25,6 +25,15 @@ class StatisticsAdapter(
     
     private val prefs: PreferencesManager? = context?.let { PreferencesManager(it) }
     
+    // Кэшируем шрифт Ndot для темы Nothing
+    private val ndotFont: android.graphics.Typeface? by lazy {
+        try {
+            context?.resources?.getFont(R.font.ndot)
+        } catch (e: Exception) {
+            null
+        }
+    }
+    
     // Отслеживание анимированных позиций на уровне адаптера (не сбрасывается при переиспользовании ViewHolder)
     private val animatedPositions = mutableSetOf<Int>()
     private val animatedProgressPositions = mutableSetOf<Int>()
@@ -189,6 +198,22 @@ class StatisticsAdapter(
         holder.factIn2WeeksText.textSize = 11f * fontSizeMultiplier
         holder.completionDateText.textSize = 11f * fontSizeMultiplier
         holder.completionPercentText.textSize = 20f * fontSizeMultiplier
+        
+        // Применяем шрифт Ndot для темы Nothing
+        if (isNothingTheme && ndotFont != null) {
+            holder.numberText.typeface = ndotFont
+            holder.disciplineText.typeface = ndotFont
+            holder.teacherText.typeface = ndotFont
+            holder.lessonTypeText.typeface = ndotFont
+            holder.totalHoursText.typeface = ndotFont
+            holder.plannedHoursText.typeface = ndotFont
+            holder.factHoursText.typeface = ndotFont
+            holder.remainingHoursText.typeface = ndotFont
+            holder.plannedIn2WeeksText.typeface = ndotFont
+            holder.factIn2WeeksText.typeface = ndotFont
+            holder.completionDateText.typeface = ndotFont
+            holder.completionPercentText.typeface = ndotFont
+        }
         
         holder.numberText.text = discipline.number.ifEmpty { (position + 1).toString() }
         holder.disciplineText.text = discipline.discipline.ifEmpty { "—" }

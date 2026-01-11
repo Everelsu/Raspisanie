@@ -2,8 +2,11 @@
 <appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
     android:minWidth="146dp"
     android:minHeight="110dp"
+    android:targetCellWidth="2"
+    android:targetCellHeight="2"
     android:updatePeriodMillis="30000"
     android:description="@string/widget_current_lesson_description"
-    android:resizeMode="none"
+    android:resizeMode="horizontal|vertical"
     android:widgetCategory="home_screen"
-    android:initialLayout="@layout/widget_current_lesson" />
+    android:initialLayout="@layout/widget_current_lesson"
+    android:previewLayout="@layout/widget_current_lesson_preview" />

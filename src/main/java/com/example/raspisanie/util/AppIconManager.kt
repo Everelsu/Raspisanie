@@ -10,196 +10,243 @@ import android.os.Looper
 import com.example.raspisanie.MainActivity
 import com.example.raspisanie.data.PreferencesManager
 
+/**
+ * Менеджер иконок приложения
+ * Реализация как в Telegram - перезапуск приложения
+ */
 object AppIconManager {
-    private const val DEFAULT_ALIAS = "com.example.raspisanie.MainActivity.DefaultIcon"
-    // compat/extra aliases (may be enabled on old installs / pinned shortcuts)
-    private const val BLACK_ALIAS = "com.example.raspisanie.MainActivity.BlackIcon"
-    private const val DARK_ALIAS = "com.example.raspisanie.MainActivity.DarkIcon"
-    private const val WHITE_ALIAS = "com.example.raspisanie.MainActivity.WhiteIcon"
-    private const val LIGHT_ALIAS = "com.example.raspisanie.MainActivity.LightIcon"
-    private const val PURPLE_ALIAS = "com.example.raspisanie.MainActivity.PurpleIcon"
-    private const val GREEN_ALIAS = "com.example.raspisanie.MainActivity.GreenIcon"
-    private const val NEWYEAR_ALIAS = "com.example.raspisanie.MainActivity.NewYearIcon"
-    private const val NOTHING_ALIAS = "com.example.raspisanie.MainActivity.NothingIcon"
-    private const val HALLOWEEN_ALIAS = "com.example.raspisanie.MainActivity.HalloweenIcon"
+    private const val TAG = "AppIconManager"
     
-    // Legacy aliases (for backward compatibility)
-    private const val BOOK_ALIAS = "com.example.raspisanie.MainActivity.BookIcon"
-    private const val CALENDAR_ALIAS = "com.example.raspisanie.MainActivity.CalendarIcon"
-    private const val CLOCK_ALIAS = "com.example.raspisanie.MainActivity.ClockIcon"
-    private const val GRADUATION_ALIAS = "com.example.raspisanie.MainActivity.GraduationIcon"
+    // Маппинг типов иконок на alias names
+    private val ALIASES = mapOf(
+        PreferencesManager.APP_ICON_DEFAULT to "DefaultIcon",
+        PreferencesManager.APP_ICON_BLACK to "BlackIcon",
+        PreferencesManager.APP_ICON_DARK to "DarkIcon",
+        PreferencesManager.APP_ICON_LIGHT to "LightIcon",
+        PreferencesManager.APP_ICON_PURPLE to "PurpleIcon",
+        PreferencesManager.APP_ICON_GREEN to "GreenIcon",
+        PreferencesManager.APP_ICON_NEW_YEAR to "NewYearIcon",
+        PreferencesManager.APP_ICON_NOTHING to "NothingIcon",
+        PreferencesManager.APP_ICON_HALLOWEEN to "HalloweenIcon"
+    )
     
-    /**
-     * Получить все известные aliases (включая legacy для совместимости)
-     */
-    fun getAllAliases(packageName: String): List<ComponentName> {
-        return listOf(
-            ComponentName(packageName, DEFAULT_ALIAS),
-            ComponentName(packageName, BLACK_ALIAS),
-            ComponentName(packageName, DARK_ALIAS),
-            ComponentName(packageName, WHITE_ALIAS),
-            ComponentName(packageName, LIGHT_ALIAS),
-            ComponentName(packageName, PURPLE_ALIAS),
-            ComponentName(packageName, GREEN_ALIAS),
-            ComponentName(packageName, NEWYEAR_ALIAS),
-            ComponentName(packageName, NOTHING_ALIAS),
-            ComponentName(packageName, HALLOWEEN_ALIAS),
-            // Legacy aliases (for backward compatibility)
-            ComponentName(packageName, BOOK_ALIAS),
-            ComponentName(packageName, CALENDAR_ALIAS),
-            ComponentName(packageName, CLOCK_ALIAS),
-            ComponentName(packageName, GRADUATION_ALIAS)
+    private fun getComponentName(context: Context, aliasName: String): ComponentName {
+        return ComponentName(
+            context.packageName,
+            "com.example.raspisanie.MainActivity.$aliasName"
         )
     }
     
     /**
-     * Переключить иконку приложения
-     * Логика как в Telegram: отключаем все, включаем нужный, перезапускаем приложение
+     * Все aliases (включая legacy для совместимости)
+     */
+    fun getAllAliases(packageName: String): List<ComponentName> {
+        return ALIASES.values.map { alias ->
+            ComponentName(packageName, "com.example.raspisanie.MainActivity.$alias")
+        } + listOf(
+            ComponentName(packageName, "com.example.raspisanie.MainActivity.WhiteIcon"),
+            ComponentName(packageName, "com.example.raspisanie.MainActivity.BookIcon"),
+            ComponentName(packageName, "com.example.raspisanie.MainActivity.CalendarIcon"),
+            ComponentName(packageName, "com.example.raspisanie.MainActivity.ClockIcon"),
+            ComponentName(packageName, "com.example.raspisanie.MainActivity.GraduationIcon")
+        )
+    }
+    
+    /**
+     * Переключить иконку (как в Telegram)
      */
     fun switchIcon(context: Context, iconType: String) {
-        val packageManager = context.packageManager
+        val pm = context.packageManager
         val packageName = context.packageName
         
-        // Определяем какой alias нужно включить
-        val targetAlias = when (iconType) {
-            PreferencesManager.APP_ICON_DEFAULT -> ComponentName(packageName, DEFAULT_ALIAS)
-            PreferencesManager.APP_ICON_BLACK -> ComponentName(packageName, BLACK_ALIAS)
-            PreferencesManager.APP_ICON_DARK -> ComponentName(packageName, DARK_ALIAS)
-            PreferencesManager.APP_ICON_LIGHT -> ComponentName(packageName, LIGHT_ALIAS)
-            PreferencesManager.APP_ICON_PURPLE -> ComponentName(packageName, PURPLE_ALIAS)
-            PreferencesManager.APP_ICON_GREEN -> ComponentName(packageName, GREEN_ALIAS)
-            PreferencesManager.APP_ICON_NEW_YEAR -> ComponentName(packageName, NEWYEAR_ALIAS)
-            PreferencesManager.APP_ICON_NOTHING -> ComponentName(packageName, NOTHING_ALIAS)
-            PreferencesManager.APP_ICON_HALLOWEEN -> ComponentName(packageName, HALLOWEEN_ALIAS)
-            else -> ComponentName(packageName, DEFAULT_ALIAS) // fallback to default
-        }
+        val targetAliasName = ALIASES[iconType] ?: ALIASES[PreferencesManager.APP_ICON_DEFAULT]!!
+        val targetComponent = getComponentName(context, targetAliasName)
         
-        // КРИТИЧНО: Отключаем ВСЕ aliases сначала (включая DefaultIcon)
-        // Это гарантирует, что только один alias будет активен
-        getAllAliases(packageName).forEach { alias ->
-            try {
-                packageManager.setComponentEnabledSetting(
-                    alias,
-                    PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
-                    PackageManager.DONT_KILL_APP
-                )
-            } catch (e: Exception) {
-                android.util.Log.e("AppIconManager", "Ошибка при отключении alias ${alias.className}: ${e.message}")
-            }
-        }
+        android.util.Log.d(TAG, "🔄 Переключение на: $iconType ($targetAliasName)")
         
-        // Включаем нужный alias
         try {
-            packageManager.setComponentEnabledSetting(
-                targetAlias,
-                PackageManager.COMPONENT_ENABLED_STATE_ENABLED,
-                PackageManager.DONT_KILL_APP
-            )
-        } catch (e: Exception) {
-            android.util.Log.e("AppIconManager", "Ошибка при включении alias ${targetAlias.className}: ${e.message}")
-            // В случае ошибки включаем DefaultIcon как fallback
-            try {
-                packageManager.setComponentEnabledSetting(
-                    ComponentName(packageName, DEFAULT_ALIAS),
+            // Шаг 1: Отключаем все aliases (включая DefaultIcon если он в DEFAULT или ENABLED)
+            for ((type, aliasName) in ALIASES) {
+                if (type != iconType) {
+                    try {
+                        val component = getComponentName(context, aliasName)
+                        val currentState = pm.getComponentEnabledSetting(component)
+                        
+                        // Отключаем если включен (ENABLED) или в DEFAULT (DefaultIcon)
+                        if (currentState == PackageManager.COMPONENT_ENABLED_STATE_ENABLED || 
+                            currentState == PackageManager.COMPONENT_ENABLED_STATE_DEFAULT) {
+                            pm.setComponentEnabledSetting(
+                                component,
+                                PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
+                                PackageManager.DONT_KILL_APP
+                            )
+                            android.util.Log.d(TAG, "❌ Отключен: $aliasName (было: $currentState)")
+                        }
+                    } catch (e: Exception) {
+                        android.util.Log.w(TAG, "⚠️ Ошибка при отключении $aliasName: ${e.message}")
+                    }
+                }
+            }
+            
+            // Отключаем legacy aliases
+            listOf("WhiteIcon", "BookIcon", "CalendarIcon", "ClockIcon", "GraduationIcon").forEach { aliasName ->
+                try {
+                    val component = getComponentName(context, aliasName)
+                    val currentState = pm.getComponentEnabledSetting(component)
+                    if (currentState == PackageManager.COMPONENT_ENABLED_STATE_ENABLED) {
+                        pm.setComponentEnabledSetting(
+                            component,
+                            PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
+                            PackageManager.DONT_KILL_APP
+                        )
+                    }
+                } catch (e: Exception) {
+                    // ignore
+                }
+            }
+            
+            // Шаг 2: Включаем целевой alias
+            val targetState = pm.getComponentEnabledSetting(targetComponent)
+            if (targetState != PackageManager.COMPONENT_ENABLED_STATE_ENABLED) {
+                pm.setComponentEnabledSetting(
+                    targetComponent,
                     PackageManager.COMPONENT_ENABLED_STATE_ENABLED,
                     PackageManager.DONT_KILL_APP
                 )
-            } catch (ex: Exception) {
-                android.util.Log.e("AppIconManager", "Критическая ошибка при включении DefaultIcon: ${ex.message}")
+                android.util.Log.d(TAG, "✅ Включен: $targetAliasName (было: $targetState)")
+            } else {
+                android.util.Log.d(TAG, "✅ $targetAliasName уже включен")
             }
+            
+            // Перезапускаем приложение (как в Telegram)
+            if (context is Activity) {
+                android.util.Log.d(TAG, "🔄 Запуск перезапуска приложения...")
+                restartApp(context, targetComponent)
+            } else {
+                android.util.Log.e(TAG, "❌ Context не является Activity, перезапуск невозможен")
+            }
+            
+        } catch (e: Exception) {
+            android.util.Log.e(TAG, "❌ Ошибка при смене иконки: ${e.message}", e)
         }
-        
-        // Перезапускаем приложение для применения изменений (как в Telegram)
-        if (context is Activity) {
-            Handler(Looper.getMainLooper()).postDelayed({
-                try {
-                    val intent = Intent(context, MainActivity::class.java)
-                    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
-                    context.startActivity(intent)
-                    context.finish()
-                    // Принудительно завершаем процесс для полного перезапуска
-                    android.os.Process.killProcess(android.os.Process.myPid())
-                } catch (e: Exception) {
-                    android.util.Log.e("AppIconManager", "Ошибка при перезапуске приложения: ${e.message}")
+    }
+    
+    /**
+     * Перезапуск приложения (как в Telegram)
+     */
+    private fun restartApp(activity: Activity, targetComponent: ComponentName) {
+        // Даем системе время на обновление компонентов
+        Handler(Looper.getMainLooper()).postDelayed({
+            try {
+                android.util.Log.d(TAG, "🚀 Запуск через: ${targetComponent.className}")
+                
+                // Создаём Intent напрямую для alias компонента (как в Telegram)
+                val intent = Intent(Intent.ACTION_MAIN).apply {
+                    component = targetComponent
+                    addCategory(Intent.CATEGORY_LAUNCHER)
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK or 
+                            Intent.FLAG_ACTIVITY_CLEAR_TOP or 
+                            Intent.FLAG_ACTIVITY_CLEAR_TASK
                 }
-            }, 300)
-        }
+                
+                // Запускаем новый процесс через alias
+                activity.startActivity(intent)
+                
+                // Завершаем все activity после запуска
+                activity.finishAffinity()
+                
+                // Убиваем процесс (как в Telegram)
+                Handler(Looper.getMainLooper()).postDelayed({
+                    try {
+                        android.os.Process.killProcess(android.os.Process.myPid())
+                        System.exit(0)
+                    } catch (e: Exception) {
+                        android.util.Log.w(TAG, "Не удалось убить процесс: ${e.message}")
+                        System.exit(0)
+                    }
+                }, 200)
+            } catch (e: Exception) {
+                android.util.Log.e(TAG, "❌ Ошибка перезапуска: ${e.message}", e)
+                // Пытаемся перезапустить стандартным способом
+                try {
+                    val pm = activity.packageManager
+                    val intent = pm.getLaunchIntentForPackage(activity.packageName)
+                    intent?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                    activity.startActivity(intent)
+                    activity.finishAffinity()
+                    System.exit(0)
+                } catch (e2: Exception) {
+                    android.util.Log.e(TAG, "Критическая ошибка перезапуска: ${e2.message}", e2)
+                }
+            }
+        }, 500)
     }
     
     /**
      * Получить текущую активную иконку
-     * Обрабатывает все возможные состояния компонента
      */
     fun getCurrentIcon(context: Context): String {
-        val packageManager = context.packageManager
-        val packageName = context.packageName
+        val pm = context.packageManager
         
-        val aliases = mapOf(
-            PreferencesManager.APP_ICON_DEFAULT to ComponentName(packageName, DEFAULT_ALIAS),
-            PreferencesManager.APP_ICON_BLACK to ComponentName(packageName, BLACK_ALIAS),
-            PreferencesManager.APP_ICON_DARK to ComponentName(packageName, DARK_ALIAS),
-            PreferencesManager.APP_ICON_LIGHT to ComponentName(packageName, LIGHT_ALIAS),
-            PreferencesManager.APP_ICON_PURPLE to ComponentName(packageName, PURPLE_ALIAS),
-            PreferencesManager.APP_ICON_GREEN to ComponentName(packageName, GREEN_ALIAS),
-            PreferencesManager.APP_ICON_NEW_YEAR to ComponentName(packageName, NEWYEAR_ALIAS),
-            PreferencesManager.APP_ICON_NOTHING to ComponentName(packageName, NOTHING_ALIAS),
-            PreferencesManager.APP_ICON_HALLOWEEN to ComponentName(packageName, HALLOWEEN_ALIAS)
-        )
-        
-        // Проверяем все aliases на состояние ENABLED
-        aliases.forEach { (iconType, alias) ->
+        for ((iconType, aliasName) in ALIASES) {
             try {
-                val state = packageManager.getComponentEnabledSetting(alias)
-                // COMPONENT_ENABLED_STATE_ENABLED - явно включен
-                // COMPONENT_ENABLED_STATE_DEFAULT - использует значение из манифеста (для DefaultIcon это enabled="true")
-                if (state == PackageManager.COMPONENT_ENABLED_STATE_ENABLED ||
-                    (state == PackageManager.COMPONENT_ENABLED_STATE_DEFAULT && alias.className == DEFAULT_ALIAS)) {
+                val component = getComponentName(context, aliasName)
+                val state = pm.getComponentEnabledSetting(component)
+                
+                if (state == PackageManager.COMPONENT_ENABLED_STATE_ENABLED) {
+                    return iconType
+                }
+                
+                // DefaultIcon может быть в DEFAULT состоянии
+                if (aliasName == "DefaultIcon" && state == PackageManager.COMPONENT_ENABLED_STATE_DEFAULT) {
                     return iconType
                 }
             } catch (e: Exception) {
-                android.util.Log.e("AppIconManager", "Ошибка при проверке alias ${alias.className}: ${e.message}")
+                // continue
             }
         }
         
-        // Если ничего не найдено, возвращаем default
         return PreferencesManager.APP_ICON_DEFAULT
     }
     
     /**
-     * Проверить, что хотя бы один alias включен (для безопасности при запуске)
+     * Убедиться что хотя бы один alias включен
      */
     fun ensureAtLeastOneEnabled(context: Context): Boolean {
-        val packageManager = context.packageManager
-        val packageName = context.packageName
+        val pm = context.packageManager
         
-        val allAliases = getAllAliases(packageName)
-        val anyEnabled = allAliases.any { alias ->
+        // Проверяем есть ли включенный
+        for ((_, aliasName) in ALIASES) {
             try {
-                val state = packageManager.getComponentEnabledSetting(alias)
-                state == PackageManager.COMPONENT_ENABLED_STATE_ENABLED ||
-                        (state == PackageManager.COMPONENT_ENABLED_STATE_DEFAULT && alias.className == DEFAULT_ALIAS)
+                val component = getComponentName(context, aliasName)
+                val state = pm.getComponentEnabledSetting(component)
+                
+                if (state == PackageManager.COMPONENT_ENABLED_STATE_ENABLED) {
+                    return true
+                }
+                if (aliasName == "DefaultIcon" && state == PackageManager.COMPONENT_ENABLED_STATE_DEFAULT) {
+                    return true
+                }
             } catch (e: Exception) {
-                false
+                // continue
             }
         }
         
-        if (!anyEnabled) {
-            // Включаем DefaultIcon принудительно
-            try {
-                val defaultAlias = ComponentName(packageName, DEFAULT_ALIAS)
-                packageManager.setComponentEnabledSetting(
-                    defaultAlias,
+        // Если нет — включаем DefaultIcon (устанавливаем в ENABLED если был DISABLED)
+        try {
+            val defaultComponent = getComponentName(context, "DefaultIcon")
+            val state = pm.getComponentEnabledSetting(defaultComponent)
+            if (state == PackageManager.COMPONENT_ENABLED_STATE_DISABLED) {
+                pm.setComponentEnabledSetting(
+                    defaultComponent,
                     PackageManager.COMPONENT_ENABLED_STATE_ENABLED,
                     PackageManager.DONT_KILL_APP
                 )
-                return true
-            } catch (e: Exception) {
-                android.util.Log.e("AppIconManager", "Критическая ошибка при включении DefaultIcon: ${e.message}")
-                return false
             }
+            return true
+        } catch (e: Exception) {
+            android.util.Log.e(TAG, "Критическая ошибка: ${e.message}")
+            return false
         }
-        
-        return true
     }
 }
-

@@ -317,6 +317,11 @@
     <color name="newyear_switchTrackChecked">#662E7D32</color> <!-- Green with transparency -->
     <color name="newyear_switchTrackUnchecked">#33FFFFFF</color>
     
+    <!-- ===== ЦВЕТА ДЛЯ СТАТИСТИКИ ===== -->
+    <color name="stat_completed">#4CAF50</color> <!-- Зелёный - пройдено -->
+    <color name="stat_remaining">#FF9800</color> <!-- Оранжевый - осталось -->
+    <color name="stat_planned">#2196F3</color> <!-- Синий - по плану -->
+    
     <!-- ===== ЦВЕТА ДЛЯ ИКОНОК ПРИЛОЖЕНИЯ ===== -->
     <color name="icon_black_background">#000000</color>
     <color name="icon_white_background">#FFFFFF</color>

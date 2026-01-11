@@ -32,10 +32,14 @@
             android:screenOrientation="portrait"
             android:configChanges="screenSize|screenLayout|keyboardHidden|uiMode"
             android:windowSoftInputMode="adjustResize">
-            <!-- Убираем LAUNCHER из основного activity, используем только alias -->
+            <!-- БЕЗ LAUNCHER - только alias'ы показываются в лаунчере -->
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
         </activity>
         
-        <!-- Activity Aliases для разных иконок -->
+        <!-- Основной activity-alias с иконкой по умолчанию -->
         <activity-alias
             android:name="com.example.raspisanie.MainActivity.DefaultIcon"
             android:targetActivity=".MainActivity"
@@ -88,7 +92,8 @@
             android:label="@string/app_name_default"
             android:exported="true" />
 
-        <!-- Black icon removed (use Default instead) -->
+        <!-- Все alias'ы временно используют стандартную иконку -->
+        <!-- TODO: Создать разные иконки для каждой темы -->
         <activity-alias
             android:name="com.example.raspisanie.MainActivity.BlackIcon"
             android:targetActivity=".MainActivity"
@@ -110,9 +115,13 @@
             android:icon="@mipmap/ic_launcher_light"
             android:roundIcon="@mipmap/ic_launcher_light_round"
             android:label="@string/app_name_default"
-            android:exported="true" />
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
 
-        <!-- Theme color variants of the main icon -->
         <activity-alias
             android:name="com.example.raspisanie.MainActivity.LightIcon"
             android:targetActivity=".MainActivity"
@@ -127,7 +136,6 @@
             </intent-filter>
         </activity-alias>
 
-        <!-- Dark icon removed (use Default instead) -->
         <activity-alias
             android:name="com.example.raspisanie.MainActivity.DarkIcon"
             android:targetActivity=".MainActivity"
@@ -211,12 +219,6 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity-alias>
-        <activity
-            android:name=".SettingsActivity"
-            android:exported="false"
-            android:parentActivityName=".MainActivity"
-            android:screenOrientation="portrait"
-            android:configChanges="screenSize|screenLayout|keyboardHidden|uiMode" />
         
         <!-- Widget providers -->
         <receiver

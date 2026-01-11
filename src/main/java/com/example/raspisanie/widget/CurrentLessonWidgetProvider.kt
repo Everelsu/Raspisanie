@@ -155,91 +155,97 @@ class CurrentLessonWidgetProvider : AppWidgetProvider() {
             }
         }
         
+        private data class ThemeColors(
+            val textPrimary: Int,
+            val textSecondary: Int,
+            val primary: Int,
+            val backgroundDrawable: Int,
+            val timeBadgeDrawable: Int
+        )
+        
         private fun applyThemeColors(context: Context, views: RemoteViews, theme: String) {
-            val (textPrimary, textSecondary, primary, backgroundDrawable, timeBadgeDrawable) = when (theme) {
-                PreferencesManager.THEME_LIGHT -> arrayOf(
+            val colors = when (theme) {
+                PreferencesManager.THEME_LIGHT -> ThemeColors(
                     context.getColor(R.color.light_textColorPrimary),
                     context.getColor(R.color.light_textColorSecondary),
                     context.getColor(R.color.light_colorPrimary),
                     R.drawable.widget_background_light,
                     R.drawable.widget_time_badge_light
                 )
-                PreferencesManager.THEME_DARK -> arrayOf(
+                PreferencesManager.THEME_DARK -> ThemeColors(
                     context.getColor(R.color.dark_textColorPrimary),
                     context.getColor(R.color.dark_textColorSecondary),
                     context.getColor(R.color.dark_colorPrimary),
                     R.drawable.widget_background_dark,
                     R.drawable.widget_time_badge_dark
                 )
-                PreferencesManager.THEME_BLUE -> arrayOf(
+                PreferencesManager.THEME_BLUE -> ThemeColors(
                     context.getColor(R.color.blue_textColorPrimary),
                     context.getColor(R.color.blue_textColorSecondary),
                     context.getColor(R.color.blue_colorPrimary),
                     R.drawable.widget_background_blue,
                     R.drawable.widget_time_badge_blue
                 )
-                PreferencesManager.THEME_GRAY -> arrayOf(
+                PreferencesManager.THEME_GRAY -> ThemeColors(
                     context.getColor(R.color.gray_textColorPrimary),
                     context.getColor(R.color.gray_textColorSecondary),
                     context.getColor(R.color.gray_colorPrimary),
                     R.drawable.widget_background_gray,
                     R.drawable.widget_time_badge_gray
                 )
-                PreferencesManager.THEME_PURPLE -> arrayOf(
-                    context.getColor(R.color.system_textColorPrimary), // White subject
-                    context.getColor(R.color.system_textColorSecondary), // Gray time/details
-                    context.getColor(R.color.system_colorPrimary), // Purple accent
+                PreferencesManager.THEME_PURPLE -> ThemeColors(
+                    context.getColor(R.color.system_textColorPrimary),
+                    context.getColor(R.color.system_textColorSecondary),
+                    context.getColor(R.color.system_colorPrimary),
                     R.drawable.widget_background_system,
                     R.drawable.widget_time_badge_dark
                 )
-                PreferencesManager.THEME_HALLOWEEN -> arrayOf(
-                    context.getColor(R.color.custom_textColorPrimary), // White subject
-                    context.getColor(R.color.custom_textColorPrimary), // White time/details
-                    context.getColor(R.color.custom_colorPrimary), // Orange accent
+                PreferencesManager.THEME_HALLOWEEN -> ThemeColors(
+                    context.getColor(R.color.custom_textColorPrimary),
+                    context.getColor(R.color.custom_textColorPrimary),
+                    context.getColor(R.color.custom_colorPrimary),
                     R.drawable.widget_background_custom,
                     R.drawable.widget_time_badge_custom
                 )
-                PreferencesManager.THEME_NOTHING -> arrayOf(
-                    context.getColor(R.color.nothing_colorPrimary), // Red subject
-                    context.getColor(R.color.nothing_textColorPrimary), // White time/details
-                    context.getColor(R.color.nothing_colorPrimary), // Red accent
+                PreferencesManager.THEME_NOTHING -> ThemeColors(
+                    context.getColor(R.color.nothing_colorPrimary),
+                    context.getColor(R.color.nothing_textColorPrimary),
+                    context.getColor(R.color.nothing_colorPrimary),
                     R.drawable.widget_background_nothing,
                     R.drawable.widget_time_badge_nothing
                 )
-                PreferencesManager.THEME_GREEN -> arrayOf(
-                    context.getColor(R.color.green_textColorPrimary), // White subject
-                    context.getColor(R.color.green_textColorSecondary), // Light green time/details
-                    context.getColor(R.color.green_colorPrimary), // Green accent
+                PreferencesManager.THEME_GREEN -> ThemeColors(
+                    context.getColor(R.color.green_textColorPrimary),
+                    context.getColor(R.color.green_textColorSecondary),
+                    context.getColor(R.color.green_colorPrimary),
                     R.drawable.widget_background_green,
                     R.drawable.widget_time_badge_green
                 )
-                PreferencesManager.THEME_NEW_YEAR -> arrayOf(
-                    context.getColor(R.color.newyear_textColorPrimary), // White subject
-                    context.getColor(R.color.newyear_textColorSecondary), // Light gray time/details
-                    context.getColor(R.color.newyear_colorPrimary), // Green accent
+                PreferencesManager.THEME_NEW_YEAR -> ThemeColors(
+                    context.getColor(R.color.newyear_textColorPrimary),
+                    context.getColor(R.color.newyear_textColorSecondary),
+                    context.getColor(R.color.newyear_colorPrimary),
                     R.drawable.widget_background_newyear,
                     R.drawable.widget_time_badge_newyear
                 )
-                else -> { // Fallback to Purple theme
-                    arrayOf(
-                        context.getColor(R.color.system_textColorPrimary),
-                        context.getColor(R.color.system_textColorSecondary),
-                        context.getColor(R.color.system_colorPrimary),
-                        R.drawable.widget_background_system,
-                        R.drawable.widget_time_badge_dark
-                    )
-                }
+                else -> ThemeColors(
+                    context.getColor(R.color.system_textColorPrimary),
+                    context.getColor(R.color.system_textColorSecondary),
+                    context.getColor(R.color.system_colorPrimary),
+                    R.drawable.widget_background_system,
+                    R.drawable.widget_time_badge_dark
+                )
             }
             
             // Apply background drawable
-            views.setInt(R.id.widget_root, "setBackgroundResource", backgroundDrawable)
+            views.setInt(R.id.widget_root, "setBackgroundResource", colors.backgroundDrawable)
             
             // Apply text colors
-            views.setTextColor(R.id.widget_subject, textPrimary)
-            views.setTextColor(R.id.widget_details, textSecondary)
-            views.setTextColor(R.id.widget_no_lesson, textSecondary)
-            views.setTextColor(R.id.widget_time, textSecondary)
-            views.setTextColor(R.id.widget_status, textSecondary)
+            views.setTextColor(R.id.widget_subject, colors.textPrimary)
+            views.setTextColor(R.id.widget_details, colors.textSecondary)
+            views.setTextColor(R.id.widget_no_lesson, colors.textSecondary)
+            views.setTextColor(R.id.widget_time, colors.textSecondary)
+            views.setTextColor(R.id.widget_status, colors.textSecondary)
         }
         
         private fun applyFontSize(context: Context, views: RemoteViews, fontSize: String) {

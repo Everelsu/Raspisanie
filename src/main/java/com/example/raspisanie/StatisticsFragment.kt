@@ -51,13 +51,6 @@ class StatisticsFragment : Fragment() {
         parser = StatisticsParser(requireContext())
         binding.progressIndicator.setVisibilityAfterHide(View.GONE)
         
-        // Применяем тему сразу после создания view
-        view.post {
-            if (::prefs.isInitialized) {
-                applyThemeToSummaryCards()
-            }
-        }
-        
         // Применяем шрифт Ndot для красной темы
         applyNothingFontIfNeeded()
         
@@ -191,8 +184,8 @@ class StatisticsFragment : Fragment() {
         binding.remainingHoursText.text = statistics.remainingHours?.toString() ?: "—"
         binding.plannedHoursText.text = statistics.plannedHours?.toString() ?: "—"
         
-        // Применяем тему к итоговым карточкам
-        applyThemeToSummaryCards()
+        // Показываем заголовок дисциплин если есть данные
+        binding.disciplinesTitle.visibility = if (statistics.disciplines.isNotEmpty()) View.VISIBLE else View.GONE
         
         // Анимируем появление итоговых карточек только один раз
         if (!hasAnimatedSummaryCards) {
@@ -218,8 +211,6 @@ class StatisticsFragment : Fragment() {
         val layoutManager = LinearLayoutManager(requireContext())
         binding.statisticsRecyclerView.layoutManager = layoutManager
         binding.statisticsRecyclerView.adapter = StatisticsAdapter(statistics.disciplines, requireContext())
-        
-        // Верхние карточки теперь закреплены и не скрываются при прокрутке
     }
     
     /**
@@ -271,64 +262,18 @@ class StatisticsFragment : Fragment() {
         }
     }
     
-    private fun applyThemeToSummaryCards() {
-        val binding = _binding ?: return
-        val context = requireContext()
-        val resources = context.resources
-        
-        // Применяем фон карточек
-        val bgResId = when (prefs.theme) {
-            PreferencesManager.THEME_LIGHT -> R.drawable.card_background_light
-            PreferencesManager.THEME_DARK -> R.drawable.card_background_dark
-            PreferencesManager.THEME_BLUE -> R.drawable.card_background_blue
-            PreferencesManager.THEME_GRAY -> R.drawable.card_background_gray
-            PreferencesManager.THEME_PURPLE -> R.drawable.card_background_purple
-            PreferencesManager.THEME_HALLOWEEN -> R.drawable.card_background_halloween
-            PreferencesManager.THEME_NOTHING -> R.drawable.card_background_nothing
-            PreferencesManager.THEME_GREEN -> R.drawable.card_background_green
-            PreferencesManager.THEME_NEW_YEAR -> R.drawable.card_background_newyear
-            else -> R.drawable.card_background_dark
-        }
-        
-        binding.totalHoursCard.setBackgroundResource(bgResId)
-        binding.completedHoursCard.setBackgroundResource(bgResId)
-        binding.remainingHoursCard.setBackgroundResource(bgResId)
-        binding.plannedHoursCard.setBackgroundResource(bgResId)
-        
-        // Применяем цвета текста для цифр в зависимости от темы
-        // Для светлой темы используем темный цвет текста для лучшей читаемости на белом фоне
-        val primaryColor = when (prefs.theme) {
-            PreferencesManager.THEME_LIGHT -> resources.getColor(R.color.light_textColorPrimary, null)
-            PreferencesManager.THEME_DARK -> resources.getColor(R.color.dark_colorPrimary, null)
-            PreferencesManager.THEME_BLUE -> resources.getColor(R.color.blue_colorPrimary, null)
-            PreferencesManager.THEME_GRAY -> resources.getColor(R.color.gray_colorPrimary, null)
-            PreferencesManager.THEME_PURPLE -> resources.getColor(R.color.system_colorPrimary, null)
-            PreferencesManager.THEME_HALLOWEEN -> resources.getColor(R.color.custom_colorPrimary, null)
-            PreferencesManager.THEME_NOTHING -> resources.getColor(R.color.nothing_colorPrimary, null)
-            PreferencesManager.THEME_GREEN -> resources.getColor(R.color.green_colorPrimary, null)
-            PreferencesManager.THEME_NEW_YEAR -> resources.getColor(R.color.newyear_colorPrimary, null)
-            else -> resources.getColor(R.color.dark_colorPrimary, null)
-        }
-        
-        // Применяем цвета к TextView с цифрами (используем colorPrimary для всех, чтобы они менялись с темой)
-        binding.totalHoursText.setTextColor(primaryColor)
-        binding.completedHoursText.setTextColor(primaryColor)
-        binding.remainingHoursText.setTextColor(primaryColor)
-        binding.plannedHoursText.setTextColor(primaryColor)
-    }
-    
     
     override fun onResume() {
         super.onResume()
         
-        // Применяем тему при возврате на экран (на случай изменения темы)
+        // Применяем шрифт при возврате на экран (на случай изменения темы)
         if (::prefs.isInitialized) {
-            applyThemeToSummaryCards()
             applyNothingFontIfNeeded()
         }
         
         // Обновляем статистику при возврате на экран
         if (::prefs.isInitialized && prefs.isGroupSelected()) {
+            hasAnimatedSummaryCards = false // Сбрасываем для повторной анимации
             loadStatistics()
         }
     }
@@ -337,6 +282,7 @@ class StatisticsFragment : Fragment() {
         super.onDestroyView()
         statisticsJob?.cancel()
         statisticsJob = null
+        hasAnimatedSummaryCards = false // Сбрасываем флаг для корректной анимации при повторном открытии
         _binding = null
     }
 

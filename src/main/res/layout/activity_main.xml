@@ -26,18 +26,17 @@
             android:id="@+id/bottomNavigation"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:background="?android:colorBackground"
+            android:background="?attr/colorSurface"
             android:elevation="8dp"
-            android:minHeight="56dp"
-            android:paddingTop="4dp"
-            android:paddingBottom="4dp"
-            app:itemIconSize="22dp"
+            app:itemIconSize="26dp"
             app:itemIconTint="@color/bottom_nav_selector"
             app:itemTextColor="@color/bottom_nav_selector"
-            app:itemRippleColor="?android:attr/colorControlHighlight"
+            app:itemTextAppearanceActive="@style/BottomNavTextAppearance"
+            app:itemTextAppearanceInactive="@style/BottomNavTextAppearance"
+            app:itemRippleColor="?attr/colorPrimaryContainer"
             app:menu="@menu/bottom_navigation"
             app:labelVisibilityMode="labeled"
-            app:itemHorizontalTranslationEnabled="false" />
+            app:itemActiveIndicatorStyle="@style/BottomNavIndicator" />
 
     </LinearLayout>
 

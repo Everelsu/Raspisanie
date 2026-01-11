@@ -19,6 +19,7 @@
     <string name="app_icon_newyear">Темно-зелёная</string>
     <string name="app_icon_nothing">Красная</string>
     <string name="app_icon_selected">Выбрано</string>
+    <string name="icon_change_error">Не удалось изменить иконку</string>
     <string name="app_name_default">Расписание</string>
     <string name="app_name_short">Расп</string>
     <string name="app_name_schedule">Schedule</string>
@@ -114,7 +115,7 @@
     <string name="notification_remote_default_body">Откройте приложение, чтобы посмотреть сообщение.</string>
     
     <!-- Статистика -->
-    <string name="statistics_title">Статистика по часам</string>
+    <string name="statistics_title">Итоги</string>
     <string name="statistics_total_hours">Всего часов</string>
     <string name="statistics_completed_hours">Прошло часов</string>
     <string name="statistics_remaining_hours">Осталось часов</string>
@@ -122,4 +123,9 @@
     <string name="statistics_no_group">Группа не выбрана</string>
     <string name="statistics_only_chtotib">Статистика доступна только для ЧТОТиБ</string>
     <string name="statistics_loading_error">Не удалось загрузить статистику. Попробуйте позже.</string>
+    
+    <!-- Bottom Navigation -->
+    <string name="nav_schedule">Расписание</string>
+    <string name="nav_statistics">Итоги</string>
+    <string name="nav_settings">Настройки</string>
 </resources>

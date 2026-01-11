@@ -1,6 +1,5 @@
 package com.example.raspisanie
 
-import android.content.ComponentName
 import android.content.Intent
 import android.content.res.ColorStateList
 import android.os.Bundle
@@ -16,9 +15,6 @@ import androidx.core.graphics.ColorUtils
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.fragment.app.Fragment
-import com.example.raspisanie.ScheduleFragment
-import com.example.raspisanie.StatisticsFragment
-import com.example.raspisanie.SettingsFragment
 import com.example.raspisanie.data.PreferencesManager
 import com.example.raspisanie.util.AppIconManager
 import com.example.raspisanie.databinding.ActivityMainBinding
@@ -70,77 +66,19 @@ class MainActivity : AppCompatActivity() {
             maybeRequestNotificationPermission()
             initFirebaseMessaging()
             
-            // Инициализация иконки приложения
-            // КРИТИЧНО: Проверяем, что хотя бы один alias включен, иначе приложение не запустится
+            // Инициализация иконки приложения (как в Telegram)
+            // Просто убеждаемся, что хотя бы один alias включен
             try {
-                // Используем метод из AppIconManager для проверки и исправления состояния
-                val iconFixed = AppIconManager.ensureAtLeastOneEnabled(this)
-                if (!iconFixed) {
-                    Log.e(TAG, "Не удалось гарантировать наличие активного alias!")
-                }
+                AppIconManager.ensureAtLeastOneEnabled(this)
                 
-                // Синхронизируем сохранённую иконку с текущим состоянием
-                val savedIcon = prefs.appIcon
+                // Синхронизируем preferences с реальным состоянием
                 val currentIcon = AppIconManager.getCurrentIcon(this)
-                
-                if (savedIcon != currentIcon) {
-                    Log.d(TAG, "Синхронизация иконки: сохранено=$savedIcon, текущая=$currentIcon")
-                    // Если сохранённая иконка не совпадает с текущей, применяем сохранённую
-                    // Но БЕЗ перезапуска приложения (перезапуск будет только при ручной смене в настройках)
-                    if (savedIcon.isNotEmpty()) {
-                        try {
-                            val packageManager = packageManager
-                            val packageName = packageName
-                            
-                            // Определяем нужный alias
-                            val targetAlias = when (savedIcon) {
-                                PreferencesManager.APP_ICON_DEFAULT -> ComponentName(packageName, "com.example.raspisanie.MainActivity.DefaultIcon")
-                                PreferencesManager.APP_ICON_BLACK -> ComponentName(packageName, "com.example.raspisanie.MainActivity.BlackIcon")
-                                PreferencesManager.APP_ICON_DARK -> ComponentName(packageName, "com.example.raspisanie.MainActivity.DarkIcon")
-                                PreferencesManager.APP_ICON_LIGHT -> ComponentName(packageName, "com.example.raspisanie.MainActivity.LightIcon")
-                                PreferencesManager.APP_ICON_PURPLE -> ComponentName(packageName, "com.example.raspisanie.MainActivity.PurpleIcon")
-                                PreferencesManager.APP_ICON_GREEN -> ComponentName(packageName, "com.example.raspisanie.MainActivity.GreenIcon")
-                                PreferencesManager.APP_ICON_NEW_YEAR -> ComponentName(packageName, "com.example.raspisanie.MainActivity.NewYearIcon")
-                                PreferencesManager.APP_ICON_NOTHING -> ComponentName(packageName, "com.example.raspisanie.MainActivity.NothingIcon")
-                                PreferencesManager.APP_ICON_HALLOWEEN -> ComponentName(packageName, "com.example.raspisanie.MainActivity.HalloweenIcon")
-                                else -> ComponentName(packageName, "com.example.raspisanie.MainActivity.DefaultIcon")
-                            }
-                            
-                            // Отключаем все aliases
-                            AppIconManager.getAllAliases(packageName).forEach { alias ->
-                                packageManager.setComponentEnabledSetting(
-                                    alias,
-                                    PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
-                                    PackageManager.DONT_KILL_APP
-                                )
-                            }
-                            
-                            // Включаем нужный alias
-                            packageManager.setComponentEnabledSetting(
-                                targetAlias,
-                                PackageManager.COMPONENT_ENABLED_STATE_ENABLED,
-                                PackageManager.DONT_KILL_APP
-                            )
-                            
-                            Log.d(TAG, "Иконка синхронизирована: $savedIcon (без перезапуска)")
-                        } catch (e: Exception) {
-                            Log.e(TAG, "Ошибка при синхронизации иконки: ${e.message}", e)
-                            // В случае ошибки обновляем сохранённое значение на текущее
-                            prefs.appIcon = currentIcon
-                        }
-                    } else {
-                        // Если сохранено пусто, обновляем сохранённое значение на текущее
-                        prefs.appIcon = currentIcon
-                    }
+                if (prefs.appIcon != currentIcon) {
+                    prefs.appIcon = currentIcon
+                    Log.d(TAG, "Синхронизировано: иконка = $currentIcon")
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Ошибка при инициализации иконки: ${e.message}", e)
-                // В случае ошибки принудительно включаем DefaultIcon
-                try {
-                    AppIconManager.ensureAtLeastOneEnabled(this)
-                } catch (ex: Exception) {
-                    Log.e(TAG, "Критическая ошибка при включении DefaultIcon: ${ex.message}", ex)
-                }
             }
             bottomNavBasePadding = intArrayOf(
                 binding.bottomNavigation.paddingLeft,
@@ -534,6 +472,37 @@ class MainActivity : AppCompatActivity() {
         val background = getThemeColor(com.google.android.material.R.attr.colorSurface)
         binding.bottomNavigation.setBackgroundColor(background)
         applyBottomNavActiveIndicator()
+        applyNothingFontToBottomNav()
+    }
+    
+    /**
+     * Применить шрифт Ndot к BottomNavigationView для темы Nothing
+     */
+    private fun applyNothingFontToBottomNav() {
+        if (!::binding.isInitialized || !::prefs.isInitialized) return
+        if (prefs.theme != PreferencesManager.THEME_NOTHING) return
+        
+        try {
+            val ndotFont = resources.getFont(R.font.ndot)
+            // Применяем шрифт ко всем TextView внутри BottomNavigationView
+            applyFontToViewGroup(binding.bottomNavigation, ndotFont)
+        } catch (e: Exception) {
+            Log.e(TAG, "Ошибка при применении шрифта Ndot к навбару: ${e.message}")
+        }
+    }
+    
+    /**
+     * Рекурсивно применить шрифт ко всем TextView в ViewGroup
+     */
+    private fun applyFontToViewGroup(viewGroup: android.view.ViewGroup, font: android.graphics.Typeface) {
+        for (i in 0 until viewGroup.childCount) {
+            val child = viewGroup.getChildAt(i)
+            if (child is android.widget.TextView) {
+                child.typeface = font
+            } else if (child is android.view.ViewGroup) {
+                applyFontToViewGroup(child, font)
+            }
+        }
     }
 
     private fun createBottomNavColorState(): ColorStateList {
@@ -674,14 +643,4 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun ensureContrast(color: Int, background: Int): Int {
-        val contrast = ColorUtils.calculateContrast(color, background)
-        if (contrast >= 2f) return color
-        val blendTarget = if (ColorUtils.calculateLuminance(background) > 0.5) {
-            Color.BLACK
-        } else {
-            Color.WHITE
-        }
-        return ColorUtils.blendARGB(color, blendTarget, 0.4f)
-    }
 }

@@ -682,14 +682,13 @@ object AppUpdateManager {
             // Создать канал уведомлений
             createNotificationChannel(context)
             
-            // Создать Intent для открытия настроек при нажатии на уведомление
+            // Создать Intent для открытия приложения при нажатии на уведомление
             val intent = try {
-                Intent(context, com.example.raspisanie.SettingsActivity::class.java).apply {
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
-                putExtra("show_update_section", true)
+                Intent(context, com.example.raspisanie.MainActivity::class.java).apply {
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "Ошибка при создании Intent для настроек", e)
+                Log.e(TAG, "Ошибка при создании Intent для MainActivity", e)
                 return
             }
             

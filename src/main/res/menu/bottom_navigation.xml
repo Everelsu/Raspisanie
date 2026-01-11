@@ -1,22 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
-<menu xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:app="http://schemas.android.com/apk/res-auto">
+<menu xmlns:android="http://schemas.android.com/apk/res/android">
     <item
         android:id="@+id/navigation_schedule"
-        android:icon="@android:drawable/ic_menu_view"
-        android:title="Расписание"
-        android:checkable="true" />
+        android:icon="@drawable/ic_nav_schedule"
+        android:title="@string/nav_schedule" />
     
     <item
         android:id="@+id/navigation_statistics"
-        android:icon="@android:drawable/ic_menu_info_details"
-        android:title="Итоги"
-        android:checkable="true" />
+        android:icon="@drawable/ic_nav_statistics"
+        android:title="@string/nav_statistics" />
     
     <item
         android:id="@+id/navigation_settings"
-        android:icon="@android:drawable/ic_menu_preferences"
-        android:title="Настройки"
-        android:checkable="true" />
+        android:icon="@drawable/ic_nav_settings"
+        android:title="@string/nav_settings" />
 </menu>
-
