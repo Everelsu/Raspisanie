@@ -808,6 +808,55 @@
 
                 </LinearLayout>
 
+                <!-- Информация о последней проверке -->
+                <TextView
+                    android:id="@+id/updateCheckStatus"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:textSize="13sp"
+                    android:textColor="?android:textColorSecondary"
+                    android:layout_marginTop="12dp"
+                    android:visibility="gone" />
+
+                <!-- Прогресс загрузки обновления -->
+                <LinearLayout
+                    android:id="@+id/downloadProgressContainer"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:layout_marginTop="12dp"
+                    android:visibility="gone">
+
+                    <TextView
+                        android:id="@+id/downloadProgressText"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Скачивание обновления..."
+                        android:textSize="14sp"
+                        android:textColor="?android:textColorPrimary"
+                        android:layout_marginBottom="8dp" />
+
+                    <ProgressBar
+                        android:id="@+id/downloadProgressBar"
+                        style="?android:attr/progressBarStyleHorizontal"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:max="100"
+                        android:progress="0"
+                        android:progressTint="?attr/colorPrimary" />
+
+                    <TextView
+                        android:id="@+id/downloadProgressPercent"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="0%"
+                        android:textSize="12sp"
+                        android:textColor="?android:textColorSecondary"
+                        android:layout_marginTop="4dp"
+                        android:layout_gravity="end" />
+
+                </LinearLayout>
+
                 <!-- Кнопка проверки обновлений -->
                 <com.google.android.material.button.MaterialButton
                     android:id="@+id/btnCheckUpdates"

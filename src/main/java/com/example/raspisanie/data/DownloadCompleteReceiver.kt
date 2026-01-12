@@ -146,8 +146,8 @@ class DownloadCompleteReceiver : BroadcastReceiver() {
                         Log.e(TAG, "Ошибка при получении URI файла", e)
                     }
                     
-                    // Fallback: попробовать найти файл по стандартному пути
-                    if (apkFile == null || !apkFile.exists()) {
+                    // Fallback: попробовать найти файл по стандартному пути (только для Android < 10)
+                    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q && (apkFile == null || !apkFile.exists())) {
                         try {
                             val downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
                             if (downloadsDir.exists() && downloadsDir.canRead()) {
@@ -172,7 +172,7 @@ class DownloadCompleteReceiver : BroadcastReceiver() {
                             }
                             
                             // Также проверить app-specific directory
-                            if ((apkFile == null || !apkFile.exists()) && Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+                            if (apkFile == null || !apkFile.exists()) {
                                 val appDownloadsDir = context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
                                 if (appDownloadsDir != null && appDownloadsDir.exists()) {
                                     val appFile = File(appDownloadsDir, "raspisanie_update.apk")
@@ -218,8 +218,15 @@ class DownloadCompleteReceiver : BroadcastReceiver() {
                         Log.w(TAG, "Ошибка при остановке DownloadProgressService", e)
                     }
                     
+                    // Очистить downloadId после успешной загрузки
+                    try {
+                        PreferencesManager(context).lastUpdateDownloadId = -1
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Не удалось очистить downloadId", e)
+                    }
+                    
                     // Для Android 10+ используем content URI напрямую из DownloadManager
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && fileUri != null) {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && fileUri != null && fileUri.scheme == "content") {
                         Log.d(TAG, "Android 10+: Использую content URI напрямую: $fileUri")
                         
                         // Показать уведомление о завершении скачивания с content URI
@@ -274,6 +281,13 @@ class DownloadCompleteReceiver : BroadcastReceiver() {
                         context.stopService(serviceIntent)
                     } catch (e: Exception) {
                         Log.w(TAG, "Ошибка при остановке DownloadProgressService", e)
+                    }
+                    
+                    // Очистить downloadId при ошибке загрузки
+                    try {
+                        PreferencesManager(context).lastUpdateDownloadId = -1
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Не удалось очистить downloadId", e)
                     }
                     
                     val reasonIndex = cursor.getColumnIndex(DownloadManager.COLUMN_REASON)

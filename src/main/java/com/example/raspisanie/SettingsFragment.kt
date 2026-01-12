@@ -40,6 +40,10 @@ import io.noties.markwon.linkify.LinkifyPlugin
 import kotlinx.coroutines.launch
 import android.content.Intent
 import android.widget.ScrollView
+import android.app.DownloadManager
+import android.database.Cursor
+import android.os.Handler
+import android.os.Looper
 
 class SettingsFragment : Fragment() {
     private var _binding: FragmentSettingsBinding? = null
@@ -57,6 +61,10 @@ class SettingsFragment : Fragment() {
         "Stalin", "Lenin", "Владимир", "ВОЛОДЯ", "Егор",
         "ВАЛЕРА", "Wplace", "SVO", "ZZZ", "Goida", "КАЛЛда?",
     )
+    
+    // Для отслеживания прогресса загрузки
+    private var downloadProgressHandler: Handler? = null
+    private var downloadProgressRunnable: Runnable? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -372,10 +380,6 @@ class SettingsFragment : Fragment() {
     
     override fun onSaveInstanceState(outState: Bundle) {
         super.onSaveInstanceState(outState)
-    }
-    
-    override fun onPause() {
-        super.onPause()
     }
     
     private fun applyNothingFontIfNeeded() {
@@ -941,6 +945,9 @@ class SettingsFragment : Fragment() {
         btnCheckUpdates.setOnClickListener {
             checkForUpdates(btnCheckUpdates)
         }
+        
+        // Проверить и начать отслеживание прогресса загрузки, если идет загрузка
+        checkAndStartDownloadProgressTracking()
     }
     
     private fun checkForUpdates(btnCheckUpdates: com.google.android.material.button.MaterialButton) {
@@ -1012,7 +1019,13 @@ class SettingsFragment : Fragment() {
             .setView(scrollView)
             .setPositiveButton("Обновить") { _, _ ->
                 if (versionInfo.downloadUrl != null) {
+                    // Показать прогресс-бар сразу после начала загрузки
+                    showDownloadProgress()
                     AppUpdateManager.downloadAndInstall(context, versionInfo.downloadUrl, versionInfo.versionName)
+                    // Начать отслеживание прогресса через небольшую задержку (чтобы downloadId успел сохраниться)
+                    Handler(Looper.getMainLooper()).postDelayed({
+                        checkAndStartDownloadProgressTracking()
+                    }, 500)
                 } else {
                     Toast.makeText(context, "Ссылка на скачивание недоступна", Toast.LENGTH_SHORT).show()
                 }
@@ -1180,6 +1193,244 @@ class SettingsFragment : Fragment() {
     
     override fun onDestroyView() {
         super.onDestroyView()
+        // Остановить отслеживание прогресса загрузки
+        stopDownloadProgressTracking()
         _binding = null
+    }
+    
+    override fun onResume() {
+        super.onResume()
+        // Проверить и начать отслеживание прогресса загрузки, если идет загрузка
+        checkAndStartDownloadProgressTracking()
+    }
+    
+    override fun onPause() {
+        super.onPause()
+        // Остановить отслеживание прогресса при уходе с экрана
+        stopDownloadProgressTracking()
+    }
+    
+    /**
+     * Проверить и начать отслеживание прогресса загрузки обновления
+     */
+    private fun checkAndStartDownloadProgressTracking() {
+        if (!isAdded || _binding == null) return
+        
+        val downloadId = prefs.lastUpdateDownloadId
+        if (downloadId <= 0) {
+            // Нет активной загрузки - скрыть прогресс-бар
+            hideDownloadProgress()
+            return
+        }
+        
+        // Проверить статус загрузки
+        val context = requireContext()
+        val downloadManager = context.getSystemService(Context.DOWNLOAD_SERVICE) as? DownloadManager
+            ?: run {
+                hideDownloadProgress()
+                return
+            }
+        
+        val query = DownloadManager.Query().setFilterById(downloadId)
+        val cursor: Cursor? = try {
+            downloadManager.query(query)
+        } catch (e: Exception) {
+            hideDownloadProgress()
+            return
+        }
+        
+        if (cursor == null) {
+            hideDownloadProgress()
+            return
+        }
+        
+        try {
+            if (!cursor.moveToFirst()) {
+                hideDownloadProgress()
+                return
+            }
+            
+            val statusIndex = cursor.getColumnIndex(DownloadManager.COLUMN_STATUS)
+            if (statusIndex == -1) {
+                hideDownloadProgress()
+                return
+            }
+            
+            val status = cursor.getInt(statusIndex)
+            when (status) {
+                DownloadManager.STATUS_RUNNING -> {
+                    // Загрузка идет - показать прогресс-бар и начать отслеживание
+                    showDownloadProgress()
+                    startDownloadProgressTracking(downloadId)
+                }
+                DownloadManager.STATUS_PENDING -> {
+                    // Загрузка ожидает - показать прогресс-бар
+                    showDownloadProgress()
+                    startDownloadProgressTracking(downloadId)
+                }
+                DownloadManager.STATUS_SUCCESSFUL,
+                DownloadManager.STATUS_FAILED -> {
+                    // Загрузка завершена или провалилась - скрыть прогресс-бар
+                    hideDownloadProgress()
+                    prefs.lastUpdateDownloadId = -1
+                }
+                else -> {
+                    hideDownloadProgress()
+                }
+            }
+        } catch (e: Exception) {
+            hideDownloadProgress()
+        } finally {
+            cursor.close()
+        }
+    }
+    
+    /**
+     * Начать отслеживание прогресса загрузки
+     */
+    private fun startDownloadProgressTracking(downloadId: Long) {
+        stopDownloadProgressTracking() // Остановить предыдущее отслеживание, если есть
+        
+        downloadProgressHandler = Handler(Looper.getMainLooper())
+        downloadProgressRunnable = object : Runnable {
+            override fun run() {
+                if (!isAdded || _binding == null) {
+                    stopDownloadProgressTracking()
+                    return
+                }
+                
+                val context = requireContext()
+                val downloadManager = context.getSystemService(Context.DOWNLOAD_SERVICE) as? DownloadManager
+                    ?: run {
+                        stopDownloadProgressTracking()
+                        return
+                    }
+                
+                val query = DownloadManager.Query().setFilterById(downloadId)
+                val cursor: Cursor? = try {
+                    downloadManager.query(query)
+                } catch (e: Exception) {
+                    stopDownloadProgressTracking()
+                    return
+                }
+                
+                if (cursor == null) {
+                    stopDownloadProgressTracking()
+                    return
+                }
+                
+                try {
+                    if (!cursor.moveToFirst()) {
+                        stopDownloadProgressTracking()
+                        return
+                    }
+                    
+                    val statusIndex = cursor.getColumnIndex(DownloadManager.COLUMN_STATUS)
+                    val bytesIndex = cursor.getColumnIndex(DownloadManager.COLUMN_BYTES_DOWNLOADED_SO_FAR)
+                    val totalIndex = cursor.getColumnIndex(DownloadManager.COLUMN_TOTAL_SIZE_BYTES)
+                    
+                    if (statusIndex == -1) {
+                        stopDownloadProgressTracking()
+                        return
+                    }
+                    
+                    val status = cursor.getInt(statusIndex)
+                    when (status) {
+                        DownloadManager.STATUS_RUNNING -> {
+                            // Загрузка идет - обновить прогресс
+                            val bytesDownloaded = if (bytesIndex != -1) cursor.getLong(bytesIndex) else 0L
+                            val totalSize = if (totalIndex != -1) cursor.getLong(totalIndex) else 0L
+                            
+                            updateDownloadProgress(bytesDownloaded, totalSize)
+                            
+                            // Продолжить отслеживание через 500ms
+                            downloadProgressHandler?.postDelayed(this, 500)
+                        }
+                        DownloadManager.STATUS_SUCCESSFUL,
+                        DownloadManager.STATUS_FAILED -> {
+                            // Загрузка завершена - остановить отслеживание
+                            hideDownloadProgress()
+                            prefs.lastUpdateDownloadId = -1
+                            stopDownloadProgressTracking()
+                        }
+                        else -> {
+                            // Другие статусы - продолжить отслеживание
+                            downloadProgressHandler?.postDelayed(this, 1000)
+                        }
+                    }
+                } catch (e: Exception) {
+                    stopDownloadProgressTracking()
+                } finally {
+                    cursor.close()
+                }
+            }
+        }
+        
+        downloadProgressHandler?.post(downloadProgressRunnable!!)
+    }
+    
+    /**
+     * Остановить отслеживание прогресса загрузки
+     */
+    private fun stopDownloadProgressTracking() {
+        downloadProgressHandler?.removeCallbacksAndMessages(null)
+        downloadProgressRunnable = null
+        downloadProgressHandler = null
+    }
+    
+    /**
+     * Показать прогресс-бар загрузки
+     */
+    private fun showDownloadProgress() {
+        if (!isAdded || _binding == null) return
+        
+        val container = settingsBinding.downloadProgressContainer
+        container?.visibility = View.VISIBLE
+    }
+    
+    /**
+     * Скрыть прогресс-бар загрузки
+     */
+    private fun hideDownloadProgress() {
+        if (!isAdded || _binding == null) return
+        
+        val container = settingsBinding.downloadProgressContainer
+        container?.visibility = View.GONE
+        
+        val progressBar = settingsBinding.downloadProgressBar
+        val progressText = settingsBinding.downloadProgressText
+        val progressPercent = settingsBinding.downloadProgressPercent
+        
+        progressBar?.progress = 0
+        progressText?.text = "Скачивание обновления..."
+        progressPercent?.text = "0%"
+    }
+    
+    /**
+     * Обновить прогресс загрузки
+     */
+    private fun updateDownloadProgress(bytesDownloaded: Long, totalSize: Long) {
+        if (!isAdded || _binding == null) return
+        
+        val progressBar = settingsBinding.downloadProgressBar
+        val progressText = settingsBinding.downloadProgressText
+        val progressPercent = settingsBinding.downloadProgressPercent
+        
+        if (totalSize > 0 && bytesDownloaded >= 0) {
+            val progress = ((bytesDownloaded * 100) / totalSize).toInt().coerceIn(0, 100)
+            
+            progressBar?.progress = progress
+            progressPercent?.text = "$progress%"
+            
+            // Форматировать размеры
+            val downloadedMB = String.format("%.1f", bytesDownloaded / (1024.0 * 1024.0))
+            val totalMB = String.format("%.1f", totalSize / (1024.0 * 1024.0))
+            progressText?.text = "Скачивание обновления: $downloadedMB / $totalMB МБ"
+        } else {
+            // Размер неизвестен - показать indeterminate progress
+            progressBar?.progress = 0
+            progressPercent?.text = ""
+            progressText?.text = "Скачивание обновления..."
+        }
     }
 }
