@@ -341,7 +341,8 @@ class ScheduleAdapter(
                     subjectView.text = item.subject
                     detailsView.text = buildDetails(item)
                     
-                    if (item.subgroup != null && items.size > 1) {
+                    // Show subgroup indicator if subgroup is set, even if only one subgroup exists
+                    if (item.subgroup != null) {
                         subgroupIndicator.text = "${item.subgroup}"
                         subgroupIndicator.visibility = View.VISIBLE
                     } else {

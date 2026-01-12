@@ -10,10 +10,6 @@ import android.os.Looper
 import com.example.raspisanie.MainActivity
 import com.example.raspisanie.data.PreferencesManager
 
-/**
- * Менеджер иконок приложения
- * Реализация как в Telegram - перезапуск приложения
- */
 object AppIconManager {
     private const val TAG = "AppIconManager"
     

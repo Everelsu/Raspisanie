@@ -197,7 +197,7 @@ class ScheduleParser {
                     
                     if (lessonNumber != null && lessonNumber >= 1 && lessonNumber <= 10) {
                         // Subject columns are after lesson number cell
-                        // Get all cells after lesson number cell - we need to process ALL "ur" cells in THIS row
+                        // Get all cells after lesson number cell
                         val allCellsAfterLesson = cells.drop(lessonCellIndex + 1)
                         
                         // Find all cells with class "ur" (has lesson) in THIS row
@@ -207,14 +207,24 @@ class ScheduleParser {
                             cell.hasClass("ur")
                         }
                         
+                        // Determine if there are multiple columns (subgroups)
+                        // Check if there are multiple cells after lesson number (even if some are empty)
+                        // Empty cells might not have class "ur", but they still indicate separate columns
+                        val hasMultipleColumns = allCellsAfterLesson.size > 1
+                        
                         // Process each "ur" cell - even if they contain the same subject
                         // Each cell should create a separate ScheduleItem, regardless of content
-                        subjectCells.forEachIndexed { index, cell ->
+                        subjectCells.forEach { cell ->
                             val subjectInfo = parseSubjectCell(cell)
                             
                             if (subjectInfo.subject != null && subjectInfo.subject.isNotEmpty()) {
-                                // Determine subgroup: only if there are multiple lesson cells
-                                val subgroup = if (subjectCells.size > 1) index + 1 else null
+                                // Determine subgroup: if there are multiple columns, determine position
+                                // Position is determined by cell's index in allCellsAfterLesson (not just "ur" cells)
+                                val subgroup = if (hasMultipleColumns) {
+                                    val cellIndexInAllCells = allCellsAfterLesson.indexOf(cell)
+                                    // Subgroup number is 1-based position in allCellsAfterLesson
+                                    cellIndexInAllCells + 1
+                                } else null
                                 
                                 dayItems.add(
                                     ScheduleItem(
