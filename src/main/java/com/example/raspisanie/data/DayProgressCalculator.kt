@@ -9,7 +9,7 @@ object DayProgressCalculator {
     /**
      * Парсит время в формате "HH:mm" и возвращает минуты с начала дня
      */
-    private fun parseTime(timeStr: String): Int {
+    fun parseTime(timeStr: String): Int {
         val parts = timeStr.split(":")
         if (parts.size == 2) {
             val hours = parts[0].toIntOrNull() ?: 0
@@ -95,6 +95,87 @@ object DayProgressCalculator {
         val dayDuration = dayEnd - dayStart
         val elapsed = currentMinutes - dayStart
         return (elapsed.toFloat() / dayDuration).coerceIn(0f, 1f)
+    }
+    
+    /**
+     * Определяет текущее состояние дня (пара/перемена/обед) и возвращает прогресс до этого состояния
+     * Линия "скачет" между дискретными состояниями - останавливается в конце каждого состояния
+     */
+    fun getDiscreteDayProgress(currentMinutes: Int, lessonNumbers: List<Int>, college: String = PreferencesManager.COLLEGE_CHTOTIB): Float {
+        if (lessonNumbers.isEmpty()) return 0f
+        
+        val sortedLessons = lessonNumbers.sorted()
+        val firstLesson = LessonTimes.getTime(sortedLessons.first(), college) ?: return 0f
+        val lastLesson = LessonTimes.getTime(sortedLessons.last(), college) ?: return 0f
+        
+        val dayStart = parseTime(firstLesson.startTime)
+        val dayEnd = parseTime(lastLesson.endTime)
+        
+        if (currentMinutes < dayStart) return 0f
+        if (currentMinutes > dayEnd) return 1f
+        
+        // Строим список всех состояний (пара, перемена, обед) в порядке их следования
+        // Каждое состояние имеет время окончания
+        val stateEndTimes = mutableListOf<Int>()
+        
+        for (i in sortedLessons.indices) {
+            val lessonNum = sortedLessons[i]
+            val lesson = LessonTimes.getTime(lessonNum, college) ?: continue
+            
+            val lessonEnd = parseTime(lesson.endTime)
+            
+            // Добавляем окончание пары
+            stateEndTimes.add(lessonEnd)
+            
+            // Проверяем, есть ли обед после этой пары (обед идет перед следующей парой)
+            val lunchText = LessonTimes.getLunchText(lessonNum, college)
+            if (lunchText != null) {
+                // Парсим время обеда из текста "Обед: HH:mm - HH:mm"
+                val regex = Regex("\\d{1,2}:\\d{2}")
+                val times = regex.findAll(lunchText).map { it.value }.toList()
+                if (times.size == 2) {
+                    val lunchEnd = parseTime(times[1])
+                    stateEndTimes.add(lunchEnd)
+                }
+            } else {
+                // Если обеда нет, проверяем перерыв между парами
+                if (i < sortedLessons.size - 1) {
+                    val nextLessonNum = sortedLessons[i + 1]
+                    val breakText = LessonTimes.getBreakText(lessonNum, nextLessonNum, college)
+                    if (breakText != null) {
+                        // Парсим время перемены из текста "Перемена: HH:mm - HH:mm"
+                        val regex = Regex("\\d{1,2}:\\d{2}")
+                        val times = regex.findAll(breakText).map { it.value }.toList()
+                        if (times.size == 2) {
+                            val breakEnd = parseTime(times[1])
+                            stateEndTimes.add(breakEnd)
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Находим последнее завершенное состояние
+        var lastCompletedIndex = -1
+        for (i in stateEndTimes.indices) {
+            if (currentMinutes >= stateEndTimes[i]) {
+                lastCompletedIndex = i
+            } else {
+                break
+            }
+        }
+        
+        // Если все состояния завершены
+        if (lastCompletedIndex >= stateEndTimes.size - 1) {
+            return 1f
+        }
+        
+        // Прогресс = количество завершенных состояний / общее количество состояний
+        // Линия останавливается в конце последнего завершенного состояния
+        val totalStates = stateEndTimes.size
+        val completedStates = lastCompletedIndex + 1
+        
+        return (completedStates.toFloat() / totalStates).coerceIn(0f, 1f)
     }
 }
 
