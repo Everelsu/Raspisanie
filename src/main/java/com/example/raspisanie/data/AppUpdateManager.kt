@@ -153,27 +153,27 @@ object AppUpdateManager {
      * Скачать и установить обновление (упрощенная и улучшенная версия)
      */
     fun downloadAndInstall(context: Context, downloadUrl: String?, versionName: String? = null) {
-        if (downloadUrl.isNullOrBlank()) {
+            if (downloadUrl.isNullOrBlank()) {
             Log.e(TAG, "URL скачивания не указан")
             showDownloadErrorNotification(context, "Ссылка для скачивания не указана")
-            return
-        }
-        
+                return
+            }
+            
         val uri = Uri.parse(downloadUrl)
         if (uri.scheme != "http" && uri.scheme != "https") {
-            Log.e(TAG, "Неподдерживаемый протокол: ${uri.scheme}")
+                Log.e(TAG, "Неподдерживаемый протокол: ${uri.scheme}")
             showDownloadErrorNotification(context, "Неподдерживаемый протокол. Используйте http или https.")
-            return
-        }
-        
+                return
+            }
+            
         val downloadManager = context.getSystemService(Context.DOWNLOAD_SERVICE) as? DownloadManager
             ?: run {
                 Log.e(TAG, "DownloadManager недоступен")
                 showDownloadErrorNotification(context, "Системный сервис загрузки недоступен")
                 return
             }
-        
-        val fileName = "raspisanie_update.apk"
+            
+            val fileName = "raspisanie_update.apk"
         
         // Создать запрос на скачивание
         val request = DownloadManager.Request(uri).apply {
@@ -208,45 +208,45 @@ object AppUpdateManager {
                 }
                 // Если путь не установлен, DownloadManager выберет путь сам
             }
-        }
-        
-        // Запустить скачивание
-        val downloadId = try {
-            downloadManager.enqueue(request)
-        } catch (e: Exception) {
-            Log.e(TAG, "Ошибка при запуске скачивания", e)
+            }
+            
+            // Запустить скачивание
+            val downloadId = try {
+                downloadManager.enqueue(request)
+            } catch (e: Exception) {
+                Log.e(TAG, "Ошибка при запуске скачивания", e)
             showDownloadErrorNotification(context, "Не удалось начать загрузку. Проверьте подключение к интернету.")
-            return
-        }
-        
-        if (downloadId <= 0) {
-            Log.e(TAG, "Неверный downloadId: $downloadId")
+                return
+            }
+            
+            if (downloadId <= 0) {
+                Log.e(TAG, "Неверный downloadId: $downloadId")
             showDownloadErrorNotification(context, "Ошибка при запуске загрузки")
-            return
-        }
-        
-        // Сохранить downloadId для отслеживания
-        try {
+                return
+            }
+            
+            // Сохранить downloadId для отслеживания
+            try {
             PreferencesManager(context).lastUpdateDownloadId = downloadId
-        } catch (e: Exception) {
+            } catch (e: Exception) {
             Log.w(TAG, "Не удалось сохранить downloadId", e)
-        }
-        
+            }
+            
         // Запустить Service для отслеживания прогресса (не критично)
-        try {
-            val serviceIntent = Intent(context, DownloadProgressService::class.java).apply {
-                putExtra(DownloadManager.EXTRA_DOWNLOAD_ID, downloadId)
-            }
+            try {
+                val serviceIntent = Intent(context, DownloadProgressService::class.java).apply {
+                    putExtra(DownloadManager.EXTRA_DOWNLOAD_ID, downloadId)
+                }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                context.startForegroundService(serviceIntent)
-            } else {
-                context.startService(serviceIntent)
-            }
-        } catch (e: Exception) {
+                    context.startForegroundService(serviceIntent)
+                } else {
+                    context.startService(serviceIntent)
+                }
+            } catch (e: Exception) {
             Log.w(TAG, "Не удалось запустить сервис отслеживания прогресса", e)
             // Не критично, загрузка продолжится через DownloadManager
-        }
-        
+            }
+            
         Log.d(TAG, "✅ Начато скачивание обновления: $downloadId, версия: $versionName")
     }
     
@@ -262,89 +262,89 @@ object AppUpdateManager {
         if (apkFile == null || !apkFile.exists() || !apkFile.isFile) {
             Log.e(TAG, "APK файл не существует или неверный")
             showDownloadErrorNotification(context, "Файл обновления не найден")
-            return
-        }
-        
+                return
+            }
+            
         if (!apkFile.canRead() || apkFile.length() < 1024) {
             Log.e(TAG, "APK файл поврежден или недоступен: ${apkFile.absolutePath}")
             showDownloadErrorNotification(context, "Файл обновления поврежден")
-            return
-        }
-        
-        isInstalling = true
-        
-        // Проверить разрешение на установку для Android 8.0+
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            if (!context.packageManager.canRequestPackageInstalls()) {
-                isInstalling = false
-                showInstallPermissionNotification(context)
                 return
             }
-        }
-        
-        // Получить URI для файла
-        val uri = try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-                FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", apkFile)
-            } else {
-                Uri.fromFile(apkFile)
+            
+            isInstalling = true
+            
+            // Проверить разрешение на установку для Android 8.0+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    if (!context.packageManager.canRequestPackageInstalls()) {
+                        isInstalling = false
+                        showInstallPermissionNotification(context)
+                    return
+                }
             }
-        } catch (e: Exception) {
-            isInstalling = false
-            Log.e(TAG, "Ошибка при получении URI для APK", e)
-            showDownloadErrorNotification(context, "Не удалось получить доступ к файлу обновления")
-            return
-        }
-        
-        // Создать Intent для установки
-        val intent = Intent(Intent.ACTION_VIEW).apply {
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION
-            setDataAndType(uri, "application/vnd.android.package-archive")
-        }
-        
-        // Предоставить разрешения на чтение URI (для Android 7.0+)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-            try {
-                val resInfoList = context.packageManager.queryIntentActivities(
-                    intent,
-                    android.content.pm.PackageManager.MATCH_DEFAULT_ONLY
-                )
-                
-                resInfoList.forEach { resolveInfo ->
-                    try {
-                        context.grantUriPermission(
-                            resolveInfo.activityInfo.packageName,
-                            uri,
-                            Intent.FLAG_GRANT_READ_URI_PERMISSION
-                        )
-                    } catch (e: Exception) {
-                        Log.w(TAG, "Не удалось предоставить разрешение для ${resolveInfo.activityInfo.packageName}", e)
-                    }
+            
+            // Получить URI для файла
+            val uri = try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", apkFile)
+                } else {
+                    Uri.fromFile(apkFile)
                 }
             } catch (e: Exception) {
-                Log.w(TAG, "Ошибка при предоставлении разрешений", e)
-            }
-        }
-        
-        // Запустить установку
-        try {
-            context.startActivity(intent)
-            Log.d(TAG, "✅ Запущена установка APK: ${apkFile.name}")
-            
-            // Сбросить флаг через 3 секунды
-            android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
                 isInstalling = false
+            Log.e(TAG, "Ошибка при получении URI для APK", e)
+            showDownloadErrorNotification(context, "Не удалось получить доступ к файлу обновления")
+                return
+            }
+            
+            // Создать Intent для установки
+        val intent = Intent(Intent.ACTION_VIEW).apply {
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION
+                    setDataAndType(uri, "application/vnd.android.package-archive")
+                }
+            
+        // Предоставить разрешения на чтение URI (для Android 7.0+)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                try {
+                    val resInfoList = context.packageManager.queryIntentActivities(
+                        intent, 
+                        android.content.pm.PackageManager.MATCH_DEFAULT_ONLY
+                    )
+                    
+                resInfoList.forEach { resolveInfo ->
+                        try {
+                                context.grantUriPermission(
+                            resolveInfo.activityInfo.packageName,
+                                    uri,
+                                    Intent.FLAG_GRANT_READ_URI_PERMISSION
+                                )
+                        } catch (e: Exception) {
+                        Log.w(TAG, "Не удалось предоставить разрешение для ${resolveInfo.activityInfo.packageName}", e)
+                        }
+                    }
+                } catch (e: Exception) {
+                Log.w(TAG, "Ошибка при предоставлении разрешений", e)
+                }
+            }
+            
+            // Запустить установку
+            try {
+                context.startActivity(intent)
+            Log.d(TAG, "✅ Запущена установка APK: ${apkFile.name}")
+                
+            // Сбросить флаг через 3 секунды
+                android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                    isInstalling = false
             }, 3000)
         } catch (e: ActivityNotFoundException) {
-            isInstalling = false
+                isInstalling = false
             Log.e(TAG, "Не найдено приложение для установки", e)
             showDownloadErrorNotification(context, "Не найдено приложение для установки. Включите установку из неизвестных источников.")
-        } catch (e: SecurityException) {
-            isInstalling = false
+            } catch (e: SecurityException) {
+                isInstalling = false
             Log.e(TAG, "Ошибка безопасности при установке", e)
             showInstallPermissionNotification(context)
-        } catch (e: Exception) {
-            isInstalling = false
+            } catch (e: Exception) {
+                isInstalling = false
             Log.e(TAG, "Ошибка при установке", e)
             showDownloadErrorNotification(context, "Не удалось запустить установку. Попробуйте установить вручную.")
         }
