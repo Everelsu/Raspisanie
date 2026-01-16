@@ -1,1 +1,48 @@
+# Android build files
 /build
+/debug
+/release
+*.apk
+*.aab
+
+# Android Studio / IntelliJ IDEA
+.idea/
+*.iml
+*.ipr
+*.iws
+.gradle/
+local.properties
+
+# Node.js (для website папки)
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnp/
+.pnp.js
+
+# Опционально: можно добавить package-lock.json если хотите игнорировать
+# Но обычно его коммитят для воспроизводимости сборок
+# website/package-lock.json
+
+# Firebase Service Account JSON (содержит приватный ключ)
+*-firebase-adminsdk-*.json
+*firebase-adminsdk*.json
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Kotlin
+*.class
+*.log
+*.jar
+*.war
+*.nar
+*.ear
+*.zip
+*.tar.gz
+*.rar
+
+# Bin файлы (если есть)
+*.bin

@@ -66,7 +66,7 @@
         app:iconGravity="textStart"
         app:iconPadding="8dp"
         app:iconTint="?attr/colorOnPrimary"
-        app:iconSize="22dp"
+        app:iconSize="24dp"
         android:textSize="16sp"
         android:textStyle="bold"
         android:textAllCaps="false"
@@ -100,7 +100,7 @@
         app:iconGravity="textStart"
         app:iconPadding="8dp"
         app:iconTint="?android:textColorPrimary"
-        app:iconSize="20dp"
+        app:iconSize="22dp"
         android:textSize="15sp"
         android:textAllCaps="false"
         android:maxLines="2"
@@ -115,6 +115,7 @@
         android:minHeight="52dp"
         android:text="@string/share_day_option_copy"
         android:layout_marginTop="4dp"
+        android:layout_marginBottom="8dp"
         android:paddingStart="20dp"
         android:paddingEnd="20dp"
         android:paddingTop="14dp"
@@ -123,10 +124,93 @@
         app:iconGravity="textStart"
         app:iconPadding="8dp"
         app:iconTint="?android:textColorPrimary"
-        app:iconSize="20dp"
+        app:iconSize="24dp"
         android:textSize="15sp"
         android:textAllCaps="false"
         android:maxLines="2"
         android:ellipsize="end" />
+
+    <!-- Скрытый блок (показывается при pull-to-reveal) -->
+    <LinearLayout
+        android:id="@+id/hiddenContent"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:paddingTop="24dp"
+        android:paddingBottom="8dp"
+        android:alpha="0"
+        android:translationY="20dp"
+        android:visibility="visible">
+        
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:layout_marginBottom="16dp"
+            android:background="?android:attr/listDivider"
+            android:alpha="0.3" />
+        
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center"
+            android:layout_marginBottom="12dp">
+            
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:gravity="center"
+                android:layout_marginEnd="16dp">
+                
+                <ImageView
+                    android:id="@+id/hiddenAvatarDDoS"
+                    android:layout_width="100dp"
+                    android:layout_height="100dp"
+                    android:scaleType="centerCrop"
+                    android:contentDescription="DDoSa avatar"
+                    android:src="@drawable/avatar_ddos"
+                    android:background="@drawable/avatar_circle_background"
+                    android:clipToOutline="true"
+                    android:layout_marginBottom="8dp" />
+                
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="DDoSa Был тут..."
+                    android:textSize="12sp"
+                    android:textStyle="italic"
+                    android:textColor="?android:textColorSecondary"
+                    android:gravity="center" />
+            </LinearLayout>
+            
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:gravity="center">
+                
+                <ImageView
+                    android:id="@+id/hiddenAvatarRelsev"
+                    android:layout_width="100dp"
+                    android:layout_height="100dp"
+                    android:scaleType="centerCrop"
+                    android:contentDescription="Relsev avatar"
+                    android:src="@drawable/avatar_relsev"
+                    android:background="@drawable/avatar_circle_background"
+                    android:clipToOutline="true"
+                    android:layout_marginBottom="8dp" />
+                
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="И Relsev тоже..."
+                    android:textSize="12sp"
+                    android:textStyle="italic"
+                    android:textColor="?android:textColorSecondary"
+                    android:gravity="center" />
+            </LinearLayout>
+        </LinearLayout>
+    </LinearLayout>
 
 </LinearLayout>
