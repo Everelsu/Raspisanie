@@ -1,7 +1,10 @@
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
-    id("com.google.gms.google-services") version "4.4.2"
+    // Используем KSP вместо kapt для Kotlin 2.0+
+    id("com.google.devtools.ksp") version "2.0.0-1.0.24"
+    // Google Services plugin нужен для OneSignal (использует FCM)
+    id("com.google.gms.google-services")
 }
 
 android {
@@ -13,7 +16,7 @@ android {
         minSdk = 28
         targetSdk = 34
         versionCode = 3
-        versionName = "1.1.3"
+        versionName = "1.2.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         
@@ -59,9 +62,8 @@ dependencies {
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
 
-    // Firebase Cloud Messaging
-    implementation(platform("com.google.firebase:firebase-bom:33.1.2"))
-    implementation("com.google.firebase:firebase-messaging-ktx")
+    // OneSignal Push Notifications (бесплатно до 10,000 подписчиков)
+    implementation("com.onesignal:OneSignal:[5.0.0, 5.99.99]")
 
     // OkHttp for admin push panel
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
@@ -106,4 +108,10 @@ dependencies {
     
     // Glide for image loading
     implementation("com.github.bumptech.glide:glide:4.16.0")
+    
+    // Room database
+    val roomVersion = "2.6.1"
+    implementation("androidx.room:room-runtime:$roomVersion")
+    implementation("androidx.room:room-ktx:$roomVersion")
+    ksp("androidx.room:room-compiler:$roomVersion")
 }
