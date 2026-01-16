@@ -4,8 +4,9 @@
     android:layout_height="wrap_content"
     android:orientation="horizontal"
     android:paddingVertical="12dp"
-    android:paddingStart="0dp"
-    android:paddingEnd="0dp">
+    android:paddingHorizontal="8dp"
+    android:clipChildren="false"
+    android:clipToPadding="false">
 
     <!-- Circle with fixed size to prevent shifting -->
     <FrameLayout

@@ -30,7 +30,7 @@
         
         <!-- OneSignal App ID для автоматической инициализации -->
         <meta-data
-            android:name="onesignal_app_id"
+            android:name="com.onesignal.app_id"
             android:value="@string/onesignal_app_id" />
         <activity
             android:name=".MainActivity"

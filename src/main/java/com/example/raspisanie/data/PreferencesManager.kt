@@ -14,6 +14,7 @@ class PreferencesManager(context: Context) {
         private const val KEY_SHOW_TIME = "show_time"
         private const val KEY_SHOW_PROGRESS_LINE = "show_progress_line"
         private const val KEY_SHOW_LESSON_STATUS = "show_lesson_status"
+        private const val KEY_SHOW_PAST_DAYS = "show_past_days"
         private const val KEY_THEME = "theme"
         private const val KEY_COLLEGE = "college"
         private const val KEY_SELECTED_GROUP = "selected_group"
@@ -47,7 +48,10 @@ class PreferencesManager(context: Context) {
         private const val KEY_SETTINGS_SCROLL_POSITION = "settings_scroll_position"
         private const val KEY_APP_ICON = "app_icon"
         private const val KEY_APP_NAME = "app_name"
-        
+        private const val KEY_ACTUAL_LESSONS_ENABLED = "actual_lessons_enabled"
+        private const val KEY_ACTUAL_LESSONS_AUTO_UPDATE = "actual_lessons_auto_update"
+        private const val KEY_ACTUAL_LESSONS_AUTO_CLEANUP_DAYS = "actual_lessons_auto_cleanup_days"
+
         // Font size options
         const val FONT_SIZE_SMALL = "small"
         const val FONT_SIZE_NORMAL = "normal"
@@ -137,6 +141,10 @@ class PreferencesManager(context: Context) {
         get() = prefs.getBoolean(KEY_SHOW_LESSON_STATUS, true)
         set(value) = prefs.edit().putBoolean(KEY_SHOW_LESSON_STATUS, value).apply()
     
+    var showPastDays: Boolean
+        get() = prefs.getBoolean(KEY_SHOW_PAST_DAYS, false)
+        set(value) = prefs.edit().putBoolean(KEY_SHOW_PAST_DAYS, value).apply()
+
     var theme: String
         get() = prefs.getString(KEY_THEME, THEME_DARK) ?: THEME_DARK
         set(value) {
@@ -365,5 +373,18 @@ class PreferencesManager(context: Context) {
     var appName: String
         get() = prefs.getString(KEY_APP_NAME, "") ?: ""
         set(value) = prefs.edit().putString(KEY_APP_NAME, value).apply()
+
+    // Настройки фактических занятий из журналов
+    var actualLessonsEnabled: Boolean
+        get() = prefs.getBoolean(KEY_ACTUAL_LESSONS_ENABLED, true)
+        set(value) = prefs.edit().putBoolean(KEY_ACTUAL_LESSONS_ENABLED, value).apply()
+
+    var actualLessonsAutoUpdate: Boolean
+        get() = prefs.getBoolean(KEY_ACTUAL_LESSONS_AUTO_UPDATE, true)
+        set(value) = prefs.edit().putBoolean(KEY_ACTUAL_LESSONS_AUTO_UPDATE, value).apply()
+
+    var actualLessonsAutoCleanupDays: Int
+        get() = prefs.getInt(KEY_ACTUAL_LESSONS_AUTO_CLEANUP_DAYS, 90) // По умолчанию 90 дней
+        set(value) = prefs.edit().putInt(KEY_ACTUAL_LESSONS_AUTO_CLEANUP_DAYS, value).apply()
 }
 

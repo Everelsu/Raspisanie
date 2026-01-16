@@ -14,7 +14,7 @@ import androidx.core.content.ContextCompat
 import com.example.raspisanie.MainActivity
 import com.example.raspisanie.R
 import com.example.raspisanie.notifications.ScheduleEventReceiver
-import com.google.firebase.messaging.RemoteMessage
+// Firebase заменен на OneSignal
 import com.google.gson.Gson
 import java.security.MessageDigest
 import java.text.SimpleDateFormat
@@ -105,15 +105,20 @@ object ScheduleNotificationManager {
         NotificationManagerCompat.from(context).notify(NOTIFICATION_ID, notification)
     }
 
-    fun handleRemoteMessage(context: Context, message: RemoteMessage) {
+    /**
+     * Обработка уведомлений от OneSignal
+     */
+    fun handleOneSignalNotification(context: Context, title: String, body: String, additionalData: org.json.JSONObject?) {
         ensureRemoteChannel(context)
 
-        val title = message.data["title"] ?: message.notification?.title
-            ?: context.getString(R.string.notification_remote_default_title)
-        val body = message.data["body"] ?: message.notification?.body
-            ?: context.getString(R.string.notification_remote_default_body)
+        val notificationTitle = title.ifBlank {
+            context.getString(R.string.notification_remote_default_title)
+        }
+        val notificationBody = body.ifBlank {
+            context.getString(R.string.notification_remote_default_body)
+        }
 
-        if (body.isNullOrBlank()) {
+        if (notificationBody.isBlank()) {
             return
         }
 
@@ -131,15 +136,15 @@ object ScheduleNotificationManager {
         val builder = NotificationCompat.Builder(context, REMOTE_CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_notification_schedule)
             .setColor(ContextCompat.getColor(context, R.color.dayNamePurple))
-            .setContentTitle(title)
-            .setContentText(body)
-            .setStyle(NotificationCompat.BigTextStyle().bigText(body))
+            .setContentTitle(notificationTitle)
+            .setContentText(notificationBody)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(notificationBody))
             .setAutoCancel(true)
             .setCategory(NotificationCompat.CATEGORY_MESSAGE)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setContentIntent(pendingIntent)
 
-        val notificationId = message.messageId?.hashCode() ?: (System.currentTimeMillis() % Int.MAX_VALUE).toInt()
+        val notificationId = (System.currentTimeMillis() % Int.MAX_VALUE).toInt()
         NotificationManagerCompat.from(context).notify(notificationId, builder.build())
     }
 

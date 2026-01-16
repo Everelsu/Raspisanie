@@ -19,12 +19,14 @@ import android.view.ViewGroup
 import android.view.ViewTreeObserver
 import android.view.animation.DecelerateInterpolator
 import android.view.animation.OvershootInterpolator
-import android.view.MotionEvent
+import android.view.animation.PathInterpolator
+import android.widget.ImageView
 import android.widget.TextView
 import android.widget.Toast
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import androidx.recyclerview.widget.RecyclerView
+import androidx.recyclerview.widget.DiffUtil
 import com.google.android.material.bottomsheet.BottomSheetDialog
 import com.google.android.material.button.MaterialButton
 import com.example.raspisanie.R
@@ -39,9 +41,17 @@ import java.util.*
 
 class ScheduleAdapter(
     private var schedules: List<DaySchedule> = emptyList(),
-    private val context: Context? = null
+    private val context: Context? = null,
+    private val onDayClickListener: ((DaySchedule) -> Unit)? = null,
+    private var plannedDates: Set<String> = emptySet(), // Даты из планового расписания
+    private var selectedDayDate: String? = null, // Дата выбранного дня (если есть)
+    private val onSelectedDayRemoveListener: (() -> Unit)? = null // Callback для удаления выбранного дня
 ) : RecyclerView.Adapter<ScheduleAdapter.ScheduleViewHolder>() {
     
+    // Защита от множественных кликов
+    private var lastClickTime: Long = 0
+    private val clickDebounceTime = 500L // 500ms между кликами
+
     private val prefs: PreferencesManager? = context?.let { PreferencesManager(it) }
     
     // Флаг видимости фрагмента для оптимизации обновлений
@@ -56,6 +66,8 @@ class ScheduleAdapter(
     private val isPurpleTheme: Boolean get() = prefs?.theme == PreferencesManager.THEME_PURPLE
     private val isGreenTheme: Boolean get() = prefs?.theme == PreferencesManager.THEME_GREEN
     private val isNewYearTheme: Boolean get() = prefs?.theme == PreferencesManager.THEME_NEW_YEAR
+    private val isBlueTheme: Boolean get() = prefs?.theme == PreferencesManager.THEME_BLUE
+    private val isGrayTheme: Boolean get() = prefs?.theme == PreferencesManager.THEME_GRAY
     private val showLessonStatus: Boolean get() = prefs?.showLessonStatus ?: true
     
     // Font size multiplier based on preference
@@ -75,13 +87,9 @@ class ScheduleAdapter(
         val dayName: TextView = view.findViewById(R.id.dayName)
         val dateText: TextView = view.findViewById(R.id.dateText)
         val itemsContainer: ViewGroup = view.findViewById(R.id.itemsContainer)
-        val itemsWrapper: ViewGroup = view.findViewById(R.id.itemsWrapper)
-        val progressIndicator: View = view.findViewById(R.id.progressIndicator)
         val cardBackground: View = view.findViewById(R.id.cardBackground)
-        
-        // Cache for progress line state to avoid recalculation on scroll
-        var progressLineSetup: Boolean = false
-        var progressHandler: Handler? = null
+        val btnRemoveSelectedDay: android.widget.ImageButton = view.findViewById(R.id.btnRemoveSelectedDay)
+
         var statusHandler: Handler? = null
         var currentLessonNumbers: List<Int>? = null
     }
@@ -89,6 +97,8 @@ class ScheduleAdapter(
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ScheduleViewHolder {
         val view = LayoutInflater.from(parent.context)
             .inflate(R.layout.item_day_schedule, parent, false)
+        // Инициализируем тег для анимации появления
+        view.tag = false
         return ScheduleViewHolder(view)
     }
     
@@ -96,16 +106,12 @@ class ScheduleAdapter(
         super.onViewRecycled(holder)
         // Clean up handlers and listeners when ViewHolder is recycled
         try {
-            holder.progressHandler?.removeCallbacksAndMessages(null)
-            holder.progressHandler = null
             holder.statusHandler?.removeCallbacksAndMessages(null)
             holder.statusHandler = null
-            holder.progressLineSetup = false
             holder.currentLessonNumbers = null
             
-            // Cancel any animations on progress indicator
-            holder.progressIndicator.clearAnimation()
-            holder.progressIndicator.animate().cancel()
+            // Отменить анимации itemView при переработке (тег сохраняется для проверки при повторном использовании)
+            holder.itemView.animate().cancel()
             
             // Отменить все анимации в дочерних view
             cancelAnimationsInView(holder.itemView)
@@ -129,16 +135,41 @@ class ScheduleAdapter(
     }
 
     override fun onBindViewHolder(holder: ScheduleViewHolder, position: Int) {
-        val daySchedule = schedules[position]
+        // Use adapterPosition to get the current position (may differ from parameter)
+        val adapterPosition = holder.adapterPosition
+        if (adapterPosition == RecyclerView.NO_POSITION || adapterPosition < 0 || adapterPosition >= schedules.size) {
+            return
+        }
+        val daySchedule = schedules[adapterPosition]
         
-        // Сбросить состояние прогресса при перепривязке (на случай изменения настроек)
-        holder.progressLineSetup = false
+        // Анимация появления только для действительно новых элементов (не при скролле)
+        // Используем payload для определения, является ли это обновлением или новым элементом
+        val viewId = holder.itemView.tag as? Long
+        val currentId = daySchedule.date.hashCode().toLong()
+        if (viewId == null || viewId != currentId) {
+            // Новый элемент - анимируем только если он не был виден ранее
+            val wasVisible = holder.itemView.alpha > 0.5f
+            if (!wasVisible) {
+                holder.itemView.alpha = 0f
+                holder.itemView.translationY = 30f
+                holder.itemView.animate()
+                    .alpha(1f)
+                    .translationY(0f)
+                    .setDuration(300)
+                    .setInterpolator(android.view.animation.DecelerateInterpolator())
+                    .start()
+            }
+            holder.itemView.tag = currentId
+        }
+
+        // Сбросить состояние подсветки при перепривязке (на случай изменения настроек)
         holder.currentLessonNumbers = null
-        holder.progressHandler?.removeCallbacksAndMessages(null)
-        holder.progressHandler = null
         holder.statusHandler?.removeCallbacksAndMessages(null)
         holder.statusHandler = null
         
+        // Проверяем, является ли это фактическим занятием (не в плановом расписании)
+        val isActual = !plannedDates.contains(daySchedule.date)
+
         holder.dayName.text = formatDayName(daySchedule.day)
         holder.dateText.text = formatDate(daySchedule.date)
         
@@ -148,6 +179,24 @@ class ScheduleAdapter(
         holder.dayName.textSize = baseDayNameSize * fontSizeMultiplier
         holder.dateText.textSize = 14f * fontSizeMultiplier
         
+        // Клик на название дня - открыть календарь (с защитой от множественных кликов)
+        holder.dayName.setOnClickListener {
+            val currentTime = System.currentTimeMillis()
+            if (currentTime - lastClickTime > clickDebounceTime) {
+                lastClickTime = currentTime
+                onDayClickListener?.invoke(daySchedule)
+            }
+        }
+
+        // Клик на дату - открыть календарь (с защитой от множественных кликов)
+        holder.dateText.setOnClickListener {
+            val currentTime = System.currentTimeMillis()
+            if (currentTime - lastClickTime > clickDebounceTime) {
+                lastClickTime = currentTime
+                onDayClickListener?.invoke(daySchedule)
+            }
+        }
+
         // Долгое нажатие на название дня - скролл вверх (как в Telegram)
         holder.dayName.setOnLongClickListener {
             val recyclerView = holder.itemView.parent as? RecyclerView ?: return@setOnLongClickListener false
@@ -186,6 +235,13 @@ class ScheduleAdapter(
                 else -> R.drawable.card_background_dark
             }
             holder.cardBackground.setBackgroundResource(bgResId)
+
+            // Визуальное отличие для фактических занятий - немного прозрачнее
+            if (isActual) {
+                holder.cardBackground.alpha = 0.9f
+            } else {
+                holder.cardBackground.alpha = 1.0f
+            }
         }
         
         // Apply Nothing font if needed
@@ -394,6 +450,14 @@ class ScheduleAdapter(
             }
             
             if (isToday) {
+                // Обновляем кружки и подсветку при инициализации
+                holder.itemView.post {
+                    if (holder.itemView.isAttachedToWindow && isFragmentVisible) {
+                        val currentMinutes = DayProgressCalculator.getCurrentTimeInMinutes()
+                        updateAllCircles(holder, currentMinutes)
+                    }
+                }
+
                 if (statusEnabled) {
                     // Обновляем статус сразу, если layout уже готов
                     if (holder.itemsContainer.width > 0 && holder.itemsContainer.height > 0) {
@@ -431,35 +495,23 @@ class ScheduleAdapter(
                 holder.statusHandler = null
             }
             
-            // Setup day progress indicator
+            // Setup lesson highlight for current day
             if (isToday) {
                 val lessonNumbers = daySchedule.items.map { it.lessonNumber }.distinct().sorted()
                 holder.currentLessonNumbers = lessonNumbers
                 
                 if (prefs?.showProgressLine == true) {
-                    when {
-                        isNothingTheme -> holder.progressIndicator.setBackgroundResource(R.drawable.progress_indicator_nothing)
-                        isHalloweenTheme -> holder.progressIndicator.setBackgroundResource(R.drawable.progress_indicator_halloween)
-                        isGreenTheme -> holder.progressIndicator.setBackgroundResource(R.drawable.progress_indicator_green)
-                        isNewYearTheme -> holder.progressIndicator.setBackgroundResource(R.drawable.progress_indicator_newyear)
-                        else -> holder.progressIndicator.setBackgroundResource(R.drawable.progress_indicator)
-                    }
-                    
-                    holder.progressIndicator.visibility = View.VISIBLE
-                    setupDayProgress(holder, lessonNumbers)
+                    // Setup lesson highlighting
+                    setupLessonHighlight(holder, lessonNumbers)
                 } else {
-                    holder.progressIndicator.visibility = View.GONE
-                    holder.progressLineSetup = false
-                    holder.progressHandler?.removeCallbacksAndMessages(null)
-                    updateDayProgress(holder, lessonNumbers)
+                    // Remove all highlights
+                    removeAllHighlights(holder)
+                    holder.currentLessonNumbers = null
                 }
             } else {
-                holder.progressIndicator.visibility = View.GONE
-                holder.progressLineSetup = false
+                // Remove all highlights for past/future days
+                removeAllHighlights(holder)
                 holder.currentLessonNumbers = null
-                // Cancel any pending updates
-                holder.progressHandler?.removeCallbacksAndMessages(null)
-                holder.progressHandler = null
             }
             
             // Apply theme-specific color to day name
@@ -475,7 +527,19 @@ class ScheduleAdapter(
             }
         }
 
+        // Показываем крестик только для выбранного дня (если это первый элемент И это выбранный день)
+        // Показываем крестик даже если день пустой (без данных)
+        val isSelectedDay = selectedDayDate != null && daySchedule.date == selectedDayDate && adapterPosition == 0
+        holder.btnRemoveSelectedDay.visibility = if (isSelectedDay) View.VISIBLE else View.GONE
+
+        // Обработчик клика на крестик
+        holder.btnRemoveSelectedDay.setOnClickListener {
+            holder.btnRemoveSelectedDay.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+            onSelectedDayRemoveListener?.invoke()
+        }
+
         holder.cardBackground.setOnLongClickListener {
+            // Всегда показываем одинаковое меню (с pull-to-reveal функционалом)
             animateCardPress(holder.cardBackground) {
                 showShareMenu(holder, daySchedule)
             }
@@ -518,16 +582,19 @@ class ScheduleAdapter(
             // Это предотвращает повторную анимацию при скролле
         } else if (animationsEnabled) {
             // Задержка зависит от позиции для эффекта каскада
-            val itemPosition = position // Сохраняем position в локальную переменную
+            // Use adapterPosition to get current position when delayed execution happens
+            val itemPosition = adapterPosition.coerceAtLeast(0)
             val delay = (itemPosition * 50L).coerceAtMost(300L) // Максимум 300ms задержка
             holder.itemView.postDelayed({
                 if (holder.itemView.isAttachedToWindow && holder.itemView.alpha < 1f) {
                     // Фишка из Telegram: улучшенная анимация появления с задержкой
-                    val position = holder.adapterPosition
-                    val delay = (position * 30L).coerceAtMost(300L)
-                    holder.itemView.postDelayed({
-                        animateItemAppearance(holder.itemView)
-                    }, delay)
+                    val currentPosition = holder.adapterPosition
+                    if (currentPosition != RecyclerView.NO_POSITION) {
+                        val animationDelay = (currentPosition * 30L).coerceAtMost(300L)
+                        holder.itemView.postDelayed({
+                            animateItemAppearance(holder.itemView)
+                        }, animationDelay)
+                    }
                 }
             }, delay)
         }
@@ -538,389 +605,17 @@ class ScheduleAdapter(
         return dateStr == today
     }
     
-    private fun setupDayProgress(holder: ScheduleViewHolder, lessonNumbers: List<Int>) {
-        // Cancel any existing handlers
-        holder.progressHandler?.removeCallbacksAndMessages(null)
+    /**
+     * Настройка подсветки текущего урока
+     */
+    private fun setupLessonHighlight(holder: ScheduleViewHolder, lessonNumbers: List<Int>) {
+        // Обновляем подсветку сразу
+        updateLessonHighlight(holder)
         
-        // ЖЕСТКАЯ ИНИЦИАЛИЗАЦИЯ: сброс всех параметров
-        holder.progressIndicator.visibility = View.VISIBLE
-        holder.progressIndicator.alpha = 1f
-        holder.progressIndicator.scaleY = 1f
-        holder.progressIndicator.scaleX = 1f
-        holder.progressIndicator.rotation = 0f
-        holder.progressIndicator.translationX = 0f
-        holder.progressIndicator.translationY = 0f
-        
-        // Reset animation state for fresh calculation
-        holder.progressIndicator.clearAnimation()
-        holder.progressIndicator.animate().cancel()
-        
-        // ЖЕСТКОЕ позиционирование: убеждаемся что margin top = 0
-        val params = holder.progressIndicator.layoutParams as? ViewGroup.MarginLayoutParams
-        params?.let {
-            it.topMargin = 0
-            it.bottomMargin = 0
-            holder.progressIndicator.layoutParams = it
-        }
-        
-        // Store lesson numbers in holder tag
-        holder.itemView.tag = lessonNumbers
-        
-        android.util.Log.d("ScheduleAdapter", "🔧 setupDayProgress: начинаю установку для ${lessonNumbers.size} уроков")
-        
-        // Check if container already has height (fast path - skip ViewTreeObserver)
-        val containerHeight = holder.itemsContainer.height
-        val wrapperHeight = holder.itemsWrapper.height
-        
-        if (containerHeight > 0 && wrapperHeight > 0) {
-            // Already measured, update immediately
-            android.util.Log.d("ScheduleAdapter", "✅ Быстрый путь: containerHeight=$containerHeight, wrapperHeight=$wrapperHeight")
-            updateProgressIndicator(holder, lessonNumbers)
-            holder.progressLineSetup = true
-            // Start periodic updates
-            updateDayProgress(holder, lessonNumbers)
-        } else {
-            // Use post() instead of ViewTreeObserver for better performance
-            holder.itemView.post {
-                // Double-check after posting
-                val postedContainerHeight = holder.itemsContainer.height
-                val postedWrapperHeight = holder.itemsWrapper.height
-                
-                android.util.Log.d("ScheduleAdapter", "📐 После post: containerHeight=$postedContainerHeight, wrapperHeight=$postedWrapperHeight")
-                
-                if (postedContainerHeight > 0 && postedWrapperHeight > 0) {
-                    updateProgressIndicator(holder, lessonNumbers)
-                    holder.progressLineSetup = true
-                    // Start periodic updates
-                    updateDayProgress(holder, lessonNumbers)
-                } else {
-                    // Fallback to ViewTreeObserver only if post() didn't work
-                    android.util.Log.w("ScheduleAdapter", "⚠️ Используем ViewTreeObserver как fallback")
-                    val listener = object : ViewTreeObserver.OnGlobalLayoutListener {
-                        override fun onGlobalLayout() {
-                            holder.itemView.viewTreeObserver.removeOnGlobalLayoutListener(this)
-                            val measuredContainerHeight = holder.itemsContainer.height
-                            val measuredWrapperHeight = holder.itemsWrapper.height
-                            
-                            android.util.Log.d("ScheduleAdapter", "📏 ViewTreeObserver: containerHeight=$measuredContainerHeight, wrapperHeight=$measuredWrapperHeight")
-                            
-                            if (measuredContainerHeight > 0 && measuredWrapperHeight > 0) {
-                                updateProgressIndicator(holder, lessonNumbers)
-                                holder.progressLineSetup = true
-                                updateDayProgress(holder, lessonNumbers)
-                            } else {
-                                android.util.Log.e("ScheduleAdapter", "❌ ViewTreeObserver: размеры не определены!")
-                            }
-                        }
-                    }
-                    holder.itemView.viewTreeObserver.addOnGlobalLayoutListener(listener)
-                }
-            }
-        }
+        // Обновляем при обновлении кружков (каждые 2 минуты)
+        // Подсветка будет обновляться вместе с кружками в updateAllCircles
     }
-    
-    private fun updateProgressIndicator(holder: ScheduleViewHolder, lessonNumbers: List<Int>) {
-        // ЖЕСТКАЯ ВАЛИДАЦИЯ: проверяем что ViewHolder еще привязан и фрагмент виден
-        if (!holder.itemView.isAttachedToWindow || !isFragmentVisible) {
-            android.util.Log.w("ScheduleAdapter", "⚠️ ViewHolder не привязан к окну или фрагмент не виден, пропускаем обновление")
-            return
-        }
-        
-        val currentMinutes = DayProgressCalculator.getCurrentTimeInMinutes()
-        val college = prefs?.college ?: PreferencesManager.COLLEGE_CHTOTIB
-        val progress = DayProgressCalculator.getDayProgress(currentMinutes, lessonNumbers, college)
-        
-        // ЖЕСТКОЕ получение высоты: используем реальную высоту контейнера И wrapper
-        var containerHeight = holder.itemsContainer.height
-        val wrapperHeight = holder.itemsWrapper.height
-        
-        // ОТЛАДКА
-        android.util.Log.d("ScheduleAdapter", "🔍 updateProgressIndicator: progress=$progress, containerHeight=$containerHeight, wrapperHeight=$wrapperHeight")
-        
-        if (containerHeight <= 0) {
-            // Fallback: measure if not laid out yet
-            holder.itemsContainer.measure(
-                View.MeasureSpec.makeMeasureSpec(holder.itemsContainer.width, View.MeasureSpec.EXACTLY),
-                View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED)
-            )
-            containerHeight = holder.itemsContainer.measuredHeight
-            android.util.Log.d("ScheduleAdapter", "📏 Измерено: containerHeight=$containerHeight")
-            
-            if (containerHeight <= 0) {
-                android.util.Log.w("ScheduleAdapter", "⚠️ containerHeight <= 0 после измерения, пропускаем")
-                return
-            }
-        }
-        
-        // ЖЕСТКОЕ ограничение: используем минимальную из двух высот (container и wrapper)
-        val finalHeight = if (wrapperHeight > 0 && wrapperHeight < containerHeight) {
-            android.util.Log.d("ScheduleAdapter", "📐 Используем wrapperHeight как ограничитель: $wrapperHeight < $containerHeight")
-            wrapperHeight
-        } else {
-            containerHeight
-        }
-        
-        updateProgressHeight(holder, finalHeight, progress)
-        
-        // ФИНАЛЬНАЯ ПРОВЕРКА: убеждаемся что линия не вышла за границы (только если фрагмент виден)
-        if (isFragmentVisible) {
-            holder.itemView.postDelayed({
-                // Проверяем видимость перед выполнением
-                if (!isFragmentVisible || !holder.itemView.isAttachedToWindow) {
-                    return@postDelayed
-                }
-                
-                val actualIndicatorHeight = holder.progressIndicator.height
-                val actualIndicatorTop = holder.progressIndicator.top
-                val actualWrapperHeight = holder.itemsWrapper.height
-                val actualWrapperTop = holder.itemsWrapper.top
-                
-                if (actualIndicatorHeight > actualWrapperHeight && actualWrapperHeight > 0) {
-                    android.util.Log.e("ScheduleAdapter", "🚨 ФИНАЛЬНАЯ ПРОВЕРКА ПРОВАЛЕНА: actualIndicatorHeight ($actualIndicatorHeight) > actualWrapperHeight ($actualWrapperHeight)")
-                    android.util.Log.e("ScheduleAdapter", "   actualIndicatorTop=$actualIndicatorTop, actualWrapperTop=$actualWrapperTop")
-                    // Немедленное исправление
-                    val emergencyParams = holder.progressIndicator.layoutParams as? ViewGroup.MarginLayoutParams
-                    emergencyParams?.height = actualWrapperHeight
-                    emergencyParams?.topMargin = 0
-                    holder.progressIndicator.layoutParams = emergencyParams
-                }
-            }, 100) // Небольшая задержка для проверки после layout
-        }
-    }
-    
-    private fun updateProgressHeight(holder: ScheduleViewHolder, containerHeight: Int, progress: Float) {
-        // ЖЕСТКАЯ ВАЛИДАЦИЯ входных данных
-        if (containerHeight <= 0) {
-            android.util.Log.w("ScheduleAdapter", "⚠️ containerHeight <= 0: $containerHeight, пропускаем обновление")
-            holder.progressIndicator.visibility = View.GONE
-            return
-        }
-        
-        // Проверка что ViewHolder еще привязан
-        if (!holder.itemView.isAttachedToWindow) {
-            android.util.Log.w("ScheduleAdapter", "⚠️ ViewHolder не привязан, пропускаем обновление")
-            return
-        }
-        
-        // Ensure progress is within bounds (0.0 to 1.0)
-        val clampedProgress = progress.coerceIn(0f, 1f)
-        
-        // ЖЕСТКИЙ расчет высоты - НИКОГДА не превышаем контейнер
-        var progressHeight = (containerHeight * clampedProgress).toInt()
-        progressHeight = progressHeight.coerceIn(0, containerHeight) // Двойная проверка
-        
-        // ДОПОЛНИТЕЛЬНАЯ ПРОВЕРКА: высота не должна быть больше контейнера НИ ПРИ КАКИХ ОБСТОЯТЕЛЬСТВАХ
-        if (progressHeight > containerHeight) {
-            android.util.Log.e("ScheduleAdapter", "🚨 ОШИБКА: progressHeight ($progressHeight) > containerHeight ($containerHeight)! Исправляю...")
-            progressHeight = containerHeight
-        }
-        
-        // ЖЕСТКОЕ ограничение: не более чем 99.9% от высоты контейнера (запас безопасности)
-        val maxAllowedHeight = (containerHeight * 0.999f).toInt().coerceAtLeast(0)
-        progressHeight = progressHeight.coerceAtMost(maxAllowedHeight).coerceAtLeast(0)
-        
-        // ОТЛАДОЧНОЕ ЛОГИРОВАНИЕ
-        android.util.Log.d("ScheduleAdapter", "📊 Прогресс: clampedProgress=$clampedProgress, containerHeight=$containerHeight, progressHeight=$progressHeight")
-        
-        // Update layout params - ЖЕСТКИЕ ограничения
-        try {
-            val params = holder.progressIndicator.layoutParams
-            if (params == null || params !is ViewGroup.MarginLayoutParams) {
-                val newParams = ViewGroup.MarginLayoutParams(
-                    2.dpToPx(), // Fixed width: 2dp
-                    progressHeight // Уже проверено выше
-                ).apply {
-                    topMargin = 0 // ЖЕСТКО: начинаем с самого верха
-                    marginStart = 17.dpToPx() // Fixed start margin
-                    bottomMargin = 0 // ЖЕСТКО: без отступов снизу
-                    marginEnd = 0
-                }
-                holder.progressIndicator.layoutParams = newParams
-                android.util.Log.d("ScheduleAdapter", "✅ Создан новый layout params: height=$progressHeight")
-            } else {
-                // ЖЕСТКОЕ обновление параметров
-                params.topMargin = 0 // Всегда начинаем сверху
-                params.height = progressHeight // Уже валидировано
-                params.width = 2.dpToPx() // Фиксированная ширина
-                params.bottomMargin = 0 // Нет отступа снизу
-                params.marginEnd = 0
-                if (params.marginStart != 17.dpToPx()) {
-                    params.marginStart = 17.dpToPx()
-                }
-                holder.progressIndicator.layoutParams = params
-                android.util.Log.d("ScheduleAdapter", "✅ Обновлен layout params: height=$progressHeight, topMargin=${params.topMargin}")
-            }
-        } catch (e: Exception) {
-            android.util.Log.e("ScheduleAdapter", "Ошибка при обновлении layout params: ${e.message}", e)
-            // Скрываем индикатор при ошибке
-            holder.progressIndicator.visibility = View.GONE
-        }
-        
-        // ЖЕСТКОЕ позиционирование: убеждаемся что линия привязана к верху контейнера
-        // Ограничение высоты через layout params уже применено выше
-        holder.progressIndicator.layoutParams = holder.progressIndicator.layoutParams // Принудительное обновление
-        
-        // Ensure behind items (но не влияет на размеры)
-        holder.progressIndicator.elevation = -1f
-        
-        // ВАЛИДАЦИЯ: проверяем что линия не выходит за границы
-        holder.itemView.post {
-            // Проверка что ViewHolder еще привязан
-            if (!holder.itemView.isAttachedToWindow) {
-                return@post
-            }
-            
-            try {
-                val actualHeight = holder.progressIndicator.height
-                val wrapperHeight = holder.itemsWrapper.height
-                if (actualHeight > wrapperHeight && wrapperHeight > 0) {
-                    android.util.Log.e("ScheduleAdapter", "🚨 КРИТИЧЕСКАЯ ОШИБКА: actualHeight ($actualHeight) > wrapperHeight ($wrapperHeight)! Исправляю немедленно!")
-                    val fixedParams = holder.progressIndicator.layoutParams as? ViewGroup.MarginLayoutParams
-                    fixedParams?.height = wrapperHeight.coerceAtMost(containerHeight)
-                    holder.progressIndicator.layoutParams = fixedParams
-                }
-            } catch (e: Exception) {
-                android.util.Log.e("ScheduleAdapter", "Ошибка при валидации прогресса: ${e.message}", e)
-            }
-        }
-        
-        // Animate on first setup only (check if already visible)
-        if ((holder.progressIndicator.scaleY == 0f || holder.progressIndicator.alpha == 0f) && !holder.progressLineSetup) {
-            animateProgressLine(holder.progressIndicator)
-        }
-    }
-    
-    // Helper function to convert dp to pixels
-    private fun Int.dpToPx(): Int {
-        val density = context?.resources?.displayMetrics?.density ?: 1f
-        return (this * density + 0.5f).toInt()
-    }
-    
-    private fun animateProgressLine(view: View) {
-        // Проверка что view еще привязан
-        if (!view.isAttachedToWindow) {
-            view.alpha = 1f
-            view.scaleY = 1f
-            return
-        }
-        
-        try {
-            view.alpha = 0f
-            view.scaleY = 0f
-            view.pivotY = 0f
-            
-            ValueAnimator.ofFloat(0f, 1f).apply {
-                duration = 1500
-                interpolator = DecelerateInterpolator()
-                addUpdateListener { animator ->
-                    // Проверка что view еще привязан перед обновлением
-                    if (view.isAttachedToWindow) {
-                        try {
-                            val scale = animator.animatedValue as Float
-                            view.scaleY = scale
-                            view.alpha = scale
-                        } catch (e: Exception) {
-                            android.util.Log.e("ScheduleAdapter", "Ошибка при обновлении анимации прогресса: ${e.message}")
-                            cancel()
-                        }
-                    } else {
-                        cancel()
-                    }
-                }
-                start()
-            }
-        } catch (e: Exception) {
-            android.util.Log.e("ScheduleAdapter", "Ошибка при создании анимации прогресса: ${e.message}", e)
-            // Fallback: просто показываем без анимации
-            view.alpha = 1f
-            view.scaleY = 1f
-        }
-    }
-    
-    private fun updateDayProgress(holder: ScheduleViewHolder, lessonNumbers: List<Int>) {
-        // Cancel any existing handler
-        holder.progressHandler?.removeCallbacksAndMessages(null)
-        
-        // Проверка валидности контекста
-        if (context == null) {
-            android.util.Log.w("ScheduleAdapter", "⚠️ Context null, отменяю обновление прогресса")
-            return
-        }
-        
-        // Оптимизация: не обновляем, если фрагмент не виден
-        if (!isFragmentVisible) {
-            return
-        }
-        
-        val handler = Handler(Looper.getMainLooper())
-        holder.progressHandler = handler
-        
-        handler.postDelayed({
-            try {
-                // ЖЕСТКАЯ ПРОВЕРКА: ViewHolder еще привязан и валиден, фрагмент виден
-                if (!holder.itemView.isAttachedToWindow || !isFragmentVisible) {
-                    android.util.Log.w("ScheduleAdapter", "⚠️ ViewHolder отвязан или фрагмент не виден, отменяю обновление")
-                    holder.progressHandler = null
-                    return@postDelayed
-                }
 
-                val progressVisible = holder.progressIndicator.visibility == View.VISIBLE
-
-                // Check if ViewHolder is still bound to the same item and attached
-                if (holder.currentLessonNumbers?.size == lessonNumbers.size &&
-                    holder.currentLessonNumbers == lessonNumbers) {
-
-                    val currentMinutes = DayProgressCalculator.getCurrentTimeInMinutes()
-                    val college = prefs?.college ?: PreferencesManager.COLLEGE_CHTOTIB
-
-                    if (progressVisible) {
-                        // ЖЕСТКОЕ получение высоты: проверяем оба контейнера
-                        val containerHeight = holder.itemsContainer.height
-                        val wrapperHeight = holder.itemsWrapper.height
-
-                        val safeHeight = when {
-                            containerHeight > 0 && wrapperHeight > 0 -> minOf(containerHeight, wrapperHeight)
-                            containerHeight > 0 -> containerHeight
-                            wrapperHeight > 0 -> wrapperHeight
-                            else -> {
-                                android.util.Log.w("ScheduleAdapter", "⚠️ Высоты не определены, пропускаю обновление прогресса")
-                                null
-                            }
-                        }
-
-                        if (safeHeight != null) {
-                            val progress = DayProgressCalculator.getDayProgress(currentMinutes, lessonNumbers, college)
-
-                            android.util.Log.d("ScheduleAdapter", "🔄 Обновление прогресса: safeHeight=$safeHeight, progress=$progress")
-                            updateProgressHeight(holder, safeHeight, progress)
-                        } else {
-                            updateProgressIndicator(holder, lessonNumbers)
-                        }
-                    }
-
-                    updateAllCircles(holder, currentMinutes)
-                    if (showLessonStatus) {
-                        updateAllLessonStatuses(holder, currentMinutes, college)
-                    } else {
-                        hideAllLessonStatuses(holder)
-                    }
-
-                    // Обновляем только если фрагмент виден
-                    if (holder.itemView.isAttachedToWindow && isFragmentVisible) {
-                        updateDayProgress(holder, lessonNumbers)
-                    } else {
-                        holder.progressHandler = null
-                    }
-                } else {
-                    android.util.Log.w("ScheduleAdapter", "⚠️ Уроки изменились, отменяю периодическое обновление")
-                    holder.progressHandler = null
-                }
-            } catch (e: Exception) {
-                android.util.Log.e("ScheduleAdapter", "Ошибка при обновлении прогресса: ${e.message}", e)
-                holder.progressHandler = null
-            }
-        }, 120000) // Update every 2 minutes (увеличено с 1 минуты для экономии ресурсов)
-    }
     
     private fun parseTimeToMinutes(timeStr: String?): Int {
         if (timeStr == null) return 0
@@ -1081,8 +776,311 @@ class ScheduleAdapter(
                     android.util.Log.e("ScheduleAdapter", "Ошибка при обновлении кружка для урока: ${e.message}")
                 }
             }
+
+            // Обновляем подсветку текущего урока
+            if (prefs?.showProgressLine == true) {
+                updateLessonHighlight(holder)
+            }
         } catch (e: Exception) {
             android.util.Log.e("ScheduleAdapter", "Ошибка при обновлении всех кружков: ${e.message}", e)
+        }
+    }
+
+    /**
+     * Подсвечивает текущий активный урок, перемену или обед
+     */
+    private fun updateLessonHighlight(holder: ScheduleViewHolder) {
+        if (!holder.itemView.isAttachedToWindow || !isFragmentVisible) {
+            return
+        }
+
+        // Проверяем что настройка включена
+        if (prefs?.showProgressLine != true) {
+            removeAllHighlights(holder, animate = false)
+            return
+        }
+
+        val currentMinutes = DayProgressCalculator.getCurrentTimeInMinutes()
+        val college = prefs?.college ?: PreferencesManager.COLLEGE_CHTOTIB
+        val context = holder.itemView.context ?: return
+
+        try {
+            // Находим текущий подсвеченный элемент (если есть)
+            var currentlyHighlighted: View? = null
+            for (i in 0 until holder.itemsContainer.childCount) {
+                val child = holder.itemsContainer.getChildAt(i) ?: continue
+                if (child.tag == "highlighted") {
+                    currentlyHighlighted = child
+                    break
+                }
+            }
+
+            var targetHighlightView: View? = null
+            val lessonNumbers = holder.currentLessonNumbers ?: emptyList()
+
+            // СНАЧАЛА проверяем все уроки - они имеют приоритет
+            for (i in 0 until holder.itemsContainer.childCount) {
+                val child = holder.itemsContainer.getChildAt(i) ?: continue
+                val lessonNumberView = child.findViewById<TextView>(R.id.lessonNumber) ?: continue
+
+                val lessonNum = lessonNumberView.text.toString().toIntOrNull() ?: continue
+                val lessonTime = LessonTimes.getTime(lessonNum, college) ?: continue
+                val lessonStartMinutes = DayProgressCalculator.parseTime(lessonTime.startTime)
+                val lessonEndMinutes = DayProgressCalculator.parseTime(lessonTime.endTime)
+
+                // Если сейчас идет этот урок - подсвечиваем
+                // Включаем момент начала (>=) и исключаем момент окончания (<)
+                // Чтобы в момент начала пары (16:05) подсветка сразу переключалась на пару
+                if (currentMinutes >= lessonStartMinutes && currentMinutes < lessonEndMinutes) {
+                    targetHighlightView = child
+                    break
+                }
+            }
+
+            // Если активный урок не найден, проверяем перемены и обеды
+            if (targetHighlightView == null) {
+                var previousLessonNumber: Int? = null
+
+                for (i in 0 until holder.itemsContainer.childCount) {
+                    val child = holder.itemsContainer.getChildAt(i) ?: continue
+                    val lessonNumberView = child.findViewById<TextView>(R.id.lessonNumber)
+                    val breakTextView = child.findViewById<TextView>(R.id.breakText)
+
+                    if (lessonNumberView != null) {
+                        previousLessonNumber = lessonNumberView.text.toString().toIntOrNull()
+                    } else if (breakTextView != null && previousLessonNumber != null) {
+                        val breakText = breakTextView.text.toString()
+                        val isLunch = breakText.contains("Обед", ignoreCase = true)
+                        val isBreak = breakText.contains("Перемена", ignoreCase = true)
+
+                        if (isLunch) {
+                            // Проверяем обед
+                            if (checkLunchTime(previousLessonNumber, currentMinutes)) {
+                                targetHighlightView = child
+                                break
+                            }
+                        } else if (isBreak) {
+                            // Для перемены нужно найти следующую пару
+                            var nextLessonNumber: Int? = null
+                            for (j in i + 1 until holder.itemsContainer.childCount) {
+                                val nextChild = holder.itemsContainer.getChildAt(j) ?: continue
+                                val nextLessonView = nextChild.findViewById<TextView>(R.id.lessonNumber)
+                                if (nextLessonView != null) {
+                                    nextLessonNumber = nextLessonView.text.toString().toIntOrNull()
+                                    break
+                                }
+                            }
+
+                            if (nextLessonNumber != null) {
+                                // Сначала пытаемся использовать время из текста перемены
+                                val breakTimeText = LessonTimes.getBreakText(previousLessonNumber, nextLessonNumber, college)
+
+                                if (breakTimeText != null) {
+                                    // Парсим время перемены из текста "Перемена: HH:mm - HH:mm"
+                                    val regex = Regex("\\d{1,2}:\\d{2}")
+                                    val times = regex.findAll(breakTimeText).map { it.value }.toList()
+                                    if (times.size == 2) {
+                                        val breakStartMinutes = DayProgressCalculator.parseTime(times[0])
+                                        val breakEndMinutes = DayProgressCalculator.parseTime(times[1])
+
+                                        // Если сейчас идет перемена - подсвечиваем
+                                        if (currentMinutes >= breakStartMinutes && currentMinutes < breakEndMinutes) {
+                                            targetHighlightView = child
+                                            break
+                                        }
+                                    }
+                                } else {
+                                    // Fallback: используем проверку по времени пар
+                                    if (checkBreakTime(previousLessonNumber, nextLessonNumber, currentMinutes)) {
+                                        targetHighlightView = child
+                                        break
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Если нужно подсветить тот же элемент - ничего не делаем
+            if (targetHighlightView == currentlyHighlighted) {
+                return
+            }
+
+            // Убираем подсветку со старого элемента (с анимацией только если элемент другой)
+            if (currentlyHighlighted != null && currentlyHighlighted != targetHighlightView) {
+                removeHighlight(currentlyHighlighted, animate = true)
+            }
+
+            // Применяем подсветку к новому элементу (с анимацией только если это новый элемент)
+            if (targetHighlightView != null && targetHighlightView != currentlyHighlighted) {
+                applyHighlight(targetHighlightView, context, animate = true)
+            } else if (targetHighlightView == null && currentlyHighlighted != null) {
+                // Если ничего не найдено, убираем подсветку без анимации
+                removeHighlight(currentlyHighlighted, animate = false)
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("ScheduleAdapter", "Ошибка при обновлении подсветки урока: ${e.message}", e)
+        }
+    }
+
+    /**
+     * Применяет подсветку к элементу урока/перемены/обеда с анимацией
+     */
+    private fun applyHighlight(lessonView: View, context: Context, animate: Boolean = true) {
+        try {
+            // Отменяем текущие анимации если есть
+            lessonView.animate().cancel()
+
+            val highlightRes = when {
+                isLightTheme -> R.drawable.lesson_current_highlight_light
+                isDarkTheme -> R.drawable.lesson_current_highlight_dark
+                isBlueTheme -> R.drawable.lesson_current_highlight_blue
+                isGrayTheme -> R.drawable.lesson_current_highlight_gray
+                isPurpleTheme -> R.drawable.lesson_current_highlight_purple
+                isGreenTheme -> R.drawable.lesson_current_highlight_green
+                isHalloweenTheme -> R.drawable.lesson_current_highlight_halloween
+                isNothingTheme -> R.drawable.lesson_current_highlight_nothing
+                isNewYearTheme -> R.drawable.lesson_current_highlight_newyear
+                else -> R.drawable.lesson_current_highlight
+            }
+            // Сохраняем текущие отступы перед применением фона
+            val paddingLeft = lessonView.paddingLeft
+            val paddingTop = lessonView.paddingTop
+            val paddingRight = lessonView.paddingRight
+            val paddingBottom = lessonView.paddingBottom
+
+            // Помечаем элемент как подсвеченный
+            lessonView.tag = "highlighted"
+
+            // Устанавливаем фон сразу
+            lessonView.background = context.getDrawable(highlightRes)
+
+            // Восстанавливаем отступы (могут быть сброшены при установке background)
+            if (lessonView.paddingLeft != paddingLeft ||
+                lessonView.paddingTop != paddingTop ||
+                lessonView.paddingRight != paddingRight ||
+                lessonView.paddingBottom != paddingBottom) {
+                lessonView.setPadding(paddingLeft, paddingTop, paddingRight, paddingBottom)
+            }
+
+            if (animate && lessonView.isAttachedToWindow) {
+                // Жидкая анимация появления: плавное проскальзывание с расширением
+                val width = lessonView.width.toFloat()
+                val height = lessonView.height.toFloat()
+                lessonView.pivotX = width / 2f
+                lessonView.pivotY = height / 2f
+
+                // Начальное состояние: выше, уменьшен, полупрозрачен
+                lessonView.translationY = -25f
+                lessonView.scaleX = 0.92f
+                lessonView.scaleY = 0.92f
+                lessonView.alpha = 0.5f
+
+                // Жидкая анимация: плавное расширение с проскальзыванием
+                // Используем кастомный PathInterpolator для "жидкого" эффекта (ease-in-out-cubic)
+                val liquidInterpolator = PathInterpolator(0.25f, 0.1f, 0.25f, 1f)
+
+                lessonView.animate()
+                    .translationY(0f)
+                    .scaleX(1.03f)  // Слегка расширяемся
+                    .scaleY(1.03f)
+                    .alpha(1f)
+                    .setDuration(400)  // Более плавная и длинная анимация
+                    .setInterpolator(liquidInterpolator)
+                    .withEndAction {
+                        // Плавное возвращение к нормальному размеру с легким отскоком
+                        if (lessonView.isAttachedToWindow) {
+                            lessonView.animate()
+                                .scaleX(1f)
+                                .scaleY(1f)
+                                .setDuration(250)
+                                .setInterpolator(PathInterpolator(0.34f, 1.56f, 0.64f, 1f)) // Overshoot-like
+                                .start()
+                        }
+                    }
+                    .start()
+            } else {
+                // Без анимации - просто устанавливаем нормальное состояние
+                lessonView.translationY = 0f
+                lessonView.scaleX = 1f
+                lessonView.scaleY = 1f
+                lessonView.alpha = 1f
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("ScheduleAdapter", "Ошибка при применении подсветки: ${e.message}", e)
+        }
+    }
+
+    /**
+     * Убирает подсветку со всех элементов (уроки, перемены, обеды) с анимацией
+     */
+    private fun removeAllHighlights(holder: ScheduleViewHolder, animate: Boolean = false) {
+        try {
+            for (i in 0 until holder.itemsContainer.childCount) {
+                val child = holder.itemsContainer.getChildAt(i) ?: continue
+                if (child.tag == "highlighted") {
+                    removeHighlight(child, animate)
+                }
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("ScheduleAdapter", "Ошибка при удалении подсветки: ${e.message}", e)
+        }
+    }
+
+    /**
+     * Убирает подсветку с одного элемента
+     */
+    private fun removeHighlight(view: View, animate: Boolean = false) {
+        try {
+            if (animate && view.isAttachedToWindow) {
+                // Отменяем текущие анимации
+                view.animate().cancel()
+                val width = view.width.toFloat()
+                val height = view.height.toFloat()
+                view.pivotX = width / 2f
+                view.pivotY = height / 2f
+
+                // Жидкая анимация исчезновения: плавное сжатие с уходом вниз
+                // Используем плавный interpolator для "жидкого" эффекта
+                val liquidOutInterpolator = PathInterpolator(0.55f, 0.085f, 0.68f, 0.53f)
+
+                view.animate()
+                    .scaleX(0.94f)  // Плавно сжимаемся
+                    .scaleY(0.94f)
+                    .translationY(20f)  // Плавно уходим вниз
+                    .alpha(0.4f)  // Плавно исчезаем
+                    .setDuration(300)  // Плавная анимация
+                    .setInterpolator(liquidOutInterpolator)
+                    .withEndAction {
+                        // Сбрасываем состояние после анимации
+                        view.background = null
+                        view.tag = null
+                        view.translationY = 0f
+                        view.scaleX = 1f
+                        view.scaleY = 1f
+                        view.alpha = 1f
+                    }
+                    .start()
+            } else {
+                // Отменяем анимации и сразу убираем подсветку
+                view.animate().cancel()
+                view.background = null
+                view.tag = null
+                view.translationY = 0f
+                view.scaleX = 1f
+                view.scaleY = 1f
+                view.alpha = 1f
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("ScheduleAdapter", "Ошибка при удалении подсветки: ${e.message}", e)
+            // Fallback: просто убираем подсветку
+            view.background = null
+            view.tag = null
+            view.translationY = 0f
+            view.scaleX = 1f
+            view.scaleY = 1f
+            view.alpha = 1f
         }
     }
 
@@ -1290,6 +1288,10 @@ class ScheduleAdapter(
                 }
                 
                 val currentMinutes = DayProgressCalculator.getCurrentTimeInMinutes()
+
+                // Обновляем кружки и подсветку урока
+                updateAllCircles(holder, currentMinutes)
+
                 val nextUpdateDelay = updateAllLessonStatuses(holder, currentMinutes, college)
                 
                 // Продолжаем обновление с умным интервалом
@@ -1360,7 +1362,9 @@ class ScheduleAdapter(
 
         val beforeEnd = parseTimeToMinutes(beforeTime.endTime)
         val afterStart = parseTimeToMinutes(afterTime.startTime)
-        return currentMinutes in (beforeEnd + 1) until afterStart
+        // Перемена активна только СТРОГО между окончанием одной пары и началом следующей
+        // Используем < для afterStart чтобы в момент начала пары (16:05) перемена была неактивна
+        return currentMinutes > beforeEnd && currentMinutes < afterStart
     }
 
     private fun checkLunchTime(afterLesson: Int, currentMinutes: Int): Boolean {
@@ -1526,15 +1530,25 @@ class ScheduleAdapter(
 
     override fun getItemCount(): Int = schedules.size
 
-    fun updateSchedules(newSchedules: List<DaySchedule>) {
-        val previousSchedules = schedules
+    fun updateSchedules(newSchedules: List<DaySchedule>, newPlannedDates: Set<String>? = null, newSelectedDayDate: String? = null) {
+        val previousSchedules = schedules.toList() // Создаем копию для DiffUtil
+
+        // Обновляем plannedDates если передано
+        if (newPlannedDates != null) {
+            plannedDates = newPlannedDates
+        }
+
+        // Обновляем выбранную дату
+        selectedDayDate = newSelectedDayDate
+
+        // Используем DiffUtil для анимаций
+        val diffCallback = ScheduleDiffCallback(previousSchedules, newSchedules)
+        val diffResult = DiffUtil.calculateDiff(diffCallback, false) // false = не проверять перемещения для производительности
+
         schedules = newSchedules
         
-        // Принудительно пересчитать прогресс если изменилась группа/колледж
-        // или если изменилось количество уроков в текущем дне
-        val needsFullRefresh = previousSchedules.isNotEmpty() && newSchedules.isNotEmpty()
-        
-        notifyDataSetChanged()
+        // Применяем изменения с анимациями
+        diffResult.dispatchUpdatesTo(this)
     }
     
     /**
@@ -1607,9 +1621,9 @@ class ScheduleAdapter(
                 val child = recyclerView.getChildAt(i) ?: continue
                 val holder = recyclerView.getChildViewHolder(child) as? ScheduleViewHolder ?: continue
                 
-                // Перезапускаем обновление прогресса
-                holder.currentLessonNumbers?.let { lessonNumbers ->
-                    updateDayProgress(holder, lessonNumbers)
+                // Обновляем подсветку урока если включена
+                if (prefs?.showProgressLine == true && holder.currentLessonNumbers != null) {
+                    updateLessonHighlight(holder)
                 }
                 
                 // Перезапускаем обновление статуса, если включено
@@ -1623,15 +1637,34 @@ class ScheduleAdapter(
     }
 
     private fun formatDayName(day: String): String {
-        return when (day) {
+        // Убираем точки и нормализуем
+        val normalized = day.trim().removeSuffix(".").trim()
+        return when (normalized) {
             "Пн" -> "Понедельник"
             "Вт" -> "Вторник"
             "Ср" -> "Среда"
-            "Чт" -> "Четверг"
+            "Чт", "чт" -> "Четверг"
             "Пт" -> "Пятница"
             "Сб" -> "Суббота"
             "Вс" -> "Воскресенье"
-            else -> day
+            else -> {
+                // Если уже полное название - возвращаем как есть
+                if (normalized.length > 4) {
+                    normalized
+                } else {
+                    // Пытаемся найти в разных вариантах
+                    when (normalized.lowercase()) {
+                        "пн", "понедельник" -> "Понедельник"
+                        "вт", "вторник" -> "Вторник"
+                        "ср", "среда" -> "Среда"
+                        "чт", "четверг" -> "Четверг"
+                        "пт", "пятница" -> "Пятница"
+                        "сб", "суббота" -> "Суббота"
+                        "вс", "воскресенье" -> "Воскресенье"
+                        else -> normalized
+                    }
+                }
+            }
         }
     }
 
@@ -1775,6 +1808,9 @@ class ScheduleAdapter(
         pressAnimator.start()
     }
     
+    /**
+     * Показывает меню для выбранного дня с опцией удаления
+     */
     private fun showShareMenu(holder: ScheduleViewHolder, daySchedule: DaySchedule) {
         val view = holder.cardBackground
         val context = view.context ?: return
@@ -1817,9 +1853,73 @@ class ScheduleAdapter(
 
         dialog.setContentView(sheetView)
         
+        // Находим скрытый контент
+        val hiddenContent = sheetView.findViewById<View>(R.id.hiddenContent)
+        val hiddenAvatarDDoS = sheetView.findViewById<ImageView>(R.id.hiddenAvatarDDoS)
+        val hiddenAvatarRelsev = sheetView.findViewById<ImageView>(R.id.hiddenAvatarRelsev)
+        var isHiddenRevealed = false
+
+        // Скрытый функционал - клик на аватар DDoSa
+        hiddenAvatarDDoS?.setOnClickListener { view: View ->
+            view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+            Toast.makeText(context, "DDoSa - предложил сохранять пары... 🔥", Toast.LENGTH_SHORT).show()
+        }
+
+        // Клик на аватар автора
+        hiddenAvatarRelsev?.setOnClickListener { view: View ->
+            view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+            Toast.makeText(context, "Relsev - Автор приложения 🎨", Toast.LENGTH_SHORT).show()
+        }
+
         // Настройка поведения BottomSheet
         dialog.behavior.isDraggable = true
-        dialog.behavior.state = com.google.android.material.bottomsheet.BottomSheetBehavior.STATE_EXPANDED
+        dialog.behavior.skipCollapsed = false // Важно! Не пропускать состояние collapsed
+
+        // Также отслеживаем через BottomSheetBehavior для pull-to-reveal и сброса состояния
+        dialog.behavior.addBottomSheetCallback(object : com.google.android.material.bottomsheet.BottomSheetBehavior.BottomSheetCallback() {
+            override fun onStateChanged(bottomSheet: android.view.View, newState: Int) {
+                // Сбрасываем состояние при закрытии или сворачивании
+                if (newState == com.google.android.material.bottomsheet.BottomSheetBehavior.STATE_HIDDEN ||
+                    newState == com.google.android.material.bottomsheet.BottomSheetBehavior.STATE_COLLAPSED) {
+                    if (isHiddenRevealed && hiddenContent != null) {
+                        isHiddenRevealed = false
+                        hiddenContent.alpha = 0f
+                        hiddenContent.translationY = 20f
+                    }
+                }
+            }
+
+            override fun onSlide(bottomSheet: android.view.View, slideOffset: Float) {
+                // slideOffset: от 0 (collapsed) до 1 (expanded)
+                // Когда sheet почти полностью раскрыт (slideOffset > 0.85), показываем скрытый контент
+                if (slideOffset > 0.85f && !isHiddenRevealed && hiddenContent != null) {
+                    // Пользователь потянул sheet вверх - показываем скрытый контент
+                    isHiddenRevealed = true
+                    hiddenContent.animate()
+                        .alpha(1f)
+                        .translationY(0f)
+                        .setDuration(400)
+                        .setInterpolator(PathInterpolator(0.25f, 0.1f, 0.25f, 1f))
+                        .start()
+                } else if (slideOffset < 0.8f && isHiddenRevealed && hiddenContent != null) {
+                    // Пользователь отпустил - скрываем обратно
+                    isHiddenRevealed = false
+                    hiddenContent.animate()
+                        .alpha(0f)
+                        .translationY(20f)
+                        .setDuration(300)
+                        .setInterpolator(PathInterpolator(0.55f, 0.085f, 0.68f, 0.53f))
+                        .start()
+                }
+            }
+        })
+
+        // Устанавливаем начальное состояние - collapsed (частично открыт)
+        // Устанавливаем примерную высоту peekHeight в пикселях (примерно до кнопки "Копировать")
+        // Это примерно: заголовок + подзаголовок + 3 кнопки + отступы = ~360dp (увеличено для большей видимости)
+        val density = context.resources.displayMetrics.density
+        dialog.behavior.peekHeight = (360 * density).toInt() // примерно 360dp для начальной высоты
+        dialog.behavior.state = com.google.android.material.bottomsheet.BottomSheetBehavior.STATE_COLLAPSED
         
         // Настройка закругления верхних углов
         dialog.window?.let { window ->
@@ -1890,8 +1990,36 @@ class ScheduleAdapter(
             }
         }
         
-        // Применяем закругление через MaterialShapeDrawable после показа диалога
+        // Применение закругления и уточнение peekHeight после показа диалога
         dialog.setOnShowListener {
+            // Уточняем peekHeight на основе реальных измерений после layout
+            sheetView.post {
+                val hiddenContent = sheetView.findViewById<View>(R.id.hiddenContent)
+                val contentLayout = sheetView as? android.view.ViewGroup
+
+                contentLayout?.let { layout ->
+                    layout.viewTreeObserver.addOnGlobalLayoutListener(object : android.view.ViewTreeObserver.OnGlobalLayoutListener {
+                        override fun onGlobalLayout() {
+                            layout.viewTreeObserver.removeOnGlobalLayoutListener(this)
+
+                            hiddenContent?.let { hidden ->
+                                // Измеряем точную позицию скрытого контента
+                                val hiddenTop = hidden.top
+
+                                // peekHeight = позиция скрытого контента + padding
+                                val measuredPeekHeight = hiddenTop + layout.paddingBottom
+                                if (measuredPeekHeight > 0) {
+                                    dialog.behavior.peekHeight = measuredPeekHeight.coerceAtLeast(280)
+                                    // Принудительно устанавливаем collapsed состояние после измерения
+                                    dialog.behavior.state = com.google.android.material.bottomsheet.BottomSheetBehavior.STATE_COLLAPSED
+                                }
+                            }
+                        }
+                    })
+                }
+            }
+
+            // Применяем закругление
             val bottomSheet = dialog.findViewById<android.view.View>(com.google.android.material.R.id.design_bottom_sheet)
             bottomSheet?.let { view ->
                 val shapeAppearanceModel = com.google.android.material.shape.ShapeAppearanceModel.builder()
@@ -1904,6 +2032,8 @@ class ScheduleAdapter(
                 val backgroundColor = when (prefs.theme) {
                     PreferencesManager.THEME_LIGHT -> ContextCompat.getColor(context, R.color.light_colorBackground)
                     PreferencesManager.THEME_DARK -> ContextCompat.getColor(context, R.color.dark_colorBackground)
+                    PreferencesManager.THEME_BLUE -> ContextCompat.getColor(context, R.color.blue_colorBackground)
+                    PreferencesManager.THEME_GRAY -> ContextCompat.getColor(context, R.color.gray_colorBackground)
                     PreferencesManager.THEME_PURPLE -> ContextCompat.getColor(context, R.color.system_windowBackground)
                     PreferencesManager.THEME_HALLOWEEN -> ContextCompat.getColor(context, R.color.custom_colorBackground)
                     PreferencesManager.THEME_NOTHING -> ContextCompat.getColor(context, R.color.nothing_colorBackground)
@@ -1912,11 +2042,27 @@ class ScheduleAdapter(
                     else -> ContextCompat.getColor(context, R.color.dark_colorBackground)
                 }
                 
+                // Сначала очищаем старый фон для устранения черных уголков
+                view.background = null
+                
                 val backgroundDrawable = com.google.android.material.shape.MaterialShapeDrawable(shapeAppearanceModel).apply {
                     fillColor = android.content.res.ColorStateList.valueOf(backgroundColor)
                 }
                 
+                // Устанавливаем фон
                 view.background = backgroundDrawable
+                
+                // Убеждаемся что фон правильно применен (особенно для синей и серой тем)
+                view.post {
+                    // Принудительно устанавливаем фон еще раз для устранения черных уголков
+                    if (view.background != backgroundDrawable) {
+                        view.background = null
+                        view.setBackgroundColor(backgroundColor)
+                        view.background = backgroundDrawable
+                    }
+                    // Инвалидируем view для перерисовки
+                    view.invalidate()
+                }
             }
         }
         

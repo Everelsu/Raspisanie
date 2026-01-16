@@ -3,6 +3,8 @@ package com.example.raspisanie
 import android.content.Intent
 import android.content.res.ColorStateList
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import android.content.pm.PackageManager
 import android.Manifest
@@ -10,16 +12,21 @@ import android.view.View
 import android.util.TypedValue
 import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AppCompatActivity
+import androidx.appcompat.app.AppCompatDelegate
 import androidx.core.content.ContextCompat
 import androidx.core.graphics.ColorUtils
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.fragment.app.Fragment
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.launch
 import com.example.raspisanie.data.PreferencesManager
+import com.example.raspisanie.data.ScheduleNotificationManager
 import com.example.raspisanie.util.AppIconManager
 import com.example.raspisanie.databinding.ActivityMainBinding
 import com.example.raspisanie.util.NotificationPermissionHelper
-import com.google.firebase.messaging.FirebaseMessaging
+import com.onesignal.OneSignal
+import com.onesignal.debug.LogLevel
 import com.google.android.material.color.MaterialColors
 import android.graphics.Color
 import com.google.android.material.shape.ShapeAppearanceModel
@@ -63,8 +70,8 @@ class MainActivity : AppCompatActivity() {
             // Устанавливаем цвет текста в статус-баре в зависимости от темы
             setupStatusBarAppearance()
             
-            maybeRequestNotificationPermission()
-            initFirebaseMessaging()
+            // Инициализируем OneSignal
+            initOneSignal()
             
             // Инициализация иконки приложения (как в Telegram)
             // Просто убеждаемся, что хотя бы один alias включен
@@ -216,22 +223,26 @@ class MainActivity : AppCompatActivity() {
         grantResults: IntArray
     ) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        // Обрабатываем стандартный запрос разрешений Android (если используется)
         if (requestCode == NotificationPermissionHelper.REQUEST_CODE_NOTIFICATIONS) {
             val granted = grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED
-            Log.d(TAG, "Notification permission granted: $granted")
+            Log.d(TAG, "Android notification permission granted: $granted")
             if (::prefs.isInitialized) {
                 prefs.scheduleNotificationsEnabled = granted
-                if (granted) {
-                    initFirebaseMessaging()
-                }
             }
+            // OneSignal обрабатывает разрешения самостоятельно через requestPermission()
+            // Перепроверяем статус через некоторое время
+            Handler(Looper.getMainLooper()).postDelayed({
+                checkOneSignalStatus()
+            }, 2000)
         }
     }
 
-    private fun maybeRequestNotificationPermission() {
-        if (!::prefs.isInitialized) return
+    private fun maybeRequestNotificationPermission(): Boolean {
+        if (!::prefs.isInitialized) return false
         if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.TIRAMISU) {
-            return
+            // Для старых версий Android разрешение не требуется
+            return true
         }
 
         val granted = ContextCompat.checkSelfPermission(
@@ -243,43 +254,144 @@ class MainActivity : AppCompatActivity() {
             if (!prefs.scheduleNotificationsEnabled) {
                 prefs.scheduleNotificationsEnabled = true
             }
-            return
+            return true
         }
 
-        if (prefs.scheduleNotificationsEnabled) {
-            NotificationPermissionHelper.requestIfNeeded(this)
+        // Запрашиваем разрешение всегда, если его нет
+        NotificationPermissionHelper.requestIfNeeded(this)
+        return false
+    }
+
+    private fun initOneSignal() {
+        try {
+            // Проверяем, не инициализирован ли OneSignal уже (например, через BootUpReceiver)
+            try {
+                val existingPlayerId = OneSignal.User.pushSubscription.id
+                if (existingPlayerId.isNotEmpty()) {
+                    Log.d(TAG, "OneSignal уже инициализирован (Player ID: $existingPlayerId)")
+                    checkOneSignalStatus()
+                    return
+                }
+            } catch (e: Exception) {
+                // OneSignal еще не инициализирован, продолжаем инициализацию
+                Log.d(TAG, "OneSignal еще не инициализирован, начинаем инициализацию...")
+            }
+
+            // Инициализация OneSignal всегда должна происходить, даже если уведомления отключены
+            // Пользователь может включить их позже в настройках
+            val oneSignalAppId = getString(R.string.onesignal_app_id)
+
+            // Настройка логирования (включаем VERBOSE для отладки)
+            OneSignal.Debug.logLevel = LogLevel.VERBOSE
+
+            // Инициализация OneSignal
+            OneSignal.initWithContext(this, oneSignalAppId)
+            Log.d(TAG, "OneSignal инициализирован с App ID: $oneSignalAppId")
+
+            // ВАЖНО: OneSignal SDK 5.x использует свой собственный метод запроса разрешений
+            // Это необходимо для корректной работы push-уведомлений
+            // requestPermission - это suspend функция, поэтому вызываем в корутине
+            lifecycleScope.launch {
+                try {
+                    val granted = OneSignal.Notifications.requestPermission(true)
+                    Log.d(TAG, "Запрос разрешения на уведомления через OneSignal SDK: $granted")
+
+                    if (granted) {
+                        // Разрешение предоставлено, активируем подписку
+                        OneSignal.User.pushSubscription.optIn()
+                        Log.d(TAG, "✅ Подписка OneSignal активирована после получения разрешения")
+
+                        // Обновляем настройки
+                        if (::prefs.isInitialized) {
+                            prefs.scheduleNotificationsEnabled = true
+                        }
+
+                        // Проверяем статус через несколько секунд
+                        Handler(Looper.getMainLooper()).postDelayed({
+                            checkOneSignalStatus()
+                        }, 5000)
+                    } else {
+                        Log.w(TAG, "⚠️ Разрешение на уведомления отклонено")
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Ошибка при запросе разрешения OneSignal: ${e.message}", e)
+                }
+            }
+
+            // Для получения Player ID используем отложенную проверку
+            // (Player ID может быть еще не готов сразу после инициализации)
+            Handler(Looper.getMainLooper()).postDelayed({
+                checkOneSignalStatus()
+            }, 5000) // Увеличено до 5 секунд для надежности
+
+        } catch (e: Exception) {
+            Log.e(TAG, "❌ Критическая ошибка инициализации OneSignal: ${e.message}", e)
+            e.printStackTrace()
         }
     }
 
-    private fun initFirebaseMessaging() {
+    private fun checkOneSignalStatus() {
         try {
-            if (!prefs.scheduleNotificationsEnabled) {
-                return
-            }
+            val pushSubscription = OneSignal.User.pushSubscription
+            val playerId = pushSubscription.id
+            val isSubscribed = pushSubscription.optedIn
+            val token = pushSubscription.token
 
-            FirebaseMessaging.getInstance().token.addOnCompleteListener { task ->
-                if (!task.isSuccessful) {
-                    Log.e(TAG, "Failed to get FCM token", task.exception)
-                    return@addOnCompleteListener
+            Log.d(TAG, "=== OneSignal Status ===")
+            Log.d(TAG, "Player ID: $playerId")
+            Log.d(TAG, "Подписка активна: $isSubscribed")
+            Log.d(TAG, "Token: $token")
+            Log.d(TAG, "Уведомления включены в настройках: ${prefs.scheduleNotificationsEnabled}")
+
+            if (playerId.isNotEmpty()) {
+                if (prefs.fcmToken != playerId) {
+                    prefs.fcmToken = playerId
+                    Log.d(TAG, "✅ OneSignal Player ID сохранен: $playerId")
+                    Log.d(TAG, "📱 ИСПОЛЬЗУЙТЕ ЭТОТ Player ID для отправки тестового уведомления в OneSignal Dashboard")
+                } else {
+                    Log.d(TAG, "OneSignal Player ID уже сохранен: $playerId")
                 }
-
-                val token = task.result
-                if (!token.isNullOrEmpty()) {
-                    if (prefs.fcmToken != token) {
-                        prefs.fcmToken = token
+                    } else {
+                        Log.w(TAG, "⚠️ OneSignal Player ID пустой. Возможные причины:")
+                        Log.w(TAG, "   1. Firebase Server Key не настроен в OneSignal Dashboard")
+                        Log.w(TAG, "   2. google-services.json неверный или отсутствует")
+                        Log.w(TAG, "   3. Разрешения на уведомления не предоставлены")
+                        Log.w(TAG, "   4. VPN/AdBlock блокирует HTTPS соединения с OneSignal")
                     }
-                    Log.d(TAG, "FCM token: $token")
-                }
-            }
 
+                    if (!isSubscribed) {
+                        Log.w(TAG, "⚠️ Устройство не подписано на уведомления!")
+                        Log.w(TAG, "   Проверьте разрешения в настройках Android для этого приложения")
+                        Log.w(TAG, "   Также проверьте, не блокирует ли VPN/AdBlock соединения")
+                    }
         } catch (e: Exception) {
-            Log.e(TAG, "initFirebaseMessaging error: ${e.message}", e)
+            Log.e(TAG, "❌ Ошибка при получении OneSignal Player ID: ${e.message}", e)
+            e.printStackTrace()
         }
     }
 
 
     private fun applyTheme(themeKey: String) {
         try {
+            // Для системной темы устанавливаем режим ночи из системы ОС
+            if (themeKey == PreferencesManager.THEME_PURPLE) {
+                AppCompatDelegate.setDefaultNightMode(AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM)
+            } else {
+                // Для остальных тем принудительно устанавливаем режим ночи
+                val nightMode = when (themeKey) {
+                    PreferencesManager.THEME_LIGHT -> AppCompatDelegate.MODE_NIGHT_NO
+                    PreferencesManager.THEME_DARK,
+                    PreferencesManager.THEME_BLUE,
+                    PreferencesManager.THEME_GRAY,
+                    PreferencesManager.THEME_HALLOWEEN,
+                    PreferencesManager.THEME_NOTHING,
+                    PreferencesManager.THEME_GREEN,
+                    PreferencesManager.THEME_NEW_YEAR -> AppCompatDelegate.MODE_NIGHT_YES
+                    else -> AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM
+                }
+                AppCompatDelegate.setDefaultNightMode(nightMode)
+            }
+
             val themeResId = when (themeKey) {
                 PreferencesManager.THEME_LIGHT -> R.style.Theme_Raspisanie_Light
                 PreferencesManager.THEME_DARK -> R.style.Theme_Raspisanie_Dark
@@ -300,6 +412,7 @@ class MainActivity : AppCompatActivity() {
             Log.e(TAG, "Ошибка при применении темы: ${e.message}", e)
             // Применить тему по умолчанию
             try {
+                AppCompatDelegate.setDefaultNightMode(AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM)
                 setTheme(R.style.Theme_Raspisanie_System)
             } catch (e2: Exception) {
                 Log.e(TAG, "Критическая ошибка при применении темы по умолчанию: ${e2.message}", e2)
