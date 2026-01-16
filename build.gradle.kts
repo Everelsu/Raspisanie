@@ -3,8 +3,7 @@ plugins {
     alias(libs.plugins.kotlin.android)
     // Используем KSP вместо kapt для Kotlin 2.0+
     id("com.google.devtools.ksp") version "2.0.0-1.0.24"
-    // Google Services plugin нужен для OneSignal (использует FCM)
-    id("com.google.gms.google-services")
+    // OneSignal работает без Google Services plugin
 }
 
 android {
