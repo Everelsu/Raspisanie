@@ -95,17 +95,18 @@ class StatisticsFragment : Fragment() {
             val safeBinding = _binding ?: return@launch
             try {
                 // Если swipe refresh активен, не показываем кэш, сразу загружаем свежие данные
+                var cachedStats: GroupStatistics? = null
                 if (!isSwipeRefresh) {
                     // Сначала пытаемся загрузить из кэша (быстро)
-                    val cachedStatistics = parser.fetchStatistics(prefs.selectedGroupFile, prefs.college, useCache = true)
+                    cachedStats = parser.fetchStatistics(prefs.selectedGroupFile, prefs.college, useCache = true)
                     
                     // Если есть кэш, показываем его сразу
-                    if (cachedStatistics != null) {
+                    if (cachedStats != null) {
                         setLoading(safeBinding, false)
-                        if (cachedStatistics.disciplines.isNotEmpty() || 
-                            cachedStatistics.totalHours != null || 
-                            cachedStatistics.completedHours != null) {
-                            displayStatistics(cachedStatistics)
+                        if (cachedStats.disciplines.isNotEmpty() ||
+                            cachedStats.totalHours != null ||
+                            cachedStats.completedHours != null) {
+                            displayStatistics(cachedStats, isInitialLoad = true)
                             safeBinding.statisticsRecyclerView.isVisible = true
                         }
                     } else {
@@ -123,7 +124,17 @@ class StatisticsFragment : Fragment() {
                 if (statistics != null && (statistics.disciplines.isNotEmpty() || 
                     statistics.totalHours != null || 
                     statistics.completedHours != null)) {
-                    displayStatistics(statistics)
+                    // Обновляем только если данные изменились (предотвращает мерцание)
+                    val shouldUpdate = cachedStats == null ||
+                        cachedStats.totalHours != statistics.totalHours ||
+                        cachedStats.completedHours != statistics.completedHours ||
+                        cachedStats.remainingHours != statistics.remainingHours ||
+                        cachedStats.plannedHours != statistics.plannedHours ||
+                        cachedStats.disciplines.size != statistics.disciplines.size
+
+                    if (shouldUpdate) {
+                        displayStatistics(statistics, isInitialLoad = cachedStats == null)
+                    }
                     safeBinding.statisticsRecyclerView.isVisible = true
                 } else if (!isSwipeRefresh) {
                     // Показываем ошибку только если не было кэша
@@ -149,7 +160,7 @@ class StatisticsFragment : Fragment() {
                     if (cachedStatistics != null && (cachedStatistics.disciplines.isNotEmpty() || 
                         cachedStatistics.totalHours != null || 
                         cachedStatistics.completedHours != null)) {
-                        displayStatistics(cachedStatistics)
+                        displayStatistics(cachedStatistics, isInitialLoad = true)
                         safeBinding.statisticsRecyclerView.isVisible = true
                         return@launch
                     }
@@ -166,7 +177,7 @@ class StatisticsFragment : Fragment() {
         }
     }
     
-    private fun displayStatistics(statistics: GroupStatistics) {
+    private fun displayStatistics(statistics: GroupStatistics, isInitialLoad: Boolean = false) {
         val binding = _binding ?: return
         binding.groupNameText.text = statistics.groupName.ifEmpty { prefs.selectedGroupName }
         
@@ -187,12 +198,26 @@ class StatisticsFragment : Fragment() {
         // Показываем заголовок дисциплин если есть данные
         binding.disciplinesTitle.visibility = if (statistics.disciplines.isNotEmpty()) View.VISIBLE else View.GONE
         
-        // Анимируем появление итоговых карточек только один раз
-        if (!hasAnimatedSummaryCards) {
+        // Анимируем появление итоговых карточек только при первом загрузке данных
+        if (isInitialLoad && !hasAnimatedSummaryCards) {
+            val cards = listOf(
+                binding.totalHoursCard,
+                binding.completedHoursCard,
+                binding.remainingHoursCard,
+                binding.plannedHoursCard
+            )
+            // Сначала устанавливаем начальное состояние
+            cards.forEach { card ->
+                card.alpha = 0f
+                card.translationY = -30f
+                card.scaleX = 0.9f
+                card.scaleY = 0.9f
+            }
+            // Затем анимируем
             animateSummaryCards(binding)
             hasAnimatedSummaryCards = true
-        } else {
-            // Если уже анимировали, просто устанавливаем финальное состояние
+        } else if (!isInitialLoad) {
+            // При обновлении данных без анимации просто устанавливаем финальное состояние
             val cards = listOf(
                 binding.totalHoursCard,
                 binding.completedHoursCard,

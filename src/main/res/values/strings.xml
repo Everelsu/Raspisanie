@@ -128,4 +128,7 @@
     <string name="nav_schedule">Расписание</string>
     <string name="nav_statistics">Итоги</string>
     <string name="nav_settings">Настройки</string>
+
+    <!-- OneSignal App ID -->
+    <string name="onesignal_app_id" translatable="false">7772654b-81b0-4f8d-a1f8-b7eeb6ffda56</string>
 </resources>

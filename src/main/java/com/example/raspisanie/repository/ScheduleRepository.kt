@@ -7,6 +7,7 @@ import com.example.raspisanie.data.PreferencesManager
 import com.example.raspisanie.data.ScheduleCache
 import com.example.raspisanie.data.ScheduleParser
 import com.example.raspisanie.data.ScheduleNotificationManager
+import com.example.raspisanie.data.LessonsRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -19,6 +20,7 @@ class ScheduleRepository(private val context: Context? = null) {
     private val parser = ScheduleParser()
     private val cache: ScheduleCache? = context?.let { ScheduleCache(it) }
     private val prefs: PreferencesManager? = context?.let { PreferencesManager(it) }
+    private val lessonsRepository: LessonsRepository? = context?.let { LessonsRepository(it) }
     
     private val _schedule = MutableStateFlow<List<DaySchedule>>(emptyList())
     val schedule: StateFlow<List<DaySchedule>> = _schedule.asStateFlow()
@@ -62,11 +64,18 @@ class ScheduleRepository(private val context: Context? = null) {
                             cache.cacheSchedule(newSchedule, groupFile, college)
                             _schedule.value = newSchedule
                             context?.let { ScheduleNotificationManager.handleScheduleUpdated(it, newSchedule) }
+                            
+                            // Сохраняем плановые занятия в БД
+                            lessonsRepository?.savePlannedLessons(newSchedule, groupFile, college)
+                            
                             Log.d(TAG, "✅ Расписание обновлено в фоне: ${newSchedule.size} дней")
                         }
                     } catch (e: Exception) {
                         Log.d(TAG, "Не удалось обновить в фоне (используем кэш): ${e.message}")
                     }
+                    
+                    // Сохраняем кэшированные занятия в БД
+                    lessonsRepository?.savePlannedLessons(cachedSchedule, groupFile, college)
                     return
                 }
             } catch (e: Exception) {
@@ -87,6 +96,15 @@ class ScheduleRepository(private val context: Context? = null) {
                     Log.d(TAG, "✅ Расписание сохранено в кэш")
                 } catch (e: Exception) {
                     Log.e(TAG, "Ошибка при сохранении в кэш: ${e.message}", e)
+                }
+            }
+            
+            // Сохраняем плановые занятия в БД для истории
+            if (newSchedule.isNotEmpty()) {
+                try {
+                    lessonsRepository?.savePlannedLessons(newSchedule, groupFile, college)
+                } catch (e: Exception) {
+                    Log.e(TAG, "Ошибка при сохранении занятий в БД: ${e.message}", e)
                 }
             }
             
@@ -120,6 +138,10 @@ class ScheduleRepository(private val context: Context? = null) {
                         Log.d(TAG, "✅ Использую кэш из-за ошибки сети: ${cachedSchedule.size} дней (useCache=$useCache)")
                         _schedule.value = cachedSchedule
                         context?.let { ScheduleNotificationManager.scheduleUpcomingEventNotifications(it, cachedSchedule) }
+                        
+                        // Сохраняем кэшированные занятия в БД
+                        lessonsRepository?.savePlannedLessons(cachedSchedule, groupFile, college)
+                        
                         _error.value = cacheMessage
                         _isLoading.value = false
                         return

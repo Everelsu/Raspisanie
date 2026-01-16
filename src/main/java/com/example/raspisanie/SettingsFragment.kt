@@ -38,6 +38,8 @@ import io.noties.markwon.Markwon
 import io.noties.markwon.image.glide.GlideImagesPlugin
 import io.noties.markwon.linkify.LinkifyPlugin
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.Dispatchers
 import android.content.Intent
 import android.widget.ScrollView
 import android.app.DownloadManager
@@ -48,6 +50,11 @@ import android.os.Looper
 class SettingsFragment : Fragment() {
     private var _binding: FragmentSettingsBinding? = null
     private val binding get() = _binding!!
+
+    companion object {
+        private const val REQUEST_CODE_IMPORT_JSON = 1001
+        private const val REQUEST_CODE_IMPORT_SQLITE = 1002
+    }
     private val settingsBinding: ActivitySettingsBinding get() = binding.settingsLayout
     
     private lateinit var prefs: PreferencesManager
@@ -413,6 +420,92 @@ class SettingsFragment : Fragment() {
         }
     }
 
+    /**
+     * Выполняет действие очистки БД
+     */
+    private fun performClearAction(action: Int) {
+        viewLifecycleOwner.lifecycleScope.launch {
+            try {
+                val repository = com.example.raspisanie.data.LessonsRepository(requireContext())
+                val message = when (action) {
+                    0 -> {
+                        repository.clearAll()
+                        "Все занятия удалены"
+                    }
+                    1 -> {
+                        repository.clearByType("actual")
+                        "Фактические занятия удалены"
+                    }
+                    2 -> {
+                        repository.clearByType("planned")
+                        "Плановые занятия удалены"
+                    }
+                    3 -> {
+                        val calendar = java.util.Calendar.getInstance()
+                        calendar.add(java.util.Calendar.DAY_OF_YEAR, -90)
+                        val dateFormat = java.text.SimpleDateFormat("dd.MM.yyyy", java.util.Locale.getDefault())
+                        val cutoffDate = dateFormat.format(calendar.time)
+                        repository.deleteOldLessons(cutoffDate)
+                        "Старые занятия удалены"
+                    }
+                    else -> return@launch
+                }
+
+                // Показываем Toast в главном потоке
+                withContext(kotlinx.coroutines.Dispatchers.Main) {
+                    Toast.makeText(requireContext(), message, Toast.LENGTH_SHORT).show()
+                }
+
+                updateActualLessonsStats()
+            } catch (e: Exception) {
+                android.util.Log.e("SettingsFragment", "Ошибка при очистке БД", e)
+                withContext(kotlinx.coroutines.Dispatchers.Main) {
+                    Toast.makeText(requireContext(), "Ошибка: ${e.message}", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+    }
+
+    /**
+     * Обновляет детальную статистику базы данных занятий с размером БД
+     */
+    private fun updateActualLessonsStats() {
+        viewLifecycleOwner.lifecycleScope.launch {
+            try {
+                // Проверяем, что view еще существует
+                val binding = _binding ?: return@launch
+                val statsBinding = binding.settingsLayout
+
+                val repository = com.example.raspisanie.data.LessonsRepository(requireContext())
+                val stats = repository.getDetailedStatistics()
+
+                // Проверяем еще раз после асинхронной операции
+                val currentBinding = _binding ?: return@launch
+                val currentStatsBinding = currentBinding.settingsLayout
+
+                // Обновляем статистику (компактная версия)
+                currentStatsBinding.statsTotalValue.text = stats.total.toString()
+
+                // Размер БД
+                val dbSizeMB = stats.databaseSizeBytes / (1024.0 * 1024.0)
+                val dbSizeKB = stats.databaseSizeBytes / 1024.0
+                val dbSizeStr = when {
+                    dbSizeMB >= 1 -> String.format("%.2f МБ", dbSizeMB)
+                    dbSizeKB >= 1 -> String.format("%.2f КБ", dbSizeKB)
+                    else -> "${stats.databaseSizeBytes} Б"
+                }
+                currentStatsBinding.statsSizeValue.text = dbSizeStr
+
+            } catch (e: Exception) {
+                // Проверяем перед установкой текста ошибки
+                val binding = _binding ?: return@launch
+                val statsBinding = binding.settingsLayout
+                statsBinding.statsTotalValue.text = "—"
+                statsBinding.statsSizeValue.text = "—"
+            }
+        }
+    }
+
     private fun setupCollegeSelection() {
         val collegeSpinner = settingsBinding.collegeSpinner
         
@@ -459,7 +552,6 @@ class SettingsFragment : Fragment() {
         val switchShowTime = settingsBinding.switchShowTime
         val switchShowLessonStatus = settingsBinding.switchShowLessonStatus
         val switchShowProgressLine = settingsBinding.switchShowProgressLine
-        
         switchShowBreaks.isChecked = prefs.showBreaks
         switchShowLunch.isChecked = prefs.showLunch
         switchShowTime.isChecked = prefs.showTime
@@ -490,6 +582,117 @@ class SettingsFragment : Fragment() {
             }
         }
         
+        // ========== НАСТРОЙКИ БАЗЫ ДАННЫХ ==========
+        val btnExportJson = settingsBinding.btnExportJson
+        val btnExportSqlite = settingsBinding.btnExportSqlite
+        val btnImportJson = settingsBinding.btnImportJson
+        val btnImportSqlite = settingsBinding.btnImportSqlite
+        val btnClearActualLessonsDB = settingsBinding.btnClearActualLessonsDB
+
+        // Экспорт JSON
+        btnExportJson.setOnClickListener {
+            viewLifecycleOwner.lifecycleScope.launch {
+                try {
+                    val repository = com.example.raspisanie.data.LessonsRepository(requireContext())
+                    val exportFile = repository.exportDatabaseToJson()
+                    if (exportFile != null && exportFile.exists()) {
+                        val intent = Intent(Intent.ACTION_SEND).apply {
+                            type = "application/json"
+                            putExtra(Intent.EXTRA_STREAM, androidx.core.content.FileProvider.getUriForFile(
+                                requireContext(),
+                                "${requireContext().packageName}.fileprovider",
+                                exportFile
+                            ))
+                            putExtra(Intent.EXTRA_SUBJECT, "Экспорт базы данных расписания (JSON)")
+                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                        }
+                        startActivity(Intent.createChooser(intent, "Экспортировать БД (JSON)"))
+                        Toast.makeText(requireContext(), "БД экспортирована в JSON", Toast.LENGTH_SHORT).show()
+                    } else {
+                        Toast.makeText(requireContext(), "Ошибка экспорта БД", Toast.LENGTH_SHORT).show()
+                    }
+                } catch (e: Exception) {
+                    Toast.makeText(requireContext(), "Ошибка: ${e.message}", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+
+        // Экспорт SQLite
+        btnExportSqlite.setOnClickListener {
+            viewLifecycleOwner.lifecycleScope.launch {
+                try {
+                    val repository = com.example.raspisanie.data.LessonsRepository(requireContext())
+                    val exportFile = repository.exportDatabaseToSqlite()
+                    if (exportFile != null && exportFile.exists()) {
+                        val intent = Intent(Intent.ACTION_SEND).apply {
+                            type = "application/x-sqlite3"
+                            putExtra(Intent.EXTRA_STREAM, androidx.core.content.FileProvider.getUriForFile(
+                                requireContext(),
+                                "${requireContext().packageName}.fileprovider",
+                                exportFile
+                            ))
+                            putExtra(Intent.EXTRA_SUBJECT, "Экспорт базы данных расписания (SQLite)")
+                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                        }
+                        startActivity(Intent.createChooser(intent, "Экспортировать БД (SQLite)"))
+                        Toast.makeText(requireContext(), "БД экспортирована в SQLite", Toast.LENGTH_SHORT).show()
+                    } else {
+                        Toast.makeText(requireContext(), "Ошибка экспорта БД", Toast.LENGTH_SHORT).show()
+                    }
+                } catch (e: Exception) {
+                    Toast.makeText(requireContext(), "Ошибка: ${e.message}", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+
+        // Импорт JSON
+        btnImportJson.setOnClickListener {
+            val intent = Intent(Intent.ACTION_GET_CONTENT).apply {
+                type = "application/json"
+                addCategory(Intent.CATEGORY_OPENABLE)
+            }
+            try {
+                startActivityForResult(Intent.createChooser(intent, "Выберите JSON файл"), REQUEST_CODE_IMPORT_JSON)
+            } catch (e: Exception) {
+                Toast.makeText(requireContext(), "Ошибка выбора файла: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
+        }
+
+        // Импорт SQLite
+        btnImportSqlite.setOnClickListener {
+            MaterialAlertDialogBuilder(requireContext(), getDialogTheme(requireContext()))
+                .setTitle("Внимание!")
+                .setMessage("Импорт SQLite файла заменит всю текущую базу данных. Рекомендуется сначала создать резервную копию через экспорт. Продолжить?")
+                .setPositiveButton("Да, импортировать") { _, _ ->
+                    val intent = Intent(Intent.ACTION_GET_CONTENT).apply {
+                        type = "application/x-sqlite3"
+                        addCategory(Intent.CATEGORY_OPENABLE)
+                    }
+                    try {
+                        startActivityForResult(Intent.createChooser(intent, "Выберите SQLite файл"), REQUEST_CODE_IMPORT_SQLITE)
+                    } catch (e: Exception) {
+                        Toast.makeText(requireContext(), "Ошибка выбора файла: ${e.message}", Toast.LENGTH_SHORT).show()
+                    }
+                }
+                .setNegativeButton("Отмена", null)
+                .show()
+        }
+
+        // Управление БД (очистка)
+        btnClearActualLessonsDB.setOnClickListener {
+            MaterialAlertDialogBuilder(requireContext(), getDialogTheme(requireContext()))
+                .setTitle("Очистка базы данных")
+                .setMessage("Вы уверены, что хотите удалить ВСЕ занятия из базы данных? Это действие нельзя отменить.")
+                .setPositiveButton("Да, удалить всё") { _, _ ->
+                    performClearAction(0)
+                }
+                .setNegativeButton("Отмена", null)
+                .show()
+        }
+
+        // Обновляем статистику при открытии настроек
+        updateActualLessonsStats()
+
         // ========== НАСТРОЙКИ СТАТУСА ПАР ==========
         
         // Максимальное время отображения для текущей пары
@@ -626,21 +829,30 @@ class SettingsFragment : Fragment() {
     }
 
 
-    private fun setupGroupSelection() {
+    private fun setupGroupSelection(forceRefresh: Boolean = false) {
         val selectedGroupName = settingsBinding.selectedGroupName
         val groupSpinner = settingsBinding.groupSpinner
-        
+        val btnRefreshGroups = settingsBinding.btnRefreshGroups
+
         selectedGroupName.text = if (prefs.isGroupSelected()) {
             prefs.selectedGroupName
         } else {
             getString(R.string.no_group_selected)
         }
         
+        // Кнопка обновления списка групп
+        btnRefreshGroups.setOnClickListener {
+            btnRefreshGroups.isEnabled = false
+            btnRefreshGroups.text = "Обновление..."
+            setupGroupSelection(forceRefresh = true)
+        }
+
         val groupsParser = GroupsListParser()
         
         lifecycleScope.launch {
             try {
-                val groups = groupsParser.fetchGroupsList(prefs.college)
+                // Используем персистентный кеш - не парсим каждый раз (если не принудительное обновление)
+                val groups = groupsParser.fetchGroupsList(prefs.college, requireContext(), forceRefresh = forceRefresh)
                 val favorites = prefs.getFavoriteGroups()
                 
                 val favoriteGroups = mutableListOf<Group>()
@@ -663,20 +875,21 @@ class SettingsFragment : Fragment() {
                     fileName = ""
                 )
                 val sortedGroups = listOf(noGroupSelected) + favoriteGroups + regularGroups
-                val groupNames = sortedGroups.map { it.name }
                 
-                val adapter = ArrayAdapter(
+                // Используем кастомный адаптер для отображения избранных групп со звездочкой
+                val adapter = com.example.raspisanie.adapter.GroupsSpinnerAdapter(
                     requireContext(),
-                    android.R.layout.simple_spinner_item,
-                    groupNames
-                ).apply {
-                    setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
-                }
+                    sortedGroups,
+                    favorites
+                )
                 
                 groupSpinner.adapter = adapter
                 
+                // Находим индекс выбранной группы по fileName или name
                 val currentIndex = if (prefs.isGroupSelected()) {
-                    groupNames.indexOf(prefs.selectedGroupName)
+                    sortedGroups.indexOfFirst {
+                        it.fileName == prefs.selectedGroupFile || it.name == prefs.selectedGroupName
+                    }.takeIf { it >= 0 } ?: 0
                 } else {
                     0
                 }
@@ -702,18 +915,28 @@ class SettingsFragment : Fragment() {
                         updateFavoriteButton(selectedGroup.name)
                         
                         if (wasChanged) {
-                            val message = if (selectedGroup.fileName.isEmpty()) {
-                                "Группа не выбрана"
-                            } else {
-                                "Группа изменена: ${selectedGroup.name}"
+                            // Автоматически обновляем расписание при смене группы
+                            viewLifecycleOwner.lifecycleScope.launch {
+                                val scheduleViewModel = androidx.lifecycle.ViewModelProvider(requireActivity())[com.example.raspisanie.viewmodel.ScheduleViewModel::class.java]
+                                if (selectedGroup.fileName.isNotEmpty()) {
+                                    scheduleViewModel.loadSchedule(selectedGroup.fileName, prefs.college)
+                                    Toast.makeText(requireContext(), "Группа изменена: ${selectedGroup.name}", Toast.LENGTH_SHORT).show()
+                                } else {
+                                    Toast.makeText(requireContext(), "Группа не выбрана", Toast.LENGTH_SHORT).show()
+                                }
                             }
-                            Toast.makeText(requireContext(), message, Toast.LENGTH_SHORT).show()
                         }
                     }
                     
                     override fun onNothingSelected(parent: android.widget.AdapterView<*>?) {}
                 }
                 
+                // Восстанавливаем кнопку обновления
+                if (isAdded && _binding != null) {
+                    btnRefreshGroups.isEnabled = true
+                    btnRefreshGroups.text = "Обновить"
+                }
+
             } catch (e: kotlinx.coroutines.CancellationException) {
                 // Игнорируем отмену корутины - это нормально при уничтожении фрагмента
                 throw e
@@ -726,6 +949,9 @@ class SettingsFragment : Fragment() {
                     } else {
                         "${getString(R.string.no_group_selected)} (ошибка загрузки списка)"
                     }
+                    btnRefreshGroups.isEnabled = true
+                    btnRefreshGroups.text = "Обновить"
+                    Toast.makeText(requireContext(), "Ошибка загрузки списка групп: ${e.message}", Toast.LENGTH_SHORT).show()
                 }
             }
         }
@@ -733,12 +959,16 @@ class SettingsFragment : Fragment() {
     
     private fun setupFavoriteButton() {
         val btnAddToFavorites = settingsBinding.btnAddToFavorites
-        
+        val btnManageFavorites = settingsBinding.btnManageFavorites
+
         if (prefs.isGroupSelected()) {
             updateFavoriteButton(prefs.selectedGroupName)
+        } else {
+            btnAddToFavorites.isEnabled = false
         }
         
         if (!isFavoriteButtonSetup) {
+            // Кнопка добавления/удаления из избранного
             btnAddToFavorites.setOnClickListener {
                 if (prefs.isGroupSelected()) {
                     val groupName = prefs.selectedGroupName
@@ -759,18 +989,84 @@ class SettingsFragment : Fragment() {
                     setupGroupSelection()
                 }
             }
+
+            // Кнопка управления избранным - показать диалог с избранными группами
+            btnManageFavorites.setOnClickListener {
+                showFavoritesDialog()
+            }
+
             isFavoriteButtonSetup = true
         }
     }
     
+    /**
+     * Показать диалог управления избранными группами
+     */
+    private fun showFavoritesDialog() {
+        val favorites = prefs.getFavoriteGroups()
+
+        if (favorites.isEmpty()) {
+            MaterialAlertDialogBuilder(requireContext(), getDialogTheme(requireContext()))
+                .setTitle("Избранные группы")
+                .setMessage("У вас пока нет избранных групп")
+                .setPositiveButton("OK", null)
+                .show()
+            return
+        }
+
+        val favoriteList = favorites.sorted().toTypedArray()
+
+        MaterialAlertDialogBuilder(requireContext(), getDialogTheme(requireContext()))
+            .setTitle("Избранные группы (${favorites.size})")
+            .setItems(favoriteList) { _, which ->
+                val groupName = favoriteList[which]
+                // Подтверждение удаления
+                MaterialAlertDialogBuilder(requireContext(), getDialogTheme(requireContext()))
+                    .setTitle("Удалить из избранного?")
+                    .setMessage("Группа: $groupName")
+                    .setPositiveButton("Удалить") { _, _ ->
+                        prefs.removeFavoriteGroup(groupName)
+                        Toast.makeText(requireContext(), "Удалено из избранного", Toast.LENGTH_SHORT).show()
+                        // Обновляем список групп, чтобы пересортировать
+                        setupGroupSelection()
+                        updateFavoriteButton(prefs.selectedGroupName)
+                    }
+                    .setNegativeButton("Отмена", null)
+                    .show()
+            }
+            .setNeutralButton("Очистить всё") { _, _ ->
+                MaterialAlertDialogBuilder(requireContext(), getDialogTheme(requireContext()))
+                    .setTitle("Очистить всё избранное?")
+                    .setMessage("Будут удалены все ${favorites.size} групп из избранного")
+                    .setPositiveButton("Очистить") { _, _ ->
+                        favorites.forEach { groupName ->
+                            prefs.removeFavoriteGroup(groupName)
+                        }
+                        Toast.makeText(requireContext(), "Избранное очищено", Toast.LENGTH_SHORT).show()
+                        setupGroupSelection()
+                        updateFavoriteButton(prefs.selectedGroupName)
+                    }
+                    .setNegativeButton("Отмена", null)
+                    .show()
+            }
+            .show()
+    }
+
     private fun updateFavoriteButton(groupName: String) {
         val btnAddToFavorites = settingsBinding.btnAddToFavorites
         
+        if (groupName.isEmpty()) {
+            btnAddToFavorites.isEnabled = false
+            btnAddToFavorites.text = "⭐ В избранное"
+            return
+        }
+
+        btnAddToFavorites.isEnabled = true
         val isFavorite = prefs.isFavoriteGroup(groupName)
         btnAddToFavorites.text = if (isFavorite) {
             "⭐ В избранном"
         } else {
-            "⭐ Добавить в избранное"
+            "⭐ В избранное"
         }
     }
 
@@ -1090,10 +1386,7 @@ class SettingsFragment : Fragment() {
         authorName?.setOnClickListener {
             openAuthorProfile()
         }
-        
-        // Установить имя бета-тестера
-        val betaTesterName = settingsContent.findViewById<TextView>(R.id.betaTesterName)
-        betaTesterName?.text = getString(R.string.beta_tester_name)
+
         
         val changelogButton = settingsContent.findViewById<TextView>(R.id.changelogButton)
         changelogButton?.setOnClickListener {
@@ -1431,6 +1724,49 @@ class SettingsFragment : Fragment() {
             progressBar?.progress = 0
             progressPercent?.text = ""
             progressText?.text = "Скачивание обновления..."
+        }
+    }
+
+    @Deprecated("Deprecated in Java")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+
+        if (resultCode == android.app.Activity.RESULT_OK && data != null) {
+            val uri = data.data
+            if (uri != null) {
+                viewLifecycleOwner.lifecycleScope.launch {
+                    try {
+                        val repository = com.example.raspisanie.data.LessonsRepository(requireContext())
+
+                        when (requestCode) {
+                            REQUEST_CODE_IMPORT_JSON -> {
+                                val importedCount = repository.importDatabaseFromJsonUri(requireContext(), uri)
+                                if (importedCount >= 0) {
+                                    Toast.makeText(requireContext(), "Импортировано занятий: $importedCount", Toast.LENGTH_LONG).show()
+                                    updateActualLessonsStats()
+                                } else {
+                                    Toast.makeText(requireContext(), "Ошибка импорта БД из JSON", Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                            REQUEST_CODE_IMPORT_SQLITE -> {
+                                val success = repository.importDatabaseFromSqliteUri(requireContext(), uri)
+                                if (success) {
+                                    Toast.makeText(requireContext(), "База данных импортирована из SQLite", Toast.LENGTH_LONG).show()
+                                    updateActualLessonsStats()
+                                    // Перезагружаем приложение для применения изменений
+                                    android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                                        activity?.recreate()
+                                    }, 1000)
+                                } else {
+                                    Toast.makeText(requireContext(), "Ошибка импорта БД из SQLite", Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                        }
+                    } catch (e: Exception) {
+                        Toast.makeText(requireContext(), "Ошибка импорта: ${e.message}", Toast.LENGTH_LONG).show()
+                    }
+                }
+            }
         }
     }
 }

@@ -359,5 +359,209 @@ class ScheduleParser {
 
         return SubjectInfo(subject, classroom, teacher)
     }
+    
+    /**
+     * Парсит журнал занятий (например, j362.htm) для получения фактических занятий
+     * @param journalFile имя файла журнала (например, "j362.htm")
+     * @param college колледж
+     * @return список фактических занятий из журнала
+     */
+    suspend fun fetchJournalLessons(journalFile: String, college: String = PreferencesManager.COLLEGE_CHTOTIB): List<ScheduleItem> = withContext(Dispatchers.IO) {
+        val journalLessons = mutableListOf<ScheduleItem>()
+        
+        try {
+            val baseUrl = if (college == PreferencesManager.COLLEGE_ZABGC) {
+                BASE_URL_ZABGC
+            } else {
+                BASE_URL_CHTOTIB
+            }
+            val journalUrl = "$baseUrl$journalFile"
+            Log.d(TAG, "Загрузка журнала: $journalUrl")
+            
+            val doc: Document = try {
+                Jsoup.connect(journalUrl)
+                    .timeout(20000)
+                    .userAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+                    .followRedirects(true)
+                    .parser(org.jsoup.parser.Parser.htmlParser())
+                    .maxBodySize(10 * 1024 * 1024)
+                    .get()
+            } catch (e: Exception) {
+                Log.e(TAG, "Ошибка при загрузке журнала $journalUrl: ${e.message}", e)
+                return@withContext journalLessons
+            }
+            
+            // Находим таблицу с журналом
+            val table = doc.select("table.inf").firstOrNull()
+            if (table == null) {
+                Log.w(TAG, "Таблица журнала не найдена в $journalUrl")
+                return@withContext journalLessons
+            }
+            
+            // Получаем название дисциплины из заголовка (обычно в списке перед таблицей)
+            var subjectName: String? = null
+            // Ищем в списке перед таблицей (обычно формат: "* МДК.11.01 Технология разработки и защиты баз данных")
+            val listItems = doc.select("ul li, ol li, p")
+            for (item in listItems) {
+                val text = item.text().trim()
+                if (text.contains("МДК") || text.contains("дисциплина") || text.matches(Regex(".*МДК\\.\\d+.*"))) {
+                    subjectName = text.replace("*", "").trim()
+                    break
+                }
+            }
+            // Если не нашли в списке, ищем в заголовках
+            if (subjectName.isNullOrEmpty()) {
+                subjectName = doc.select("h1, h2, h3").firstOrNull()?.text()?.trim()
+                    ?: doc.select("p, div").firstOrNull { it.text().contains("МДК") || it.text().contains("дисциплина") }?.text()?.trim()
+            }
+            
+            val rows = table.select("tr")
+            var isHeaderRow = true
+            
+            for (row in rows) {
+                val cells = row.select("td")
+                if (cells.isEmpty()) continue
+                
+                // Пропускаем заголовок таблицы
+                if (isHeaderRow) {
+                    val headerText = row.text()
+                    if (headerText.contains("№ п.п") || headerText.contains("Дата") || headerText.contains("Час")) {
+                        isHeaderRow = false
+                        continue
+                    }
+                }
+                
+                // Парсим строку журнала: № п.п | Дата | Час | Группа | П/г | Преподаватель | Аудитория
+                if (cells.size >= 6) {
+                    try {
+                        // Дата (колонка 2, индекс 1)
+                        val dateStr = cells[1].text().trim()
+                        if (dateStr.isEmpty() || !dateStr.matches(Regex("\\d{2}\\.\\d{2}\\.\\d{4}"))) {
+                            continue
+                        }
+                        
+                        // Час (колонка 3, индекс 2) - это номер пары
+                        val hourStr = cells[2].text().trim()
+                        val lessonNumber = hourStr.toIntOrNull()
+                        if (lessonNumber == null || lessonNumber < 1 || lessonNumber > 10) {
+                            continue
+                        }
+                        
+                        // Группа (колонка 4, индекс 3)
+                        val group = cells[3].text().trim()
+                        
+                        // П/г (колонка 5, индекс 4) - подгруппа
+                        val subgroupStr = cells[4].text().trim()
+                        val subgroup = if (subgroupStr == "0" || subgroupStr.isEmpty()) null else subgroupStr.toIntOrNull()
+                        
+                        // Преподаватель (колонка 6, индекс 5)
+                        val teacher = cells[5].text().trim()
+                        
+                        // Аудитория (колонка 7, индекс 6)
+                        val classroom = if (cells.size > 6) cells[6].text().trim() else ""
+                        
+                        // Определяем день недели из даты и нормализуем его
+                        val dateFormat = java.text.SimpleDateFormat("dd.MM.yyyy", java.util.Locale.getDefault())
+                        val date = dateFormat.parse(dateStr)
+                        val dayName = if (date != null) {
+                            val calendar = java.util.Calendar.getInstance()
+                            calendar.time = date
+                            // Calendar.DAY_OF_WEEK: 1=ВС, 2=ПН, 3=ВТ, 4=СР, 5=ЧТ, 6=ПТ, 7=СБ
+                            val calendarDay = calendar.get(java.util.Calendar.DAY_OF_WEEK)
+                            val dayNames = arrayOf("", "Вс", "Пн", "Вт", "Ср", "Чт", "Пт", "Сб")
+                            val rawDayName = if (calendarDay in 1..7) dayNames[calendarDay] else ""
+                            // Нормализуем день недели (убирает точки, нормализует регистр)
+                            DayOfWeekEntity.normalizeDayName(rawDayName) ?: ""
+                        } else ""
+                        
+                        // Определяем номер недели (можно использовать 1 по умолчанию, так как в журнале это не указано)
+                        val weekNumber = 1
+                        
+                        journalLessons.add(
+                            ScheduleItem(
+                                day = dayName,
+                                date = dateStr,
+                                weekNumber = weekNumber,
+                                lessonNumber = lessonNumber,
+                                subject = subjectName ?: "Занятие",
+                                classroom = if (classroom.isNotEmpty()) classroom else null,
+                                teacher = if (teacher.isNotEmpty()) teacher else null,
+                                subgroup = subgroup
+                            )
+                        )
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Ошибка при парсинге строки журнала: ${e.message}", e)
+                        continue
+                    }
+                }
+            }
+            
+            Log.d(TAG, "Загружено ${journalLessons.size} фактических занятий из журнала $journalFile")
+        } catch (e: Exception) {
+            Log.e(TAG, "Ошибка при парсинге журнала $journalFile: ${e.message}", e)
+        }
+        
+        return@withContext journalLessons
+    }
+    
+    /**
+     * Получает список ссылок на журналы из страницы итогов (vg50.htm)
+     * @param groupFile имя файла группы (например, "cg50.htm")
+     * @param college колледж
+     * @return список имен файлов журналов (например, ["j362.htm", "j360.htm"])
+     */
+    suspend fun fetchJournalLinks(groupFile: String, college: String = PreferencesManager.COLLEGE_CHTOTIB): List<String> = withContext(Dispatchers.IO) {
+        val journalLinks = mutableListOf<String>()
+        
+        try {
+            val baseUrl = if (college == PreferencesManager.COLLEGE_ZABGC) {
+                BASE_URL_ZABGC
+            } else {
+                BASE_URL_CHTOTIB
+            }
+            
+            // Преобразуем cg50.htm в vg50.htm (итоги группы)
+            val resultsFile = groupFile.replace("cg", "vg").replace("bg", "vg")
+            val resultsUrl = "$baseUrl$resultsFile"
+            Log.d(TAG, "Загрузка итогов для получения ссылок на журналы: $resultsUrl")
+            
+            val doc: Document = try {
+                Jsoup.connect(resultsUrl)
+                    .timeout(20000)
+                    .userAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+                    .followRedirects(true)
+                    .parser(org.jsoup.parser.Parser.htmlParser())
+                    .maxBodySize(10 * 1024 * 1024)
+                    .get()
+            } catch (e: Exception) {
+                Log.e(TAG, "Ошибка при загрузке итогов $resultsUrl: ${e.message}", e)
+                return@withContext journalLinks
+            }
+            
+            // Находим таблицу с итогами
+            val table = doc.select("table.inf").firstOrNull()
+            if (table == null) {
+                Log.w(TAG, "Таблица итогов не найдена в $resultsUrl")
+                return@withContext journalLinks
+            }
+            
+            // Ищем ссылки на журналы в колонке "Факт, час." (ссылки вида j362.htm)
+            val links = table.select("a[href^='j']")
+            for (link in links) {
+                val href = link.attr("href")
+                if (href.matches(Regex("j\\d+\\.htm"))) {
+                    if (!journalLinks.contains(href)) {
+                        journalLinks.add(href)
+                    }
+                }
+            }
+            
+            Log.d(TAG, "Найдено ${journalLinks.size} ссылок на журналы: $journalLinks")
+        } catch (e: Exception) {
+            Log.e(TAG, "Ошибка при получении ссылок на журналы: ${e.message}", e)
+        }
+        
+        return@withContext journalLinks
+    }
 }
 
