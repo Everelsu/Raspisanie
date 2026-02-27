@@ -2,6 +2,7 @@ import "package:flutter/material.dart";
 import "package:flutter/services.dart";
 
 import "../../../core/notifications/notification_service.dart";
+import "../../../core/services/font_service.dart";
 import "../../../core/widgets/bottom_bar_sheet.dart";
 import "../../notes/presentation/notes_page.dart";
 import "../../schedule/presentation/history_calendar_sheet.dart";
@@ -15,9 +16,11 @@ class HomePage extends StatefulWidget {
     super.key,
     required this.controller,
     required this.onThemeChanged,
+    required this.fontService,
   });
   final ScheduleController controller;
   final VoidCallback onThemeChanged;
+  final FontService fontService;
 
   @override
   State<HomePage> createState() => _HomePageState();
@@ -41,6 +44,7 @@ class _HomePageState extends State<HomePage> {
       SettingsPage(
         controller: widget.controller,
         onThemeChanged: widget.onThemeChanged,
+        fontService: widget.fontService,
       ),
     ];
   }

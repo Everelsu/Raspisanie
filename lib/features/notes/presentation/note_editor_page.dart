@@ -2,7 +2,6 @@ import "dart:convert";
 
 import "package:flutter/material.dart";
 import "package:flutter_quill/flutter_quill.dart";
-import "package:google_fonts/google_fonts.dart";
 
 import "../domain/note_models.dart";
 
@@ -103,7 +102,7 @@ class _NoteEditorPageState extends State<NoteEditorPage> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final cs = theme.colorScheme;
-    final textTheme = GoogleFonts.nunitoTextTheme(theme.textTheme);
+    final textTheme = theme.textTheme;
 
     return PopScope(
       canPop: false,

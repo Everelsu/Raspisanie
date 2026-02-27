@@ -96,10 +96,16 @@ class AppThemes {
     ),
   };
 
-  static ThemeData forKey(String key) {
+  static ThemeData forKey(
+    String key, {
+    TextTheme Function(TextTheme base)? textThemeBuilder,
+  }) {
     final c = _colors[key] ?? _colors["dark"]!;
     final isLight = c.brightness == Brightness.light;
-    final textTheme = _buildTextTheme(c);
+    final baseTextTheme = _buildTextTheme(c);
+    final textTheme = textThemeBuilder == null
+        ? baseTextTheme
+        : textThemeBuilder(baseTextTheme);
 
     final scheme = ColorScheme(
       brightness: c.brightness,

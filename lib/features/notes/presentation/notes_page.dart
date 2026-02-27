@@ -1,7 +1,6 @@
 import "package:flutter/material.dart";
 import "package:flutter/services.dart";
 import "package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart";
-import "package:google_fonts/google_fonts.dart";
 
 import "../../schedule/presentation/schedule_controller.dart";
 import "../data/notes_repository.dart";
@@ -95,7 +94,7 @@ class _NotesPageState extends State<NotesPage>
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final cs = theme.colorScheme;
-    final textTheme = GoogleFonts.nunitoTextTheme(theme.textTheme);
+    final textTheme = theme.textTheme;
     final visible = _filtered(_notes);
     final tags = _collectTags(_notes);
 
@@ -1326,7 +1325,7 @@ class _NotesTrashPageState extends State<NotesTrashPage> {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final textTheme = GoogleFonts.nunitoTextTheme(Theme.of(context).textTheme);
+    final textTheme = Theme.of(context).textTheme;
 
     return Scaffold(
       appBar: AppBar(

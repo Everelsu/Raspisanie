@@ -9,19 +9,23 @@ import "package:url_launcher/url_launcher.dart";
 
 import "../../../app/theme.dart";
 import "../../../core/database/schedule_database.dart";
+import "../../../core/services/font_service.dart";
 import "../../notes/data/backup_import_export_service.dart";
 import "../../schedule/data/preferences_manager.dart";
 import "../../schedule/domain/models.dart";
 import "../../schedule/presentation/schedule_controller.dart";
+import "font_settings_tile.dart";
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({
     super.key,
     required this.controller,
     required this.onThemeChanged,
+    required this.fontService,
   });
   final ScheduleController controller;
   final VoidCallback onThemeChanged;
+  final FontService fontService;
 
   @override
   State<SettingsPage> createState() => _SettingsPageState();
@@ -68,6 +72,8 @@ class _SettingsPageState extends State<SettingsPage> {
             _displayCard(theme),
             const SizedBox(height: 12),
             _fontSizeCard(theme),
+            const SizedBox(height: 12),
+            FontSettingsTile(fontService: widget.fontService),
             const SizedBox(height: 20),
             _section(theme, "ДАННЫЕ"),
             _notesBackupCard(theme),
