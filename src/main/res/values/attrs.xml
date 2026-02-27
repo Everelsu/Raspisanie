@@ -1,8 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<resources>
-    <attr name="settingsCardBg" format="color|reference" />
-    <attr name="switchThumbTint" format="color|reference" />
-    <attr name="switchTrackTint" format="color|reference" />
-    <attr name="lessonNumberBg" format="color|reference" />
-    <attr name="lessonNumberStroke" format="color|reference" />
-</resources>

@@ -1,7 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<shape xmlns:android="http://schemas.android.com/apk/res/android"
-    android:shape="rectangle">
-    <!-- Subtle "depth" background (works in all themes) -->
-    <solid android:color="?attr/settingsCardBg" />
-    <corners android:radius="12dp" />
-</shape>
