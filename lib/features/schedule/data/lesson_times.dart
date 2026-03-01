@@ -7,6 +7,7 @@ class LessonTime {
 
 class LessonTimes {
   static final _custom = <String, Map<int, LessonTime>>{};
+  static const _lunchGapMinutes = 20;
 
   static const _chtotib = <int, LessonTime>{
     1: LessonTime(1, "8:15", "9:15"),
@@ -86,6 +87,11 @@ class LessonTimes {
       final prev = getTime(before, college: college);
       final next = getTime(after, college: college);
       if (prev == null || next == null) return null;
+      final prevEnd = parseTimeToMinutes(prev.endTime);
+      final nextStart = parseTimeToMinutes(next.startTime);
+      final gap = nextStart - prevEnd;
+      if (gap <= 0) return null;
+      if (gap >= _lunchGapMinutes) return null;
       return "Перемена: ${prev.endTime} - ${next.startTime}";
     }
     final breaks = college == "zabgc" ? _breaksZabgc : _breaksChtotib;
@@ -100,7 +106,7 @@ class LessonTimes {
       final currentEnd = parseTimeToMinutes(current.endTime);
       final nextStart = parseTimeToMinutes(next.startTime);
       final gap = nextStart - currentEnd;
-      if (gap >= 25) {
+      if (gap >= _lunchGapMinutes) {
         return "Обед: ${current.endTime} - ${next.startTime}";
       }
       return null;

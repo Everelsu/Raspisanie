@@ -85,12 +85,12 @@ class _SettingsPageState extends State<SettingsPage> {
             _section(theme, "РАСПИСАНИЕ"),
             _displayCard(theme),
             const SizedBox(height: 12),
-            _fontSizeCard(theme),
-            const SizedBox(height: 12),
             _lessonTimesCard(theme),
             const SizedBox(height: 12),
             FontSettingsTile(fontService: widget.fontService),
             const SizedBox(height: 20),
+            _fontSizeCard(theme),
+            const SizedBox(height: 12),
             _section(theme, "ДАННЫЕ"),
             _notesBackupCard(theme),
             const SizedBox(height: 12),
@@ -993,24 +993,6 @@ class _SettingsPageState extends State<SettingsPage> {
               style: theme.textTheme.bodySmall,
             ),
             const SizedBox(height: 6),
-            Text(
-              "Фоновая проверка обновлений: каждые 12 часов",
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
-            ),
-            Text(
-              "Последняя проверка: $checkedText",
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
-            ),
-            Text(
-              "Последнее обновление: $syncedText",
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
-            ),
             const SizedBox(height: 10),
             ...entries.map((entry) {
               final lesson = entry.value;

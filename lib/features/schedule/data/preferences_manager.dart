@@ -66,6 +66,8 @@ class PreferencesManager {
   static const fontSizeNormal = "normal";
   static const fontSizeLarge = "large";
   static const fontSizeExtraLarge = "extra_large";
+  static const defaultLessonTimesRemoteUrl =
+      "https://raw.githubusercontent.com/Everelsu/Raspisanie/master/lesson_times.json";
 
   // --- College ---
   String get college => _prefs.getString("college") ?? collegeDefault;
@@ -213,9 +215,11 @@ class PreferencesManager {
 
   // --- Remote lesson times ---
   String get lessonTimesRemoteUrl =>
-      _prefs.getString("lesson_times_remote_url") ?? "";
+      _normalizeLessonTimesRemoteUrl(
+        _prefs.getString("lesson_times_remote_url") ?? defaultLessonTimesRemoteUrl,
+      );
   set lessonTimesRemoteUrl(String v) =>
-      _prefs.setString("lesson_times_remote_url", v.trim());
+      _prefs.setString("lesson_times_remote_url", _normalizeLessonTimesRemoteUrl(v));
 
   int? get lessonTimesRemoteSyncedAt {
     final ts = _prefs.getInt("lesson_times_remote_synced_at");
@@ -247,6 +251,26 @@ class PreferencesManager {
       _prefs.getString("lesson_times_remote_fingerprint") ?? "";
   set lessonTimesRemoteFingerprint(String value) =>
       _prefs.setString("lesson_times_remote_fingerprint", value);
+
+  String _normalizeLessonTimesRemoteUrl(String input) {
+    final trimmed = input.trim();
+    if (trimmed.isEmpty) return defaultLessonTimesRemoteUrl;
+    final uri = Uri.tryParse(trimmed);
+    if (uri == null) return trimmed;
+
+    // Convert GitHub "blob" URL to raw content URL.
+    if (uri.host.toLowerCase() == "github.com") {
+      final segments = uri.pathSegments;
+      if (segments.length >= 5 && segments[2] == "blob") {
+        final user = segments[0];
+        final repo = segments[1];
+        final branch = segments[3];
+        final filePath = segments.sublist(4).join("/");
+        return "https://raw.githubusercontent.com/$user/$repo/$branch/$filePath";
+      }
+    }
+    return trimmed;
+  }
 
   Map<int, LessonTime>? getCustomLessonTimes(String college) {
     final raw = _prefs.getString("lesson_times_$college");
