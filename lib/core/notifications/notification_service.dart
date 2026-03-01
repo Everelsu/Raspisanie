@@ -19,7 +19,7 @@ class NotificationService {
       requestSoundPermission: true,
     );
     const settings = InitializationSettings(android: android, iOS: ios);
-    await _plugin.initialize(settings);
+    await _plugin.initialize(settings: settings);
     _initialized = true;
 
     if (Platform.isAndroid) {
@@ -57,10 +57,10 @@ class NotificationService {
       const details = NotificationDetails(android: android, iOS: ios);
 
       await _plugin.show(
-        id,
-        "Через $offsetMinutes мин — $subject",
-        "Начало в $time",
-        details,
+        id: id,
+        title: "Через $offsetMinutes мин — $subject",
+        body: "Начало в $time",
+        notificationDetails: details,
       );
     });
   }
@@ -85,10 +85,10 @@ class NotificationService {
     const details = NotificationDetails(android: android, iOS: ios);
 
     await _plugin.show(
-      9999,
-      "Тестовое уведомление",
-      "Уведомления работают!",
-      details,
+      id: 9999,
+      title: "Тестовое уведомление",
+      body: "Уведомления работают!",
+      notificationDetails: details,
     );
   }
 
@@ -107,12 +107,12 @@ class NotificationService {
     const details = NotificationDetails(android: android, iOS: ios);
 
     await _plugin.show(
-      8888,
-      "Расписание изменилось",
-      groupName.isNotEmpty
+      id: 8888,
+      title: "Расписание изменилось",
+      body: groupName.isNotEmpty
           ? "Обновлено расписание для $groupName"
           : "Расписание было обновлено",
-      details,
+      notificationDetails: details,
     );
   }
 
@@ -129,12 +129,12 @@ class NotificationService {
     const ios = DarwinNotificationDetails();
     const details = NotificationDetails(android: android, iOS: ios);
     await _plugin.show(
-      7777,
-      "Сегодня нет пар",
-      groupName.isNotEmpty
+      id: 7777,
+      title: "Сегодня нет пар",
+      body: groupName.isNotEmpty
           ? "Для $groupName сегодня занятий нет"
           : "Сегодня занятий нет",
-      details,
+      notificationDetails: details,
     );
   }
 

@@ -6,6 +6,8 @@ class LessonTime {
 }
 
 class LessonTimes {
+  static final _custom = <String, Map<int, LessonTime>>{};
+
   static const _chtotib = <int, LessonTime>{
     1: LessonTime(1, "8:15", "9:15"),
     2: LessonTime(2, "9:25", "10:25"),
@@ -50,8 +52,25 @@ class LessonTimes {
     (5, 6): "Перемена: 17:35 - 17:45",
   };
 
-  static Map<int, LessonTime> _forCollege(String college) =>
+  static Map<int, LessonTime> _defaultForCollege(String college) =>
       college == "zabgc" ? _zabgc : _chtotib;
+
+  static Map<int, LessonTime> _forCollege(String college) =>
+      _custom[college] ?? _defaultForCollege(college);
+
+  static Map<int, LessonTime> timesForCollege(String college) =>
+      Map<int, LessonTime>.from(_forCollege(college));
+
+  static void setCustomTimes({
+    required String college,
+    required Map<int, LessonTime> times,
+  }) {
+    _custom[college] = Map<int, LessonTime>.from(times);
+  }
+
+  static void clearCustomTimes(String college) {
+    _custom.remove(college);
+  }
 
   static LessonTime? getTime(int lessonNumber, {String college = "chtotib"}) =>
       _forCollege(college)[lessonNumber];
@@ -63,11 +82,29 @@ class LessonTimes {
 
   static String? getBreakText(int before, int after,
       {String college = "chtotib"}) {
+    if (_custom.containsKey(college)) {
+      final prev = getTime(before, college: college);
+      final next = getTime(after, college: college);
+      if (prev == null || next == null) return null;
+      return "Перемена: ${prev.endTime} - ${next.startTime}";
+    }
     final breaks = college == "zabgc" ? _breaksZabgc : _breaksChtotib;
     return breaks[(before, after)];
   }
 
   static String? getLunchText(int afterLesson, {String college = "chtotib"}) {
+    if (_custom.containsKey(college)) {
+      final current = getTime(afterLesson, college: college);
+      final next = getTime(afterLesson + 1, college: college);
+      if (current == null || next == null) return null;
+      final currentEnd = parseTimeToMinutes(current.endTime);
+      final nextStart = parseTimeToMinutes(next.startTime);
+      final gap = nextStart - currentEnd;
+      if (gap >= 25) {
+        return "Обед: ${current.endTime} - ${next.startTime}";
+      }
+      return null;
+    }
     final lunches = college == "zabgc" ? _lunchesZabgc : _lunchesChtotib;
     return lunches[afterLesson];
   }

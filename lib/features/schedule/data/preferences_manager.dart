@@ -1,4 +1,34 @@
+import "dart:convert";
+
 import "package:shared_preferences/shared_preferences.dart";
+
+import "lesson_times.dart";
+
+class CollegeSource {
+  const CollegeSource({
+    required this.id,
+    required this.name,
+    required this.baseUrl,
+    this.builtIn = false,
+  });
+
+  final String id;
+  final String name;
+  final String baseUrl;
+  final bool builtIn;
+
+  Map<String, dynamic> toJson() => {
+        "id": id,
+        "name": name,
+        "baseUrl": baseUrl,
+      };
+
+  factory CollegeSource.fromJson(Map<String, dynamic> json) => CollegeSource(
+        id: (json["id"] ?? "").toString(),
+        name: (json["name"] ?? "").toString(),
+        baseUrl: (json["baseUrl"] ?? "").toString(),
+      );
+}
 
 class PreferencesManager {
   PreferencesManager(this._prefs);
@@ -16,6 +46,21 @@ class PreferencesManager {
   static const themeGray = "gray";
   static const themePurple = "purple";
   static const themeOrange = "orange";
+
+  static const builtInCollegeSources = <String, CollegeSource>{
+    collegeDefault: CollegeSource(
+      id: collegeDefault,
+      name: "ЧТОТиБ",
+      baseUrl: "https://www.chtotib.ru/schedule_gl/",
+      builtIn: true,
+    ),
+    collegeZabgc: CollegeSource(
+      id: collegeZabgc,
+      name: "ЗабГК",
+      baseUrl: "https://bbb.zabgc.ru/",
+      builtIn: true,
+    ),
+  };
 
   static const fontSizeSmall = "small";
   static const fontSizeNormal = "normal";
@@ -165,4 +210,125 @@ class PreferencesManager {
 
   bool get notesDarkCards => _prefs.getBool("notes_dark_cards") ?? false;
   set notesDarkCards(bool v) => _prefs.setBool("notes_dark_cards", v);
+
+  // --- Remote lesson times ---
+  String get lessonTimesRemoteUrl =>
+      _prefs.getString("lesson_times_remote_url") ?? "";
+  set lessonTimesRemoteUrl(String v) =>
+      _prefs.setString("lesson_times_remote_url", v.trim());
+
+  int? get lessonTimesRemoteSyncedAt {
+    final ts = _prefs.getInt("lesson_times_remote_synced_at");
+    return ts == null || ts <= 0 ? null : ts;
+  }
+
+  set lessonTimesRemoteSyncedAt(int? value) {
+    if (value == null || value <= 0) {
+      _prefs.remove("lesson_times_remote_synced_at");
+      return;
+    }
+    _prefs.setInt("lesson_times_remote_synced_at", value);
+  }
+
+  int? get lessonTimesRemoteCheckedAt {
+    final ts = _prefs.getInt("lesson_times_remote_checked_at");
+    return ts == null || ts <= 0 ? null : ts;
+  }
+
+  set lessonTimesRemoteCheckedAt(int? value) {
+    if (value == null || value <= 0) {
+      _prefs.remove("lesson_times_remote_checked_at");
+      return;
+    }
+    _prefs.setInt("lesson_times_remote_checked_at", value);
+  }
+
+  String get lessonTimesRemoteFingerprint =>
+      _prefs.getString("lesson_times_remote_fingerprint") ?? "";
+  set lessonTimesRemoteFingerprint(String value) =>
+      _prefs.setString("lesson_times_remote_fingerprint", value);
+
+  Map<int, LessonTime>? getCustomLessonTimes(String college) {
+    final raw = _prefs.getString("lesson_times_$college");
+    if (raw == null || raw.isEmpty) return null;
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map<String, dynamic>) return null;
+      final out = <int, LessonTime>{};
+      for (final entry in decoded.entries) {
+        final lessonNumber = int.tryParse(entry.key);
+        final value = entry.value;
+        if (lessonNumber == null || value is! Map<String, dynamic>) continue;
+        final start = value["start"] as String?;
+        final end = value["end"] as String?;
+        if (start == null || end == null) continue;
+        out[lessonNumber] = LessonTime(lessonNumber, start, end);
+      }
+      return out.isEmpty ? null : out;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  void setCustomLessonTimes(String college, Map<int, LessonTime> times) {
+    final serializable = <String, Map<String, String>>{};
+    final keys = times.keys.toList()..sort();
+    for (final key in keys) {
+      final t = times[key];
+      if (t == null) continue;
+      serializable["$key"] = {
+        "start": t.startTime,
+        "end": t.endTime,
+      };
+    }
+    _prefs.setString("lesson_times_$college", jsonEncode(serializable));
+  }
+
+  void clearCustomLessonTimes(String college) {
+    _prefs.remove("lesson_times_$college");
+  }
+
+  List<CollegeSource> get customCollegeSources {
+    final raw = _prefs.getString("custom_college_sources");
+    if (raw == null || raw.isEmpty) return const [];
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is! List) return const [];
+      final out = <CollegeSource>[];
+      for (final e in decoded) {
+        if (e is! Map<String, dynamic>) continue;
+        final source = CollegeSource.fromJson(e);
+        if (source.id.isEmpty || source.name.isEmpty || source.baseUrl.isEmpty) {
+          continue;
+        }
+        out.add(source);
+      }
+      return out;
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  List<CollegeSource> get allCollegeSources {
+    return [
+      ...builtInCollegeSources.values,
+      ...customCollegeSources,
+    ];
+  }
+
+  Map<String, String> get customCollegeBaseUrls {
+    final map = <String, String>{};
+    for (final s in customCollegeSources) {
+      map[s.id] = s.baseUrl;
+    }
+    return map;
+  }
+
+  void saveCustomCollegeSources(List<CollegeSource> sources) {
+    final safe = sources
+        .where((s) => !builtInCollegeSources.containsKey(s.id))
+        .map((s) => s.toJson())
+        .toList();
+    _prefs.setString("custom_college_sources", jsonEncode(safe));
+  }
 }

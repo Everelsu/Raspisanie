@@ -261,7 +261,12 @@ class _DayCard extends StatelessWidget {
             ListTile(
               leading: Icon(Icons.share_outlined, color: theme.colorScheme.primary),
               title: const Text("Поделиться"),
-              onTap: () { Navigator.pop(ctx); Share.share(_formatDayAsText(items)); },
+              onTap: () {
+                Navigator.pop(ctx);
+                SharePlus.instance.share(
+                  ShareParams(text: _formatDayAsText(items)),
+                );
+              },
             ),
             ListTile(
               leading: Icon(Icons.copy_outlined, color: theme.colorScheme.primary),
@@ -306,9 +311,11 @@ class _DayCard extends StatelessWidget {
       final dir = await getTemporaryDirectory();
       final file = File("${dir.path}/$fileName");
       await file.writeAsBytes(pngBytes, flush: true);
-      await Share.shareXFiles(
-        [XFile(file.path, mimeType: "image/png", name: fileName)],
-        text: text,
+      await SharePlus.instance.share(
+        ShareParams(
+          files: [XFile(file.path, mimeType: "image/png", name: fileName)],
+          text: text,
+        ),
       );
     } catch (_) {
       if (context.mounted) {

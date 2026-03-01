@@ -33,6 +33,7 @@ class ExpressScheduleRepository {
   final Map<String, Future<List<DaySchedule>>> _inflightSchedule = {};
   final Set<String> _backgroundRefreshing = {};
   final Map<String, DateTime> _lastBackgroundRefresh = {};
+  Map<String, String> _customBaseUrls = const {};
   static const _backgroundRefreshThrottle = Duration(minutes: 2);
 
   static const baseUrls = <String, String>{
@@ -40,8 +41,12 @@ class ExpressScheduleRepository {
     "zabgc": "https://bbb.zabgc.ru/",
   };
 
+  void setCustomBaseUrls(Map<String, String> urls) {
+    _customBaseUrls = Map<String, String>.from(urls);
+  }
+
   String baseUrlFor(String college) =>
-      baseUrls[college] ?? baseUrls["chtotib"]!;
+      _customBaseUrls[college] ?? baseUrls[college] ?? baseUrls["chtotib"]!;
 
   Future<List<Group>> fetchGroups({
     required String college,

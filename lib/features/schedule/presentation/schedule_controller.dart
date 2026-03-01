@@ -9,10 +9,13 @@ import "../data/express_schedule_repository.dart";
 import "../data/groups_cache.dart";
 import "../data/lesson_times.dart";
 import "../data/preferences_manager.dart";
+import "../data/remote_lesson_times_service.dart";
 import "../data/schedule_cache.dart";
 import "../domain/models.dart";
 
 class ScheduleController extends ChangeNotifier {
+  static const Duration _remoteLessonTimesInterval = Duration(hours: 12);
+
   ScheduleController({required SharedPreferences prefs})
       : _prefsManager = PreferencesManager(prefs) {
     final sCache = ScheduleCache(prefs);
@@ -21,13 +24,18 @@ class ScheduleController extends ChangeNotifier {
       scheduleCache: sCache,
       groupsCache: gCache,
     );
+    _remoteLessonTimes = RemoteLessonTimesService();
+    _applyCustomBaseUrls();
+    _applyCustomLessonTimes();
   }
 
   Timer? _autoRefreshTimer;
+  Timer? _remoteLessonTimesTimer;
   String? _lastNoLessonsNotifyDate;
 
   final PreferencesManager _prefsManager;
   late final ExpressScheduleRepository _repository;
+  late final RemoteLessonTimesService _remoteLessonTimes;
 
   PreferencesManager get prefs => _prefsManager;
   ExpressScheduleRepository get repository => _repository;
@@ -45,6 +53,8 @@ class ScheduleController extends ChangeNotifier {
   String get college => _prefsManager.college;
 
   Future<void> init() async {
+    await _syncRemoteLessonTimesIfNeeded(silent: true);
+    _startRemoteLessonTimesAutoSync();
     if (_prefsManager.isGroupSelected) {
       selectedGroup = Group(
         id: -1,
@@ -167,6 +177,14 @@ class ScheduleController extends ChangeNotifier {
     _autoRefreshTimer = null;
   }
 
+  void _startRemoteLessonTimesAutoSync() {
+    _remoteLessonTimesTimer?.cancel();
+    _remoteLessonTimesTimer = Timer.periodic(
+      _remoteLessonTimesInterval,
+      (_) => _syncRemoteLessonTimesIfNeeded(silent: true),
+    );
+  }
+
   Future<void> loadStatistics() async {
     final group = selectedGroup;
     if (group == null) return;
@@ -213,6 +231,11 @@ class ScheduleController extends ChangeNotifier {
     statistics = null;
     _prefsManager.selectedGroupFile = "";
     _prefsManager.selectedGroupName = "";
+    notifyListeners();
+  }
+
+  void refreshCollegeSources() {
+    _applyCustomBaseUrls();
     notifyListeners();
   }
 
@@ -308,15 +331,93 @@ class ScheduleController extends ChangeNotifier {
     if (msg.contains("HTTP 4")) {
       return "Страница не найдена";
     }
+    if (msg.contains("FormatException")) {
+      return "Некорректный формат файла времени пар";
+    }
     if (msg.contains("StateError")) {
       return msg.replaceAll("StateError: ", "").replaceAll("Bad state: ", "");
     }
     return "Ошибка загрузки данных";
   }
 
+  void _applyCustomLessonTimes() {
+    for (final college in const [
+      PreferencesManager.collegeDefault,
+      PreferencesManager.collegeZabgc,
+    ]) {
+      final custom = _prefsManager.getCustomLessonTimes(college);
+      if (custom == null || custom.isEmpty) {
+        LessonTimes.clearCustomTimes(college);
+      } else {
+        LessonTimes.setCustomTimes(college: college, times: custom);
+      }
+    }
+  }
+
+  void _applyCustomBaseUrls() {
+    _repository.setCustomBaseUrls(_prefsManager.customCollegeBaseUrls);
+  }
+
+  Future<bool> refreshLessonTimesFromRemote({bool silent = false}) async {
+    return _syncRemoteLessonTimesIfNeeded(force: true, silent: silent);
+  }
+
+  Future<bool> _syncRemoteLessonTimesIfNeeded({
+    bool force = false,
+    bool silent = false,
+  }) async {
+    final url = _prefsManager.lessonTimesRemoteUrl.trim();
+    if (url.isEmpty) return false;
+    if (!url.startsWith("http://") && !url.startsWith("https://")) {
+      if (!silent) {
+        error = "Некорректная ссылка на файл времени пар";
+        notifyListeners();
+      }
+      return false;
+    }
+    final nowMs = DateTime.now().millisecondsSinceEpoch;
+    final lastCheckedAt = _prefsManager.lessonTimesRemoteCheckedAt;
+    if (!force &&
+        lastCheckedAt != null &&
+        nowMs - lastCheckedAt < _remoteLessonTimesInterval.inMilliseconds) {
+      return true;
+    }
+    _prefsManager.lessonTimesRemoteCheckedAt = nowMs;
+    try {
+      final data = await _remoteLessonTimes.fetch(url);
+      final previousFingerprint = _prefsManager.lessonTimesRemoteFingerprint;
+      final isChanged = data.fingerprint != previousFingerprint;
+      if (!isChanged && !force) {
+        return true;
+      }
+      for (final entry in data.byCollege.entries) {
+        if (entry.value.isEmpty) continue;
+        _prefsManager.setCustomLessonTimes(entry.key, entry.value);
+        LessonTimes.setCustomTimes(college: entry.key, times: entry.value);
+      }
+      _prefsManager.lessonTimesRemoteFingerprint = data.fingerprint;
+      _prefsManager.lessonTimesRemoteSyncedAt =
+          DateTime.now().millisecondsSinceEpoch;
+      if (selectedGroup != null) {
+        await loadSchedule(useCache: true);
+      } else {
+        notifyListeners();
+      }
+      return true;
+    } catch (e) {
+      if (!silent) {
+        error = _humanReadableError(e);
+        notifyListeners();
+      }
+      return false;
+    }
+  }
+
   @override
   void dispose() {
     stopAutoRefresh();
+    _remoteLessonTimesTimer?.cancel();
+    _remoteLessonTimesTimer = null;
     _repository.dispose();
     super.dispose();
   }

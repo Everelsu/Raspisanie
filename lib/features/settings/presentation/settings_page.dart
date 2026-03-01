@@ -11,6 +11,7 @@ import "../../../app/theme.dart";
 import "../../../core/database/schedule_database.dart";
 import "../../../core/services/font_service.dart";
 import "../../notes/data/backup_import_export_service.dart";
+import "../../schedule/data/lesson_times.dart";
 import "../../schedule/data/preferences_manager.dart";
 import "../../schedule/domain/models.dart";
 import "../../schedule/presentation/schedule_controller.dart";
@@ -43,11 +44,24 @@ class _SettingsPageState extends State<SettingsPage> {
   bool _notesBackupBusy = false;
   int? _lastNotesBackupAt;
   final _backupService = BackupImportExportService();
+  Map<int, LessonTime> _editingLessonTimes = {};
+  bool _lessonTimesDirty = false;
+
+  void _dismissKeyboard() {
+    FocusManager.instance.primaryFocus?.unfocus();
+  }
 
   @override
   void initState() {
     super.initState();
     _loadDbSettings();
+    _loadLessonTimesForSelectedCollege();
+  }
+
+  @override
+  void dispose() {
+    _dismissKeyboard();
+    super.dispose();
   }
 
   @override
@@ -72,6 +86,8 @@ class _SettingsPageState extends State<SettingsPage> {
             _displayCard(theme),
             const SizedBox(height: 12),
             _fontSizeCard(theme),
+            const SizedBox(height: 12),
+            _lessonTimesCard(theme),
             const SizedBox(height: 12),
             FontSettingsTile(fontService: widget.fontService),
             const SizedBox(height: 20),
@@ -209,20 +225,22 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   Widget _collegeCard(ThemeData theme) {
-    const colleges = [
-      ("ЧТОТиБ", "chtotib"),
-      ("ЗабГК", "zabgc"),
-    ];
+    final sources = prefs.allCollegeSources;
+    final selectedCollege = ctrl.college;
+    final hasSelected = sources.any((s) => s.id == selectedCollege);
+    final initialValue = hasSelected
+        ? selectedCollege
+        : (sources.isNotEmpty ? sources.first.id : PreferencesManager.collegeDefault);
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text("Техникум", style: theme.textTheme.bodySmall),
+            Text("Источник расписания", style: theme.textTheme.bodySmall),
             const SizedBox(height: 8),
             DropdownButtonFormField<String>(
-              initialValue: ctrl.college,
+              initialValue: initialValue,
               decoration: InputDecoration(
                 filled: true,
                 fillColor: theme.scaffoldBackgroundColor,
@@ -234,23 +252,328 @@ class _SettingsPageState extends State<SettingsPage> {
                     const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               ),
               dropdownColor: theme.cardTheme.color,
-              items: colleges
-                  .map((c) => DropdownMenuItem(
-                        value: c.$2,
-                        child: Text(c.$1, style: theme.textTheme.bodyLarge),
+              items: sources
+                  .map((source) => DropdownMenuItem(
+                        value: source.id,
+                        child: Text(source.name, style: theme.textTheme.bodyLarge),
                       ))
                   .toList(),
               onChanged: (v) {
                 if (v != null) {
                   ctrl.setCollege(v);
                   _loadGroupsAsync();
+                  _loadLessonTimesForSelectedCollege();
                 }
               },
+            ),
+            const SizedBox(height: 8),
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton.icon(
+                onPressed: () => _showCollegeSourcesSheet(theme),
+                icon: const Icon(Icons.link_rounded, size: 18),
+                label: const Text("Управлять ссылками"),
+              ),
             ),
           ],
         ),
       ),
     );
+  }
+
+  Future<void> _showCollegeSourcesSheet(ThemeData theme) async {
+    _dismissKeyboard();
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: theme.cardTheme.color,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (ctx, setSheetState) {
+            final sources = prefs.allCollegeSources;
+            return SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text("Ссылки Express", style: theme.textTheme.titleLarge),
+                    const SizedBox(height: 4),
+                    Text(
+                      "Можно добавить свой источник и выбрать его в списке техникумов.",
+                      style: theme.textTheme.bodySmall,
+                    ),
+                    const SizedBox(height: 12),
+                    ConstrainedBox(
+                      constraints: BoxConstraints(
+                        maxHeight: MediaQuery.of(context).size.height * 0.45,
+                      ),
+                      child: ListView.separated(
+                        shrinkWrap: true,
+                        itemCount: sources.length,
+                        separatorBuilder: (_, __) => const SizedBox(height: 6),
+                        itemBuilder: (_, i) {
+                          final s = sources[i];
+                          final selected = ctrl.college == s.id;
+                          return ListTile(
+                            dense: true,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              side: BorderSide(
+                                color: selected
+                                    ? theme.colorScheme.primary
+                                    : theme.colorScheme.outlineVariant,
+                              ),
+                            ),
+                            title: Text(s.name),
+                            subtitle: Text(
+                              s.baseUrl,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            leading: Icon(
+                              s.builtIn
+                                  ? Icons.lock_outline_rounded
+                                  : Icons.link_rounded,
+                              size: 18,
+                              color: s.builtIn
+                                  ? theme.colorScheme.onSurfaceVariant
+                                  : theme.colorScheme.primary,
+                            ),
+                            trailing: s.builtIn
+                                ? null
+                                : IconButton(
+                                    tooltip: "Удалить",
+                                    onPressed: () {
+                                      final updated = prefs.customCollegeSources
+                                          .where((e) => e.id != s.id)
+                                          .toList();
+                                      prefs.saveCustomCollegeSources(updated);
+                                      ctrl.refreshCollegeSources();
+                                      if (ctrl.college == s.id) {
+                                        ctrl.setCollege(
+                                            PreferencesManager.collegeDefault);
+                                        _loadGroupsAsync();
+                                      }
+                                      setSheetState(() {});
+                                      setState(() {});
+                                    },
+                                    icon: const Icon(Icons.delete_outline_rounded),
+                                  ),
+                            onTap: () {
+                              ctrl.setCollege(s.id);
+                              _loadGroupsAsync();
+                              _loadLessonTimesForSelectedCollege();
+                              setSheetState(() {});
+                              setState(() {});
+                            },
+                          );
+                        },
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    SizedBox(
+                      width: double.infinity,
+                      child: FilledButton.tonalIcon(
+                        onPressed: () async {
+                          _dismissKeyboard();
+                          final added = await _showAddCollegeSourceDialog();
+                          if (!added || !mounted || !ctx.mounted) return;
+                          ctrl.refreshCollegeSources();
+                          setSheetState(() {});
+                          setState(() {});
+                        },
+                        icon: const Icon(Icons.add_link_rounded),
+                        label: const Text("Добавить ссылку"),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Future<bool> _showAddCollegeSourceDialog() async {
+    _dismissKeyboard();
+    var name = "";
+    var rawUrl = "";
+    String? validationError;
+    final added = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) {
+        final theme = Theme.of(ctx);
+        return StatefulBuilder(
+          builder: (ctx, setDialogState) {
+            return Padding(
+              padding: EdgeInsets.fromLTRB(
+                16,
+                12,
+                16,
+                16 + MediaQuery.viewInsetsOf(ctx).bottom,
+              ),
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text("Новый источник", style: theme.textTheme.titleLarge),
+                    const SizedBox(height: 4),
+                    Text(
+                      "Добавь только название и ссылку. Остальное создастся автоматически.",
+                      style: theme.textTheme.bodySmall,
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      autofocus: true,
+                      textInputAction: TextInputAction.next,
+                      onChanged: (value) {
+                        setDialogState(() {
+                          name = value;
+                          validationError = null;
+                        });
+                      },
+                      decoration: const InputDecoration(
+                        labelText: "Название",
+                        hintText: "Мой колледж",
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    TextField(
+                      keyboardType: TextInputType.url,
+                      textInputAction: TextInputAction.done,
+                      onChanged: (value) {
+                        setDialogState(() {
+                          rawUrl = value;
+                          validationError = null;
+                        });
+                      },
+                      onSubmitted: (_) {
+                        FocusManager.instance.primaryFocus?.unfocus();
+                      },
+                      decoration: const InputDecoration(
+                        labelText: "Ссылка",
+                        hintText: "https://example.ru/schedule/",
+                      ),
+                    ),
+                    if (validationError != null) ...[
+                      const SizedBox(height: 8),
+                      Text(
+                        validationError!,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.error,
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 14),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: () {
+                              _dismissKeyboard();
+                              Navigator.pop(ctx, false);
+                            },
+                            child: const Text("Отмена"),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: FilledButton(
+                            onPressed: () {
+                              _dismissKeyboard();
+                              final safeName = name.trim();
+                              final safeId = _buildUniqueCollegeId(safeName);
+                              final safeUrl = _normalizeBaseUrl(rawUrl);
+                              if (safeName.isEmpty) {
+                                setDialogState(() {
+                                  validationError = "Введи название источника";
+                                });
+                                return;
+                              }
+                              if (safeId.isEmpty) {
+                                setDialogState(() {
+                                  validationError =
+                                      "Не удалось создать ID источника";
+                                });
+                                return;
+                              }
+                              if (!_isValidHttpUrl(safeUrl)) {
+                                setDialogState(() {
+                                  validationError =
+                                      "Проверь ссылку: нужен http/https и корректный домен";
+                                });
+                                return;
+                              }
+                              final updated = [
+                                ...prefs.customCollegeSources,
+                                CollegeSource(
+                                  id: safeId,
+                                  name: safeName,
+                                  baseUrl: safeUrl,
+                                ),
+                              ];
+                              prefs.saveCustomCollegeSources(updated);
+                              Navigator.pop(ctx, true);
+                            },
+                            child: const Text("Добавить"),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+    return added == true;
+  }
+
+  String _normalizeBaseUrl(String raw) {
+    final trimmed = raw.trim();
+    if (trimmed.isEmpty) return "";
+    return trimmed.endsWith("/") ? trimmed : "$trimmed/";
+  }
+
+  bool _isValidHttpUrl(String value) {
+    if (value.isEmpty) return false;
+    final uri = Uri.tryParse(value);
+    if (uri == null) return false;
+    return uri.hasScheme &&
+        (uri.scheme == "http" || uri.scheme == "https") &&
+        uri.hasAuthority;
+  }
+
+  String _buildUniqueCollegeId(String name) {
+    var base = name
+        .trim()
+        .toLowerCase()
+        .replaceAll(RegExp(r"[^a-z0-9]+"), "_")
+        .replaceAll(RegExp(r"_+"), "_")
+        .replaceAll(RegExp(r"^_+|_+$"), "");
+    if (base.isEmpty) base = "college";
+    final taken = prefs.allCollegeSources.map((s) => s.id).toSet();
+    if (!taken.contains(base)) return base;
+    var i = 2;
+    while (taken.contains("${base}_$i")) {
+      i++;
+    }
+    return "${base}_$i";
   }
 
   Widget _groupCard(ThemeData theme) {
@@ -380,6 +703,7 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   void _showGroupBottomSheet(ThemeData theme) {
+    _dismissKeyboard();
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -393,6 +717,7 @@ class _SettingsPageState extends State<SettingsPage> {
         selected: ctrl.selectedGroup,
         isTeacher: prefs.isTeacherMode,
         onSelect: (g) {
+          _dismissKeyboard();
           Navigator.pop(ctx);
           ctrl.selectGroup(g);
           ctrl.loadSchedule();
@@ -541,6 +866,208 @@ class _SettingsPageState extends State<SettingsPage> {
                   .map((l) => Text(l,
                       style: theme.textTheme.bodySmall?.copyWith(fontSize: 10)))
                   .toList(),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _loadLessonTimesForSelectedCollege() {
+    final college = ctrl.college;
+    final custom = prefs.getCustomLessonTimes(college);
+    final source = custom == null || custom.isEmpty
+        ? LessonTimes.timesForCollege(college)
+        : custom;
+    final sortedKeys = source.keys.toList()..sort();
+    final normalized = <int, LessonTime>{};
+    for (final key in sortedKeys) {
+      final t = source[key];
+      if (t == null) continue;
+      normalized[key] = LessonTime(key, t.startTime, t.endTime);
+    }
+    if (!mounted) return;
+    setState(() {
+      _editingLessonTimes = normalized;
+      _lessonTimesDirty = false;
+    });
+  }
+
+  Future<void> _pickLessonTime({
+    required int lessonNumber,
+    required bool start,
+  }) async {
+    final current = _editingLessonTimes[lessonNumber];
+    if (current == null) return;
+    final initial = _parseTimeOfDay(start ? current.startTime : current.endTime) ??
+        const TimeOfDay(hour: 8, minute: 0);
+    final picked = await showTimePicker(
+      context: context,
+      initialTime: initial,
+      builder: (context, child) {
+        final theme = Theme.of(context);
+        return Theme(
+          data: theme.copyWith(
+            colorScheme: theme.colorScheme,
+          ),
+          child: child ?? const SizedBox.shrink(),
+        );
+      },
+    );
+    if (picked == null) return;
+    final newTime = _formatTimeOfDay(picked);
+    setState(() {
+      _editingLessonTimes[lessonNumber] = LessonTime(
+        lessonNumber,
+        start ? newTime : current.startTime,
+        start ? current.endTime : newTime,
+      );
+      _lessonTimesDirty = true;
+    });
+  }
+
+  TimeOfDay? _parseTimeOfDay(String value) {
+    final parts = value.split(":");
+    if (parts.length != 2) return null;
+    final hour = int.tryParse(parts[0]);
+    final minute = int.tryParse(parts[1]);
+    if (hour == null || minute == null) return null;
+    if (hour < 0 || hour > 23 || minute < 0 || minute > 59) return null;
+    return TimeOfDay(hour: hour, minute: minute);
+  }
+
+  String _formatTimeOfDay(TimeOfDay t) {
+    final h = t.hour.toString().padLeft(2, "0");
+    final m = t.minute.toString().padLeft(2, "0");
+    return "$h:$m";
+  }
+
+  Future<void> _saveLessonTimes() async {
+    final college = ctrl.college;
+    prefs.setCustomLessonTimes(college, _editingLessonTimes);
+    LessonTimes.setCustomTimes(college: college, times: _editingLessonTimes);
+    setState(() => _lessonTimesDirty = false);
+    await ctrl.loadSchedule(useCache: true);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text("Время пар сохранено")),
+    );
+  }
+
+  Future<void> _resetLessonTimes() async {
+    final college = ctrl.college;
+    prefs.clearCustomLessonTimes(college);
+    LessonTimes.clearCustomTimes(college);
+    _loadLessonTimesForSelectedCollege();
+    await ctrl.loadSchedule(useCache: true);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text("Возвращено стандартное время пар")),
+    );
+  }
+
+  Widget _lessonTimesCard(ThemeData theme) {
+    final entries = _editingLessonTimes.entries.toList()
+      ..sort((a, b) => a.key.compareTo(b.key));
+    final collegeName = ctrl.college == PreferencesManager.collegeZabgc
+        ? "ЗабГК"
+        : "ЧТОТиБ";
+    final checkedAt = prefs.lessonTimesRemoteCheckedAt;
+    final syncedAt = prefs.lessonTimesRemoteSyncedAt;
+    final checkedText = checkedAt == null
+        ? "никогда"
+        : DateTime.fromMillisecondsSinceEpoch(checkedAt).toString();
+    final syncedText = syncedAt == null
+        ? "никогда"
+        : DateTime.fromMillisecondsSinceEpoch(syncedAt).toString();
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text("Время пар", style: theme.textTheme.bodyLarge),
+            const SizedBox(height: 4),
+            Text(
+              "Для: $collegeName. Нажми на время, чтобы изменить.",
+              style: theme.textTheme.bodySmall,
+            ),
+            const SizedBox(height: 6),
+            Text(
+              "Фоновая проверка обновлений: каждые 12 часов",
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+            Text(
+              "Последняя проверка: $checkedText",
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+            Text(
+              "Последнее обновление: $syncedText",
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(height: 10),
+            ...entries.map((entry) {
+              final lesson = entry.value;
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Row(
+                  children: [
+                    SizedBox(
+                      width: 58,
+                      child: Text(
+                        "${entry.key} пара",
+                        style: theme.textTheme.bodyMedium
+                            ?.copyWith(fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () => _pickLessonTime(
+                          lessonNumber: entry.key,
+                          start: true,
+                        ),
+                        child: Text(lesson.startTime),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Text("—", style: theme.textTheme.bodyMedium),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () => _pickLessonTime(
+                          lessonNumber: entry.key,
+                          start: false,
+                        ),
+                        child: Text(lesson.endTime),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }),
+            const SizedBox(height: 4),
+            Row(
+              children: [
+                Expanded(
+                  child: FilledButton(
+                    onPressed: _lessonTimesDirty ? _saveLessonTimes : null,
+                    child: const Text("Сохранить"),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: FilledButton.tonal(
+                    onPressed: _resetLessonTimes,
+                    child: const Text("Сбросить"),
+                  ),
+                ),
+              ],
             ),
           ],
         ),
@@ -1040,10 +1567,12 @@ class _SettingsPageState extends State<SettingsPage> {
       final ts = DateTime.now().millisecondsSinceEpoch;
       final outPath = "${dir.path}/raspiflutter_db_$ts.db";
       await source.copy(outPath);
-      await Share.shareXFiles(
-        [XFile(outPath)],
-        subject: "Экспорт БД Raspiflutter",
-        text: "Резервная копия базы данных",
+      await SharePlus.instance.share(
+        ShareParams(
+          files: [XFile(outPath)],
+          subject: "Экспорт БД Raspisanie",
+          text: "Резервная копия базы данных",
+        ),
       );
       await ScheduleDatabase.instance
           .saveDatabaseSetting("db_last_backup_at", ts.toString());

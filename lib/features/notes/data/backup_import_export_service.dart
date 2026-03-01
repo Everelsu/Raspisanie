@@ -19,10 +19,12 @@ class BackupImportExportService {
       "${dir.path}/raspiflutter_notes_${DateTime.now().millisecondsSinceEpoch}.json",
     );
     await file.writeAsString(json, flush: true);
-    await Share.shareXFiles(
-      [XFile(file.path)],
-      subject: "Экспорт заметок Raspiflutter",
-      text: "Резервная копия заметок",
+    await SharePlus.instance.share(
+      ShareParams(
+        files: [XFile(file.path)],
+        subject: "Экспорт заметок Raspisanie",
+        text: "Резервная копия заметок",
+      ),
     );
   }
 
