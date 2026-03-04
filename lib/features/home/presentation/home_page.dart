@@ -219,32 +219,8 @@ class _HomePageState extends State<HomePage> {
                     ),
                   ],
                 ),
-                const SizedBox(height: 12),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text("Нет пар сегодня",
-                              style: theme.textTheme.bodyLarge),
-                          Text("Напоминать, если занятий на сегодня нет",
-                              style: theme.textTheme.bodySmall),
-                        ],
-                      ),
-                    ),
-                    Switch(
-                      value: prefs.notifyNoLessons,
-                      onChanged: (v) {
-                        setSheetState(() => prefs.notifyNoLessons = v);
-                        setState(() {});
-                      },
-                    ),
-                  ],
-                ),
                 const SizedBox(height: 16),
-                Text("За сколько минут", style: theme.textTheme.bodyMedium),
+                Text("За сколько минут до пары", style: theme.textTheme.bodyMedium),
                 const SizedBox(height: 8),
                 Row(
                   children: [5, 10, 15, 30].map((m) {

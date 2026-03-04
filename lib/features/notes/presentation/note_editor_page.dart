@@ -1,7 +1,8 @@
 import "dart:convert";
 
+import "package:appflowy_editor/appflowy_editor.dart";
 import "package:flutter/material.dart";
-import "package:flutter_quill/flutter_quill.dart";
+import "package:google_fonts/google_fonts.dart";
 
 import "../domain/note_models.dart";
 
@@ -40,9 +41,8 @@ class _NoteEditorPageState extends State<NoteEditorPage> {
 
   final _titleController = TextEditingController();
   final _tagsController = TextEditingController();
-  final _focusNode = FocusNode();
   final _scrollController = ScrollController();
-  late final QuillController _quillController;
+  late final EditorState _editorState;
 
   final List<NoteChecklistItem> _checklist = [];
 
@@ -52,7 +52,6 @@ class _NoteEditorPageState extends State<NoteEditorPage> {
   String? _linkedDate;
   int? _linkedLesson;
   bool _saving = false;
-  bool _toolbarExpanded = false;
 
   @override
   void initState() {
@@ -67,35 +66,44 @@ class _NoteEditorPageState extends State<NoteEditorPage> {
     _linkedDate = initial?.scheduleDate;
     _linkedLesson = initial?.lessonNumber;
     _checklist.addAll(initial?.checklist ?? const []);
-    _quillController = _initQuillController(initial?.content ?? "");
+    _editorState = _initEditorState(initial?.content ?? "");
   }
 
   @override
   void dispose() {
     _titleController.dispose();
     _tagsController.dispose();
-    _focusNode.dispose();
     _scrollController.dispose();
-    _quillController.dispose();
+    _editorState.dispose();
     super.dispose();
   }
 
-  QuillController _initQuillController(String content) {
-    if (content.isEmpty) return QuillController.basic();
+  EditorState _initEditorState(String content) {
+    if (content.trim().isEmpty) {
+      return EditorState.blank(withInitialText: true);
+    }
     try {
       final decoded = jsonDecode(content);
       if (decoded is List) {
-        return QuillController(
-          document: Document.fromJson(decoded),
-          selection: const TextSelection.collapsed(offset: 0),
-        );
+        final delta = Delta.fromJson(decoded);
+        final document = quillDeltaEncoder.convert(delta);
+        return EditorState(document: document);
+      }
+      if (decoded is Map<String, dynamic>) {
+        final document = Document.fromJson(decoded);
+        return EditorState(document: document);
       }
     } catch (_) {}
-    final doc = Document()..insert(0, content);
-    return QuillController(
-      document: doc,
-      selection: const TextSelection.collapsed(offset: 0),
-    );
+    final map = <String, dynamic>{
+      "document": <String, dynamic>{
+        "type": "page",
+        "children": [
+          {"type": "paragraph", "data": {"delta": [{"insert": content}]}}
+        ],
+      },
+    };
+    final document = Document.fromJson(map);
+    return EditorState(document: document);
   }
 
   @override
@@ -252,7 +260,6 @@ class _NoteEditorPageState extends State<NoteEditorPage> {
                 ],
               ),
             ),
-            if (!_isChecklist) _buildToolbar(theme),
           ],
         ),
       ),
@@ -261,9 +268,7 @@ class _NoteEditorPageState extends State<NoteEditorPage> {
 
   Widget _buildEditorCard(TextTheme textTheme, ColorScheme cs) {
     return Container(
-      constraints: BoxConstraints(
-        minHeight: MediaQuery.of(context).size.height * 0.34,
-      ),
+      height: MediaQuery.of(context).size.height * 0.45,
       decoration: BoxDecoration(
         color: Colors.transparent,
         borderRadius: BorderRadius.circular(8),
@@ -273,197 +278,24 @@ class _NoteEditorPageState extends State<NoteEditorPage> {
         ),
       ),
       padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
-      child: QuillEditor.basic(
-        controller: _quillController,
-        focusNode: _focusNode,
-        config: QuillEditorConfig(
-          autoFocus: widget.initial == null,
-          placeholder: "Текст заметки...",
-          customStyles: const DefaultStyles(
-            placeHolder: DefaultTextBlockStyle(
-              TextStyle(color: Color.fromRGBO(255, 255, 255, 0.25)),
-              HorizontalSpacing(0, 0),
-              VerticalSpacing(0, 0),
-              VerticalSpacing(0, 0),
-              null,
-            ),
-          ),
-          expands: false,
-          scrollable: true,
-          padding: const EdgeInsets.all(4),
-        ),
+      child: NoteAppFlowyEditorBody(
+        editorState: _editorState,
+        autoFocus: widget.initial == null,
+        textTheme: textTheme,
+        colorScheme: cs,
       ),
     );
   }
 
-  Widget _buildToolbar(ThemeData theme) {
-    final cs = theme.colorScheme;
-    return SafeArea(
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 180),
-        decoration: BoxDecoration(
-          color: theme.colorScheme.surfaceContainerHighest,
-          border: Border(
-            top: BorderSide(color: theme.colorScheme.outline.withAlpha(40)),
-          ),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 6),
-              child: Row(
-                children: [
-                  _headingChip(1),
-                  const SizedBox(width: 4),
-                  _headingChip(2),
-                  const SizedBox(width: 4),
-                  _headingChip(3),
-                  const SizedBox(width: 8),
-                  _tbIcon(Icons.undo_rounded, "Отменить", _quillController.undo),
-                  _tbIcon(Icons.redo_rounded, "Повторить", _quillController.redo),
-                  _tbIcon(
-                    Icons.format_bold,
-                    "Жирный",
-                    () => _quillController.formatSelection(Attribute.bold),
-                    active: _isAttributeActive(Attribute.bold),
-                  ),
-                  _tbIcon(
-                    Icons.format_italic,
-                    "Курсив",
-                    () => _quillController.formatSelection(Attribute.italic),
-                    active: _isAttributeActive(Attribute.italic),
-                  ),
-                  _tbIcon(
-                    Icons.format_underlined,
-                    "Подчеркнутый",
-                    () => _quillController.formatSelection(Attribute.underline),
-                    active: _isAttributeActive(Attribute.underline),
-                  ),
-                  _tbIcon(Icons.strikethrough_s, "Зачеркнутый", () {
-                    _quillController.formatSelection(Attribute.strikeThrough);
-                  }, active: _isAttributeActive(Attribute.strikeThrough)),
-                  _tbIcon(Icons.format_list_bulleted_rounded, "Список", () {
-                    _quillController.formatSelection(Attribute.ul);
-                  }, active: _isAttributeActive(Attribute.ul)),
-                  _tbIcon(Icons.format_list_numbered_rounded, "Нумерация", () {
-                    _quillController.formatSelection(Attribute.ol);
-                  }, active: _isAttributeActive(Attribute.ol)),
-                  _tbIcon(Icons.horizontal_rule_rounded, "Разделитель", () {
-                    _quillController.replaceText(
-                      _quillController.selection.baseOffset,
-                      0,
-                      "\n---\n",
-                      const TextSelection.collapsed(offset: 0),
-                    );
-                  }),
-                ],
-              ),
-            ),
-            if (_toolbarExpanded)
-              SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                padding: const EdgeInsets.fromLTRB(6, 0, 6, 4),
-                child: Row(
-                  children: [
-                    _tbIcon(Icons.format_quote_rounded, "Цитата", () {
-                      _quillController.formatSelection(Attribute.blockQuote);
-                    }, active: _isAttributeActive(Attribute.blockQuote)),
-                    _tbIcon(Icons.check_box_outlined, "Чекбокс", () {
-                      _quillController.formatSelection(Attribute.unchecked);
-                    }, active: _isAttributeActive(Attribute.unchecked)),
-                    _tbIcon(Icons.clear_rounded, "Сброс стиля", () {
-                      _quillController.formatSelection(Attribute.clone(Attribute.bold, null));
-                      _quillController.formatSelection(Attribute.clone(Attribute.italic, null));
-                      _quillController.formatSelection(
-                        Attribute.clone(Attribute.underline, null),
-                      );
-                      _quillController.formatSelection(
-                        Attribute.clone(Attribute.strikeThrough, null),
-                      );
-                      _quillController.formatSelection(Attribute.clone(Attribute.h1, null));
-                      _quillController.formatSelection(Attribute.clone(Attribute.h2, null));
-                      _quillController.formatSelection(Attribute.clone(Attribute.h3, null));
-                    }),
-                  ],
-                ),
-              ),
-            Align(
-              alignment: Alignment.centerRight,
-              child: IconButton(
-                tooltip: _toolbarExpanded ? "Свернуть" : "Развернуть",
-                onPressed: () => setState(() => _toolbarExpanded = !_toolbarExpanded),
-                color: cs.onSurfaceVariant,
-                icon: AnimatedRotation(
-                  duration: const Duration(milliseconds: 180),
-                  turns: _toolbarExpanded ? 0.5 : 0,
-                  child: const Icon(Icons.expand_more_rounded),
-                ),
-              ),
-            ),
-            const SizedBox(height: 8),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _tbIcon(
-    IconData icon,
-    String tooltip,
-    VoidCallback onTap, {
-    bool active = false,
-  }) {
-    final cs = Theme.of(context).colorScheme;
-    return IconButton(
-      visualDensity: VisualDensity.comfortable,
-      tooltip: tooltip,
-      style: IconButton.styleFrom(
-        backgroundColor: active ? cs.primary.withAlpha(28) : Colors.transparent,
-      ),
-      onPressed: onTap,
-      color: active ? cs.primary : const Color.fromRGBO(255, 255, 255, 0.72),
-      icon: Icon(icon, size: 20),
-    );
-  }
-
-  Widget _headingChip(int level) {
-    final selected = _activeHeadingLevelFromSelection() == level;
-    return ChoiceChip(
-      label: Text("H$level"),
-      selected: selected,
-      onSelected: (_) {
-        if (selected) {
-          _quillController.formatSelection(Attribute.clone(Attribute.h1, null));
-          _quillController.formatSelection(Attribute.clone(Attribute.h2, null));
-          _quillController.formatSelection(Attribute.clone(Attribute.h3, null));
-          return;
-        }
-        if (level == 1) {
-          _quillController.formatSelection(Attribute.h1);
-        } else if (level == 2) {
-          _quillController.formatSelection(Attribute.h2);
-        } else {
-          _quillController.formatSelection(Attribute.h3);
-        }
-      },
-    );
-  }
-
-  bool _isAttributeActive(Attribute<dynamic> attribute) {
-    final active =
-        _quillController.getSelectionStyle().attributes[attribute.key];
-    if (active == null) return false;
-    if (attribute.value == null) return true;
-    return active.value == attribute.value;
-  }
-
-  int? _activeHeadingLevelFromSelection() {
-    final attr = _quillController.getSelectionStyle().attributes[Attribute.header.key];
-    final value = attr?.value;
-    if (value is int) return value;
-    return null;
+  String _documentPlainText() {
+    final buffer = StringBuffer();
+    void visit(Node node) {
+      final delta = node.delta;
+      if (delta != null) buffer.write(delta.toPlainText());
+      for (final child in node.children) visit(child);
+    }
+    for (final child in _editorState.document.root.children) visit(child);
+    return buffer.toString();
   }
 
   Widget _buildChecklistCard(TextTheme textTheme, ColorScheme cs) {
@@ -804,10 +636,10 @@ class _NoteEditorPageState extends State<NoteEditorPage> {
         .toList();
 
     final checklist = _checklist.where((e) => e.text.trim().isNotEmpty).toList();
-    final plainText = _quillController.document.toPlainText().trim();
+    final plainText = _documentPlainText().trim();
     final content = _isChecklist
         ? ""
-        : jsonEncode(_quillController.document.toDelta().toJson());
+        : jsonEncode(_editorState.document.toJson());
 
     final emptyTextNote = !_isChecklist && title.isEmpty && plainText.isEmpty;
     final emptyChecklist = _isChecklist && title.isEmpty && checklist.isEmpty;
@@ -840,5 +672,161 @@ class _NoteEditorPageState extends State<NoteEditorPage> {
     final day = now.day.toString().padLeft(2, "0");
     final month = now.month.toString().padLeft(2, "0");
     return "$day.$month.${now.year}";
+  }
+}
+
+/// Редактор из примера AppFlowy Editor (mobile_editor.dart).
+class NoteAppFlowyEditorBody extends StatefulWidget {
+  const NoteAppFlowyEditorBody({
+    super.key,
+    required this.editorState,
+    required this.textTheme,
+    required this.colorScheme,
+    this.autoFocus = false,
+  });
+
+  final EditorState editorState;
+  final TextTheme textTheme;
+  final ColorScheme colorScheme;
+  final bool autoFocus;
+
+  @override
+  State<NoteAppFlowyEditorBody> createState() => _NoteAppFlowyEditorBodyState();
+}
+
+class _NoteAppFlowyEditorBodyState extends State<NoteAppFlowyEditorBody> {
+  late final EditorScrollController _editorScrollController;
+  late EditorStyle _editorStyle;
+  late Map<String, BlockComponentBuilder> _blockComponentBuilders;
+
+  @override
+  void initState() {
+    super.initState();
+    _editorScrollController = EditorScrollController(
+      editorState: widget.editorState,
+      shrinkWrap: true,
+    );
+    _editorStyle = _buildEditorStyle();
+    _blockComponentBuilders = _buildBlockComponentBuilders();
+  }
+
+  @override
+  void reassemble() {
+    super.reassemble();
+    _editorStyle = _buildEditorStyle();
+    _blockComponentBuilders = _buildBlockComponentBuilders();
+  }
+
+  @override
+  void dispose() {
+    _editorScrollController.dispose();
+    super.dispose();
+  }
+
+  EditorStyle _buildEditorStyle() {
+    final cs = widget.colorScheme;
+    return EditorStyle.mobile(
+      textScaleFactor: 1.0,
+      cursorColor: cs.primary,
+      dragHandleColor: cs.primary,
+      selectionColor: cs.primary.withAlpha(51),
+      textStyleConfiguration: TextStyleConfiguration(
+        text: widget.textTheme.bodyLarge?.copyWith(color: cs.onSurface) ??
+            GoogleFonts.poppins(fontSize: 14, color: cs.onSurface),
+        code: GoogleFonts.sourceCodePro(
+          backgroundColor: cs.surfaceContainerHighest,
+        ),
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 12.0),
+      magnifierSize: const Size(144, 96),
+      mobileDragHandleBallSize: const Size.square(8),
+      mobileDragHandleLeftExtend: 12.0,
+      mobileDragHandleWidthExtend: 24.0,
+    );
+  }
+
+  Map<String, BlockComponentBuilder> _buildBlockComponentBuilders() {
+    final map = Map<String, BlockComponentBuilder>.from(standardBlockComponentBuilderMap);
+    final levelToFontSize = [24.0, 22.0, 20.0, 18.0, 16.0, 14.0];
+    map[HeadingBlockKeys.type] = HeadingBlockComponentBuilder(
+      textStyleBuilder: (level) =>
+          (widget.textTheme.bodyLarge ?? GoogleFonts.poppins(fontSize: 14))
+              .copyWith(
+                fontSize: levelToFontSize.elementAtOrNull(level - 1) ?? 14.0,
+                fontWeight: FontWeight.w600,
+                color: widget.colorScheme.onSurface,
+              ),
+    );
+    map[ParagraphBlockKeys.type] = ParagraphBlockComponentBuilder(
+      configuration: standardBlockComponentConfiguration.copyWith(
+        placeholderText: _placeholderText,
+      ),
+    );
+    return map;
+  }
+
+  static String _placeholderText(Node node) => 'Введите текст...';
+
+  @override
+  Widget build(BuildContext context) {
+    return MobileToolbarV2(
+      toolbarHeight: 48.0,
+      primaryColor: widget.colorScheme.primary,
+      onPrimaryColor: widget.colorScheme.onPrimary,
+      backgroundColor: widget.colorScheme.surfaceContainerHighest,
+      foregroundColor: widget.colorScheme.onSurfaceVariant,
+      iconColor: widget.colorScheme.onSurface,
+      editorState: widget.editorState,
+      toolbarItems: [
+        textDecorationMobileToolbarItemV2,
+        buildTextAndBackgroundColorMobileToolbarItem(),
+        blocksMobileToolbarItem,
+        linkMobileToolbarItem,
+        dividerMobileToolbarItem,
+      ],
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Expanded(
+            child: MobileFloatingToolbar(
+              editorState: widget.editorState,
+              editorScrollController: _editorScrollController,
+              floatingToolbarHeight: 32,
+              toolbarBuilder: (context, anchor, closeToolbar) {
+                return AdaptiveTextSelectionToolbar.editable(
+                  clipboardStatus: ClipboardStatus.pasteable,
+                  onCopy: () {
+                    copyCommand.execute(widget.editorState);
+                    closeToolbar();
+                  },
+                  onCut: () => cutCommand.execute(widget.editorState),
+                  onPaste: () => pasteCommand.execute(widget.editorState),
+                  onSelectAll: () => selectAllCommand.execute(widget.editorState),
+                  onLiveTextInput: null,
+                  onLookUp: null,
+                  onSearchWeb: null,
+                  onShare: null,
+                  anchors: TextSelectionToolbarAnchors(
+                    primaryAnchor: anchor,
+                  ),
+                );
+              },
+              child: AppFlowyEditor(
+                editorStyle: _editorStyle,
+                editorState: widget.editorState,
+                editorScrollController: _editorScrollController,
+                blockComponentBuilders: _blockComponentBuilders,
+                showMagnifier: true,
+                autoFocus: widget.autoFocus,
+                editable: true,
+                shrinkWrap: true,
+                header: const SizedBox(height: 0),
+                footer: const SizedBox(height: 24),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }

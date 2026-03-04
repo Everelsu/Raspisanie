@@ -1,6 +1,8 @@
 import "dart:io";
 
 import "package:flutter_local_notifications/flutter_local_notifications.dart";
+import "package:timezone/timezone.dart" as tz;
+import "package:timezone/data/latest_all.dart" as tz_data;
 
 class NotificationService {
   static final NotificationService _instance = NotificationService._();
@@ -10,8 +12,20 @@ class NotificationService {
   final _plugin = FlutterLocalNotificationsPlugin();
   bool _initialized = false;
 
+  static const _channelLessons = "lesson_reminders";
+  static const _channelChanges = "schedule_changes";
+  static const _groupLessons = "lesson_reminders_group";
+
   Future<void> init() async {
     if (_initialized) return;
+
+    tz_data.initializeTimeZones();
+    try {
+      tz.setLocalLocation(tz.getLocation("Europe/Moscow"));
+    } catch (_) {
+      tz.setLocalLocation(tz.UTC);
+    }
+
     const android = AndroidInitializationSettings("@mipmap/ic_launcher");
     const ios = DarwinInitializationSettings(
       requestAlertPermission: true,
@@ -27,7 +41,19 @@ class NotificationService {
           _plugin.resolvePlatformSpecificImplementation<
               AndroidFlutterLocalNotificationsPlugin>();
       await androidPlugin?.requestNotificationsPermission();
+      await androidPlugin?.requestExactAlarmsPermission();
     }
+  }
+
+  /// Формат в стиле Telegram: короткий заголовок, тело "предмет · время" (одна строка).
+  static String _formatReminderTitle(int offsetMinutes) =>
+      "Пара через $offsetMinutes мин";
+  static String _formatReminderBody(String subject, String time) {
+    const maxSubject = 48;
+    final s = subject.length > maxSubject
+        ? "${subject.substring(0, maxSubject)}…"
+        : subject;
+    return "$s · $time";
   }
 
   Future<void> scheduleLessonReminder({
@@ -42,27 +68,27 @@ class NotificationService {
     final notifyAt = scheduledDate.subtract(Duration(minutes: offsetMinutes));
     if (notifyAt.isBefore(DateTime.now())) return;
 
-    final delay = notifyAt.difference(DateTime.now());
+    final tzDate = tz.TZDateTime.from(notifyAt, tz.local);
+    final android = AndroidNotificationDetails(
+      _channelLessons,
+      "Пары",
+      channelDescription: "Напоминания перед началом пары",
+      importance: Importance.high,
+      priority: Priority.high,
+      icon: "@mipmap/ic_launcher",
+      groupKey: _groupLessons,
+    );
+    const ios = DarwinNotificationDetails();
+    final details = NotificationDetails(android: android, iOS: ios);
 
-    Future.delayed(delay, () async {
-      const android = AndroidNotificationDetails(
-        "lesson_reminders",
-        "Напоминания о парах",
-        channelDescription: "Уведомления перед началом пар",
-        importance: Importance.high,
-        priority: Priority.high,
-        icon: "@mipmap/ic_launcher",
-      );
-      const ios = DarwinNotificationDetails();
-      const details = NotificationDetails(android: android, iOS: ios);
-
-      await _plugin.show(
-        id: id,
-        title: "Через $offsetMinutes мин — $subject",
-        body: "Начало в $time",
-        notificationDetails: details,
-      );
-    });
+    await _plugin.zonedSchedule(
+      id: id,
+      title: _formatReminderTitle(offsetMinutes),
+      body: _formatReminderBody(subject, time),
+      scheduledDate: tzDate,
+      notificationDetails: details,
+      androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+    );
   }
 
   Future<void> cancelAll() async {
@@ -74,9 +100,9 @@ class NotificationService {
     if (!_initialized) await init();
 
     const android = AndroidNotificationDetails(
-      "lesson_reminders",
-      "Напоминания о парах",
-      channelDescription: "Уведомления перед началом пар",
+      _channelLessons,
+      "Пары",
+      channelDescription: "Напоминания перед началом пары",
       importance: Importance.high,
       priority: Priority.high,
       icon: "@mipmap/ic_launcher",
@@ -86,19 +112,20 @@ class NotificationService {
 
     await _plugin.show(
       id: 9999,
-      title: "Тестовое уведомление",
-      body: "Уведомления работают!",
+      title: "Уведомления включены",
+      body: "Напоминания о парах будут приходить в фоне",
       notificationDetails: details,
     );
   }
 
+  /// Как в Telegram: короткий заголовок, тело с сутью (группа/контекст).
   Future<void> showScheduleChanged({required String groupName}) async {
     if (!_initialized) await init();
 
     const android = AndroidNotificationDetails(
-      "schedule_changes",
-      "Изменения расписания",
-      channelDescription: "Уведомления об изменениях в расписании",
+      _channelChanges,
+      "Расписание",
+      channelDescription: "Уведомления об изменении расписания",
       importance: Importance.high,
       priority: Priority.high,
       icon: "@mipmap/ic_launcher",
@@ -108,32 +135,8 @@ class NotificationService {
 
     await _plugin.show(
       id: 8888,
-      title: "Расписание изменилось",
-      body: groupName.isNotEmpty
-          ? "Обновлено расписание для $groupName"
-          : "Расписание было обновлено",
-      notificationDetails: details,
-    );
-  }
-
-  Future<void> showNoLessonsToday({required String groupName}) async {
-    if (!_initialized) await init();
-    const android = AndroidNotificationDetails(
-      "lesson_reminders",
-      "Напоминания о парах",
-      channelDescription: "Уведомления перед началом пар",
-      importance: Importance.defaultImportance,
-      priority: Priority.defaultPriority,
-      icon: "@mipmap/ic_launcher",
-    );
-    const ios = DarwinNotificationDetails();
-    const details = NotificationDetails(android: android, iOS: ios);
-    await _plugin.show(
-      id: 7777,
-      title: "Сегодня нет пар",
-      body: groupName.isNotEmpty
-          ? "Для $groupName сегодня занятий нет"
-          : "Сегодня занятий нет",
+      title: "Расписание обновлено",
+      body: groupName.isNotEmpty ? groupName : "Данные изменены",
       notificationDetails: details,
     );
   }

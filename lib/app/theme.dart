@@ -342,14 +342,14 @@ class AppThemes {
     );
   }
 
-  static const allThemes = <String, (String, String)>{
-    "dark": ("Тёмная", "Классика"),
-    "light": ("Светлая", "Чистый белый"),
-    "green": ("Зелёная", "Свежесть"),
-    "pink": ("Розовая", "Нежность"),
-    "blue": ("Синяя", "Глубина"),
-    "gray": ("Серая", "Сдержанность"),
-    "purple": ("Фиолетовая", "Неон"),
-    "orange": ("Оранжевая", "Тёплая"),
+  static const allThemes = <String, String>{
+    "dark": "Тёмная",
+    "light": "Светлая",
+    "green": "Зелёная",
+    "pink": "Розовая",
+    "blue": "Синяя",
+    "gray": "Серая",
+    "purple": "Фиолетовая",
+    "orange": "Оранжевая",
   };
 }

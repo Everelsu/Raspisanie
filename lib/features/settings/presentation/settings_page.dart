@@ -579,7 +579,7 @@ class _SettingsPageState extends State<SettingsPage> {
   Widget _groupCard(ThemeData theme) {
     final selected = ctrl.selectedGroup;
     final isTeacher = prefs.isTeacherMode;
-    final label = isTeacher ? "Преподаватель" : "Группа";
+    final label = isTeacher ? "..." : "группу";
 
     return Card(
       child: Padding(
@@ -1067,8 +1067,7 @@ class _SettingsPageState extends State<SettingsPage> {
       children: entries.map((entry) {
         final isSelected = entry.key == currentTheme;
         final colors = AppThemes.colorsFor(entry.key);
-        final name = entry.value.$1;
-        final desc = entry.value.$2;
+        final name = entry.value;
 
         return GestureDetector(
           onTap: () {
@@ -1136,10 +1135,6 @@ class _SettingsPageState extends State<SettingsPage> {
                   Text(name,
                       style: theme.textTheme.bodyMedium
                           ?.copyWith(fontWeight: FontWeight.w600)),
-                  const SizedBox(height: 2),
-                  Text(desc,
-                      textAlign: TextAlign.center,
-                      style: theme.textTheme.bodySmall?.copyWith(fontSize: 11)),
                 ],
               ),
             ),

@@ -167,11 +167,6 @@ class PreferencesManager {
   set notifyScheduleChanges(bool v) =>
       _prefs.setBool("notify_schedule_changes", v);
 
-  bool get notifyNoLessons =>
-      _prefs.getBool("notify_no_lessons_today") ?? true;
-  set notifyNoLessons(bool v) =>
-      _prefs.setBool("notify_no_lessons_today", v);
-
   // --- Auto refresh ---
   bool get autoRefreshEnabled =>
       _prefs.getBool("auto_refresh_enabled") ?? true;

@@ -1,3 +1,5 @@
+import "dart:convert";
+
 import "package:flutter/material.dart";
 import "package:flutter/services.dart";
 import "package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart";
@@ -285,7 +287,7 @@ class _NotesPageState extends State<NotesPage>
         const SizedBox(width: 6),
         _colorDot("", cs),
         const SizedBox(width: 4),
-        ...["yellow", "green", "blue", "red", "purple", "teal"].map(
+        ...["default", "yellow", "green", "blue", "red", "purple", "teal"].map(
           (colorKey) => Padding(
             padding: const EdgeInsets.only(left: 4),
             child: _colorDot(colorKey, cs),
@@ -392,9 +394,12 @@ class _NotesPageState extends State<NotesPage>
       childCount: notes.length,
       itemBuilder: (context, index) {
         final note = notes[index];
-        return _dismissibleNoteCard(
-          note,
-          _buildNoteCard(note, textTheme, cs),
+        return KeyedSubtree(
+          key: ValueKey("note-card-${note.id}"),
+          child: _dismissibleNoteCard(
+            note,
+            _buildNoteCard(note, textTheme, cs),
+          ),
         );
       },
     ),
@@ -623,15 +628,140 @@ class _NotesPageState extends State<NotesPage>
             .toList(),
       );
     }
+    final baseStyle = textTheme.bodySmall?.copyWith(
+      fontSize: 13,
+      color: noteTextColor,
+    ) ?? TextStyle(fontSize: 13, color: noteTextColor);
+    if (note.isQuillDelta) {
+      final rich = _quillDeltaToRich(note.content, baseStyle);
+      if (rich != null) return rich;
+    }
+    if (note.isAppFlowyDocument) {
+      final rich = _appFlowyDocToRich(note.content, baseStyle);
+      if (rich != null) return rich;
+    }
     return Text(
       note.plainContent,
       maxLines: 10,
       overflow: TextOverflow.ellipsis,
-      style: textTheme.bodySmall?.copyWith(
-        fontSize: 13,
-        color: noteTextColor,
-      ),
+      style: baseStyle,
     );
+  }
+
+  /// Парсит Quill delta и рендерит форматирование как в Telegram: жирный, курсив, подчёркивание, зачёркивание, код.
+  Widget? _quillDeltaToRich(String content, TextStyle baseStyle) {
+    if (content.isEmpty) return null;
+    try {
+      final decoded = jsonDecode(content);
+      if (decoded is! List || decoded.isEmpty) return null;
+      final spans = <InlineSpan>[];
+      for (final op in decoded) {
+        if (op is! Map<String, dynamic>) continue;
+        final insert = op["insert"];
+        if (insert is! String) continue;
+        final attrs = op["attributes"] as Map<String, dynamic>? ?? {};
+        final bold = attrs["bold"] == true;
+        final italic = attrs["italic"] == true;
+        final underline = attrs["underline"] == true;
+        final strike = attrs["strike"] == true;
+        final code = attrs["code"] == true;
+        if (insert.isEmpty) continue;
+        var style = baseStyle.copyWith(
+          fontWeight: bold ? FontWeight.bold : baseStyle.fontWeight,
+          fontStyle: italic ? FontStyle.italic : baseStyle.fontStyle,
+          decoration: underline || strike
+              ? TextDecoration.combine([
+                  if (underline) TextDecoration.underline,
+                  if (strike) TextDecoration.lineThrough,
+                ])
+              : null,
+          decorationStyle: TextDecorationStyle.solid,
+        );
+        if (code) {
+          style = style.copyWith(
+            fontFamily: "monospace",
+            fontFamilyFallback: const ["monospace"],
+            backgroundColor: baseStyle.color != null
+                ? baseStyle.color!.withAlpha(25)
+                : null,
+          );
+        }
+        spans.add(TextSpan(text: insert.replaceAll("\n", " "), style: style));
+      }
+      if (spans.isEmpty) return null;
+      return Text.rich(
+        TextSpan(children: spans),
+        maxLines: 10,
+        overflow: TextOverflow.ellipsis,
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Парсит документ AppFlowy (JSON с document.children[].data.delta) и рендерит форматирование.
+  Widget? _appFlowyDocToRich(String content, TextStyle baseStyle) {
+    if (content.isEmpty) return null;
+    try {
+      final decoded = jsonDecode(content) as Map<String, dynamic>?;
+      final doc = decoded?["document"] as Map<String, dynamic>?;
+      final children = doc?["children"] as List?;
+      if (children == null) return null;
+      final spans = <InlineSpan>[];
+      void processDelta(dynamic data) {
+        final delta = data is Map ? data["delta"] as List? : null;
+        if (delta == null) return;
+        for (final op in delta) {
+          if (op is! Map<String, dynamic>) continue;
+          final insert = op["insert"];
+          if (insert is! String) continue;
+          final attrs = op["attributes"] as Map<String, dynamic>? ?? {};
+          final bold = attrs["bold"] == true;
+          final italic = attrs["italic"] == true;
+          final underline = attrs["underline"] == true;
+          final strike = attrs["strikethrough"] == true;
+          final code = attrs["code"] == true;
+          if (insert.isEmpty) continue;
+          var style = baseStyle.copyWith(
+            fontWeight: bold ? FontWeight.bold : baseStyle.fontWeight,
+            fontStyle: italic ? FontStyle.italic : baseStyle.fontStyle,
+            decoration: underline || strike
+                ? TextDecoration.combine([
+                    if (underline) TextDecoration.underline,
+                    if (strike) TextDecoration.lineThrough,
+                  ])
+                : null,
+            decorationStyle: TextDecorationStyle.solid,
+          );
+          if (code) {
+            style = style.copyWith(
+              fontFamily: "monospace",
+              fontFamilyFallback: const ["monospace"],
+              backgroundColor: baseStyle.color != null
+                  ? baseStyle.color!.withAlpha(25)
+                  : null,
+            );
+          }
+          spans.add(TextSpan(text: insert.replaceAll("\n", " "), style: style));
+        }
+      }
+      void visit(dynamic node) {
+        if (node is Map) {
+          final data = node["data"];
+          if (data is Map) processDelta(data);
+          for (final c in node["children"] as List? ?? const []) visit(c);
+        }
+      }
+      for (final node in children) visit(node);
+      if (spans.isEmpty) return null;
+      return Text.rich(
+        TextSpan(children: spans),
+        maxLines: 10,
+        overflow: TextOverflow.ellipsis,
+      );
+    } catch (_) {
+      return null;
+    }
   }
 
   Widget _buildEmptyState(TextTheme textTheme, ColorScheme cs) {
@@ -932,6 +1062,7 @@ class _NotesPageState extends State<NotesPage>
                         : Icons.radio_button_unchecked_rounded,
                   ),
                   title: Text(_sortModeLabel(mode)),
+                  subtitle: _sortModeSubtitle(mode) != null ? Text(_sortModeSubtitle(mode)!) : null,
                   onTap: () => Navigator.pop(ctx, mode),
                 ),
               )
@@ -957,6 +1088,16 @@ class _NotesPageState extends State<NotesPage>
         return "По дате создания (новые)";
       case NoteSortMode.createdAsc:
         return "По дате создания (старые)";
+    }
+  }
+
+  String? _sortModeSubtitle(NoteSortMode mode) {
+    switch (mode) {
+      case NoteSortMode.updatedDesc:
+      case NoteSortMode.updatedAsc:
+        return "По дате последнего изменения заметки";
+      default:
+        return null;
     }
   }
 

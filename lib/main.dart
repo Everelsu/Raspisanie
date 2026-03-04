@@ -14,10 +14,11 @@ void main() async {
   final fontService = FontService();
   await fontService.load();
 
+  await NotificationService().init();
+
   runApp(RaspiFlutterApp(prefs: prefs, fontService: fontService));
 
   WidgetsBinding.instance.addPostFrameCallback((_) async {
     await HomeWidgetService.init();
-    await NotificationService().init();
   });
 }

@@ -116,6 +116,7 @@ class _SubScheduleContentState extends State<_SubScheduleContent> {
                                 day: _schedule![i],
                                 college: widget.controller.college,
                                 isTeacherMode: widget.controller.prefs.isTeacherMode,
+                                sheetTitle: widget.title,
                               ),
                             ),
             ),
@@ -131,10 +132,13 @@ class _MiniDayCard extends StatelessWidget {
     required this.day,
     required this.college,
     required this.isTeacherMode,
+    this.sheetTitle = "",
   });
   final DaySchedule day;
   final String college;
   final bool isTeacherMode;
+  /// Заголовок панели (например "Ауд. И") — при совпадении с кабинетом пары не дублируем "Ауд." в строке.
+  final String sheetTitle;
 
   @override
   Widget build(BuildContext context) {
@@ -187,17 +191,21 @@ class _MiniDayCard extends StatelessWidget {
     final subject = (item.subject ?? "").trim();
     final classroom = (item.classroom ?? "").trim();
     final teacherOrGroup = (item.teacher ?? "").trim();
+    final title = sheetTitle.trim();
+    // Подрасписание запрошено для этого кабинета — в заголовке уже есть "Ауд. И", в строках не дублируем.
+    final isSheetForThisClassroom = classroom.isNotEmpty &&
+        (title == "Ауд. $classroom" || title == classroom);
 
     final parts = <String>[];
     if (isTeacherMode) {
       if (teacherOrGroup.isNotEmpty) parts.add(teacherOrGroup);
-      if (classroom.isNotEmpty) parts.add("Ауд. $classroom");
+      if (classroom.isNotEmpty && !isSheetForThisClassroom) parts.add("Ауд. $classroom");
       if (subject.isNotEmpty && subject != teacherOrGroup) {
         parts.add(subject);
       }
     } else {
       if (subject.isNotEmpty) parts.add(subject);
-      if (classroom.isNotEmpty) parts.add("Ауд. $classroom");
+      if (classroom.isNotEmpty && !isSheetForThisClassroom) parts.add("Ауд. $classroom");
       if (teacherOrGroup.isNotEmpty) parts.add(teacherOrGroup);
     }
     if (time.isNotEmpty) parts.add(time);

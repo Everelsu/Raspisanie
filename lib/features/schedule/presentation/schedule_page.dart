@@ -425,9 +425,13 @@ class _DayCard extends StatelessWidget {
               ? item.subject!.trim()
               : "—";
           final subgroupLabel = item.subgroup == null ? null : "П/Г ${item.subgroup}";
+          final sel = prefs.selectedGroupName.trim();
+          final isViewByClassroom = item.classroom != null &&
+              item.classroom!.isNotEmpty &&
+              (sel == "Ауд. ${item.classroom}".trim() || sel == item.classroom!.trim());
           final detailsParts = <String>[
             if (time.isNotEmpty) time,
-            if (item.classroom?.isNotEmpty == true) "Ауд. ${item.classroom}",
+            if (item.classroom?.isNotEmpty == true && !isViewByClassroom) "Ауд. ${item.classroom}",
             if (item.teacher?.isNotEmpty == true) item.teacher!,
           ];
           final details = detailsParts.join("  ·  ");
@@ -682,10 +686,16 @@ class _DayCard extends StatelessWidget {
     final buf = StringBuffer();
     buf.writeln("${_capitalizeDay(day.day)}, ${_formatDate(day.date)}");
     buf.writeln();
+    final sel = prefs.selectedGroupName.trim();
     for (final item in items) {
       buf.write("${item.lessonNumber}. ${item.subject ?? '—'}");
       if (item.subgroup != null) buf.write(" (${item.subgroup} п/г)");
-      if (item.classroom != null && item.classroom!.isNotEmpty) buf.write(" — ${item.classroom}");
+      final skipClassroom = item.classroom != null &&
+          item.classroom!.isNotEmpty &&
+          (sel == "Ауд. ${item.classroom}".trim() || sel == item.classroom!.trim());
+      if (item.classroom != null && item.classroom!.isNotEmpty && !skipClassroom) {
+        buf.write(" — ${item.classroom}");
+      }
       if (item.teacher != null && item.teacher!.isNotEmpty) buf.write(" — ${item.teacher}");
       buf.writeln();
     }
@@ -997,7 +1007,15 @@ class _LessonTile extends StatelessWidget {
 
   Widget _infoLine(BuildContext context, ThemeData theme, ScheduleItem item) {
     final lines = <Widget>[];
-    if (item.classroom != null && item.classroom!.isNotEmpty) {
+    final sel = controller.prefs.selectedGroupName.trim();
+    final isViewByClassroom = item.classroom != null &&
+        item.classroom!.isNotEmpty &&
+        (sel == "Ауд. ${item.classroom}".trim() || sel == item.classroom!.trim());
+    final hasClassroomLink = item.classroomHref != null && item.classroomHref!.isNotEmpty;
+    final showClassroom = item.classroom != null &&
+        item.classroom!.isNotEmpty &&
+        (!isViewByClassroom || hasClassroomLink);
+    if (showClassroom) {
       lines.add(_detailLine(
         context: context,
         theme: theme,

@@ -91,6 +91,9 @@ class NoteItem {
         final doc = quill.Document.fromJson(decoded);
         return doc.toPlainText().trim();
       }
+      if (decoded is Map<String, dynamic>) {
+        return _plainTextFromAppFlowyJson(decoded).trim();
+      }
     } catch (_) {}
     return content;
   }
@@ -103,6 +106,38 @@ class NoteItem {
     } catch (_) {
       return false;
     }
+  }
+
+  bool get isAppFlowyDocument {
+    if (content.isEmpty) return false;
+    try {
+      final decoded = jsonDecode(content);
+      return decoded is Map<String, dynamic> && decoded["document"] is Map;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  static String _plainTextFromAppFlowyJson(Map<String, dynamic> json) {
+    final buffer = StringBuffer();
+    void visit(dynamic node) {
+      if (node is! Map) return;
+      final data = node["data"];
+      if (data is Map && data["delta"] is List) {
+        for (final op in data["delta"] as List) {
+          if (op is Map && op["insert"] is String) {
+            buffer.write(op["insert"]);
+          }
+        }
+      }
+      final children = node["children"];
+      if (children is List) {
+        for (final c in children) visit(c);
+      }
+    }
+    final doc = json["document"];
+    if (doc is Map) visit(doc);
+    return buffer.toString();
   }
 
   static String plainTextToDelta(String text) {

@@ -31,7 +31,6 @@ class ScheduleController extends ChangeNotifier {
 
   Timer? _autoRefreshTimer;
   Timer? _remoteLessonTimesTimer;
-  String? _lastNoLessonsNotifyDate;
 
   final PreferencesManager _prefsManager;
   late final ExpressScheduleRepository _repository;
@@ -261,7 +260,6 @@ class ScheduleController extends ChangeNotifier {
   }
 
   void _syncLessonNotifications() {
-    final groupName = selectedGroup?.name ?? _prefsManager.selectedGroupName;
     if (!_prefsManager.notificationsEnabled) {
       NotificationService().cancelAll();
       return;
@@ -271,10 +269,7 @@ class ScheduleController extends ChangeNotifier {
         "${today.day.toString().padLeft(2, "0")}.${today.month.toString().padLeft(2, "0")}.${today.year}";
     final todaySchedule = schedule.where((d) => d.date == todayKey).toList();
     if (todaySchedule.isEmpty || todaySchedule.first.items.isEmpty) {
-      if (_prefsManager.notifyNoLessons && _lastNoLessonsNotifyDate != todayKey) {
-        _lastNoLessonsNotifyDate = todayKey;
-        NotificationService().showNoLessonsToday(groupName: groupName);
-      }
+      NotificationService().cancelAll();
       return;
     }
 

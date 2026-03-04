@@ -1,3 +1,4 @@
+import "package:appflowy_editor/appflowy_editor.dart";
 import "package:flutter/material.dart";
 import "package:flutter_localizations/flutter_localizations.dart";
 import "package:flutter_quill/flutter_quill.dart";
@@ -59,6 +60,7 @@ class _RaspiFlutterAppState extends State<RaspiFlutterApp> {
             GlobalCupertinoLocalizations.delegate,
             GlobalWidgetsLocalizations.delegate,
             FlutterQuillLocalizations.delegate,
+            AppFlowyEditorLocalizations.delegate,
           ],
           supportedLocales: const [
             Locale("ru", "RU"),
