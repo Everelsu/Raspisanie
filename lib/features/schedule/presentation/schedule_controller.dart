@@ -340,11 +340,12 @@ class ScheduleController extends ChangeNotifier {
       PreferencesManager.collegeDefault,
       PreferencesManager.collegeZabgc,
     ]) {
-      final custom = _prefsManager.getCustomLessonTimes(college);
-      if (custom == null || custom.isEmpty) {
+      final effective = _prefsManager.getCustomLessonTimes(college) ??
+          _prefsManager.getRemoteLessonTimes(college);
+      if (effective == null || effective.isEmpty) {
         LessonTimes.clearCustomTimes(college);
       } else {
-        LessonTimes.setCustomTimes(college: college, times: custom);
+        LessonTimes.setCustomTimes(college: college, times: effective);
       }
     }
   }
@@ -387,8 +388,19 @@ class ScheduleController extends ChangeNotifier {
       }
       for (final entry in data.byCollege.entries) {
         if (entry.value.isEmpty) continue;
-        _prefsManager.setCustomLessonTimes(entry.key, entry.value);
-        LessonTimes.setCustomTimes(college: entry.key, times: entry.value);
+        _prefsManager.setRemoteLessonTimes(entry.key, entry.value);
+      }
+      for (final college in const [
+        PreferencesManager.collegeDefault,
+        PreferencesManager.collegeZabgc,
+      ]) {
+        final effective = _prefsManager.getCustomLessonTimes(college) ??
+            _prefsManager.getRemoteLessonTimes(college);
+        if (effective != null && effective.isNotEmpty) {
+          LessonTimes.setCustomTimes(college: college, times: effective);
+        } else {
+          LessonTimes.clearCustomTimes(college);
+        }
       }
       _prefsManager.lessonTimesRemoteFingerprint = data.fingerprint;
       _prefsManager.lessonTimesRemoteSyncedAt =

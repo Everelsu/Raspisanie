@@ -307,6 +307,40 @@ class PreferencesManager {
     _prefs.remove("lesson_times_$college");
   }
 
+  /// Remote-synced times (from GitHub). Used when user taps "Сбросить" so we restore to remote, not built-in.
+  Map<int, LessonTime>? getRemoteLessonTimes(String college) {
+    final raw = _prefs.getString("lesson_times_remote_$college");
+    if (raw == null || raw.isEmpty) return null;
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map<String, dynamic>) return null;
+      final out = <int, LessonTime>{};
+      for (final entry in decoded.entries) {
+        final lessonNumber = int.tryParse(entry.key);
+        final value = entry.value;
+        if (lessonNumber == null || value is! Map<String, dynamic>) continue;
+        final start = value["start"] as String?;
+        final end = value["end"] as String?;
+        if (start == null || end == null) continue;
+        out[lessonNumber] = LessonTime(lessonNumber, start, end);
+      }
+      return out.isEmpty ? null : out;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  void setRemoteLessonTimes(String college, Map<int, LessonTime> times) {
+    final serializable = <String, Map<String, String>>{};
+    final keys = times.keys.toList()..sort();
+    for (final key in keys) {
+      final t = times[key];
+      if (t == null) continue;
+      serializable["$key"] = {"start": t.startTime, "end": t.endTime};
+    }
+    _prefs.setString("lesson_times_remote_$college", jsonEncode(serializable));
+  }
+
   List<CollegeSource> get customCollegeSources {
     final raw = _prefs.getString("custom_college_sources");
     if (raw == null || raw.isEmpty) return const [];

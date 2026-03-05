@@ -23,7 +23,7 @@ class ScheduleDatabase {
   Future<Database> _initDb() async {
     final path = await databaseFilePath();
 
-    return openDatabase(path, version: 5, onCreate: (db, version) async {
+    return openDatabase(path, version: 10, onCreate: (db, version) async {
       await _createTables(db);
     }, onUpgrade: (db, oldVersion, newVersion) async {
       if (oldVersion < 2) {
@@ -85,7 +85,55 @@ class ScheduleDatabase {
       if (oldVersion < 5) {
         await _upgradeNotesV5(db);
       }
+      if (oldVersion < 6) {
+        await _upgradeNotesV6(db);
+      }
+      if (oldVersion < 7) {
+        await _upgradeNotesV7(db);
+      }
+      if (oldVersion < 8) {
+        await _upgradeNotesV8(db);
+      }
+      if (oldVersion < 9) {
+        await _upgradeChatMessagesV9(db);
+      }
+      if (oldVersion < 10) {
+        await _upgradeChatMessagesV10(db);
+      }
     });
+  }
+
+  Future<void> _upgradeChatMessagesV9(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS chat_messages (
+        id TEXT PRIMARY KEY,
+        author_id TEXT NOT NULL,
+        text TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        is_pinned INTEGER NOT NULL DEFAULT 0
+      )
+    ''');
+    await db.execute(
+        "CREATE INDEX IF NOT EXISTS idx_chat_messages_created_at ON chat_messages(created_at)");
+  }
+
+  Future<void> _upgradeChatMessagesV10(Database db) async {
+    await _tryAddColumn(db, "chat_messages", "message_type TEXT NOT NULL DEFAULT 'text'");
+    await _tryAddColumn(db, "chat_messages", "payload TEXT");
+  }
+
+  Future<void> _upgradeNotesV8(Database db) async {
+    await _tryAddColumn(db, "notes", "image_paths TEXT DEFAULT '[]'");
+    await _tryAddColumn(db, "notes", "voice_paths TEXT DEFAULT '[]'");
+  }
+
+  Future<void> _upgradeNotesV6(Database db) async {
+    await _tryAddColumn(db, "notes", "image_path TEXT");
+  }
+
+  Future<void> _upgradeNotesV7(Database db) async {
+    await _tryAddColumn(db, "notes", "reply_to_id TEXT");
+    await _tryAddColumn(db, "notes", "reply_preview TEXT");
   }
 
   Future<String> databaseFilePath() async {
@@ -193,7 +241,10 @@ class ScheduleDatabase {
         schedule_date TEXT,
         lesson_number INTEGER,
         group_file TEXT,
-        college TEXT
+        college TEXT,
+        image_path TEXT,
+        reply_to_id TEXT,
+        reply_preview TEXT
       )
     ''');
     await db.execute('''
@@ -839,6 +890,77 @@ class ScheduleDatabase {
         );
       }
     });
+  }
+
+  Future<void> insertChatMessage({
+    required String id,
+    required String authorId,
+    required String text,
+    required int createdAt,
+    bool isPinned = false,
+    String messageType = "text",
+    String? payload,
+  }) async {
+    final db = await database;
+    final map = <String, dynamic>{
+      "id": id,
+      "author_id": authorId,
+      "text": text,
+      "created_at": createdAt,
+      "is_pinned": isPinned ? 1 : 0,
+      "message_type": messageType,
+      "payload": payload,
+    };
+    await db.insert(
+      "chat_messages",
+      map,
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  Future<List<Map<String, dynamic>>> getAllChatMessages() async {
+    final db = await database;
+    final rows = await db.query("chat_messages", orderBy: "created_at ASC");
+    return rows.map((m) => Map<String, dynamic>.from(m)).toList();
+  }
+
+  Future<void> deleteChatMessage(String id) async {
+    final db = await database;
+    await db.delete("chat_messages", where: "id = ?", whereArgs: [id]);
+  }
+
+  Future<void> updateChatMessage(String id, String text) async {
+    final db = await database;
+    await db.update(
+      "chat_messages",
+      {"text": text},
+      where: "id = ?",
+      whereArgs: [id],
+    );
+  }
+
+  Future<void> setChatMessagePinned(String? messageId) async {
+    final db = await database;
+    await db.update("chat_messages", {"is_pinned": 0});
+    if (messageId != null && messageId.isNotEmpty) {
+      await db.update(
+        "chat_messages",
+        {"is_pinned": 1},
+        where: "id = ?",
+        whereArgs: [messageId],
+      );
+    }
+  }
+
+  Future<Map<String, dynamic>?> getPinnedChatMessage() async {
+    final db = await database;
+    final rows = await db.query(
+      "chat_messages",
+      where: "is_pinned = 1",
+      limit: 1,
+    );
+    if (rows.isEmpty) return null;
+    return Map<String, dynamic>.from(rows.first);
   }
 
   DateTime? _parseDate(String? date) {

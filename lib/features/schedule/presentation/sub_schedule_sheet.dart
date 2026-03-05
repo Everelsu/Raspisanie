@@ -4,11 +4,18 @@ import "../data/lesson_times.dart";
 import "../domain/models.dart";
 import "schedule_controller.dart";
 
+/// Тип подрасписания: кабинет или преподаватель/группа (предмет).
+enum SubScheduleKind {
+  classroom,
+  teacherOrGroup,
+}
+
 Future<void> showSubScheduleSheet({
   required BuildContext context,
   required String file,
   required ScheduleController controller,
   required String title,
+  SubScheduleKind kind = SubScheduleKind.teacherOrGroup,
 }) async {
   showModalBottomSheet(
     context: context,
@@ -21,6 +28,7 @@ Future<void> showSubScheduleSheet({
       file: file,
       controller: controller,
       title: title,
+      kind: kind,
     ),
   );
 }
@@ -30,10 +38,12 @@ class _SubScheduleContent extends StatefulWidget {
     required this.file,
     required this.controller,
     required this.title,
+    required this.kind,
   });
   final String file;
   final ScheduleController controller;
   final String title;
+  final SubScheduleKind kind;
 
   @override
   State<_SubScheduleContent> createState() => _SubScheduleContentState();
@@ -117,6 +127,7 @@ class _SubScheduleContentState extends State<_SubScheduleContent> {
                                 college: widget.controller.college,
                                 isTeacherMode: widget.controller.prefs.isTeacherMode,
                                 sheetTitle: widget.title,
+                                kind: widget.kind,
                               ),
                             ),
             ),
@@ -132,12 +143,14 @@ class _MiniDayCard extends StatelessWidget {
     required this.day,
     required this.college,
     required this.isTeacherMode,
+    required this.kind,
     this.sheetTitle = "",
   });
   final DaySchedule day;
   final String college;
   final bool isTeacherMode;
-  /// Заголовок панели (например "Ауд. И") — при совпадении с кабинетом пары не дублируем "Ауд." в строке.
+  final SubScheduleKind kind;
+  /// Заголовок панели (кабинет, преподаватель или группа) — не дублируем в строке.
   final String sheetTitle;
 
   @override
@@ -173,7 +186,9 @@ class _MiniDayCard extends StatelessWidget {
                   ),
                   Expanded(
                     child: Text(
-                      _buildItemLine(item, time),
+                      kind == SubScheduleKind.classroom
+                          ? _buildClassroomItemLine(item, time)
+                          : _buildTeacherOrGroupItemLine(item, time),
                       style: theme.textTheme.bodySmall,
                     ),
                   ),
@@ -187,30 +202,41 @@ class _MiniDayCard extends StatelessWidget {
     );
   }
 
-  String _buildItemLine(ScheduleItem item, String time) {
+  /// Строка пары для подрасписания по кабинету: предмет • преподаватель/группа • время (кабинет не дублируем).
+  String _buildClassroomItemLine(ScheduleItem item, String time) {
+    final subject = (item.subject ?? "").trim();
+    final teacherOrGroup = (item.teacher ?? "").trim();
+    final parts = <String>[];
+    if (subject.isNotEmpty) parts.add(subject);
+    if (teacherOrGroup.isNotEmpty) parts.add(teacherOrGroup);
+    if (time.isNotEmpty) parts.add(time);
+    if (parts.isEmpty) return "Нет данных";
+    return parts.join(" \u2022 ");
+  }
+
+  /// Строка пары для подрасписания по преподавателю/группе: предмет • кабинет • время (препода/группу не дублируем).
+  String _buildTeacherOrGroupItemLine(ScheduleItem item, String time) {
     final subject = (item.subject ?? "").trim();
     final classroom = (item.classroom ?? "").trim();
     final teacherOrGroup = (item.teacher ?? "").trim();
-    final title = sheetTitle.trim();
-    // Подрасписание запрошено для этого кабинета — в заголовке уже есть "Ауд. И", в строках не дублируем.
-    final isSheetForThisClassroom = classroom.isNotEmpty &&
-        (title == "Ауд. $classroom" || title == classroom);
 
     final parts = <String>[];
     if (isTeacherMode) {
-      if (teacherOrGroup.isNotEmpty) parts.add(teacherOrGroup);
-      if (classroom.isNotEmpty && !isSheetForThisClassroom) parts.add("Ауд. $classroom");
-      if (subject.isNotEmpty && subject != teacherOrGroup) {
-        parts.add(subject);
-      }
+      if (teacherOrGroup.isNotEmpty && !_titleMatches(teacherOrGroup)) parts.add(teacherOrGroup);
+      if (classroom.isNotEmpty) parts.add("Ауд. $classroom");
+      if (subject.isNotEmpty && subject != teacherOrGroup && !_titleMatches(subject)) parts.add(subject);
     } else {
-      if (subject.isNotEmpty) parts.add(subject);
-      if (classroom.isNotEmpty && !isSheetForThisClassroom) parts.add("Ауд. $classroom");
-      if (teacherOrGroup.isNotEmpty) parts.add(teacherOrGroup);
+      if (subject.isNotEmpty && !_titleMatches(subject)) parts.add(subject);
+      if (classroom.isNotEmpty) parts.add("Ауд. $classroom");
+      if (teacherOrGroup.isNotEmpty && !_titleMatches(teacherOrGroup)) parts.add(teacherOrGroup);
     }
     if (time.isNotEmpty) parts.add(time);
-
     if (parts.isEmpty) return "Нет данных";
     return parts.join(" \u2022 ");
+  }
+
+  bool _titleMatches(String value) {
+    final t = sheetTitle.trim();
+    return t.isNotEmpty && (t == value || "Ауд. $value" == t || t == "Ауд. $value");
   }
 }

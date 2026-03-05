@@ -302,19 +302,20 @@ class _DayCard extends StatelessWidget {
     try {
       image = await _renderDayImage(context, items);
       final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
+      image.dispose();
+      image = null;
       if (bytes == null) return;
       final pngBytes = bytes.buffer.asUint8List();
       final safeDate = day.date.replaceAll(".", "-");
-      final fileName =
-          "schedule_${safeDate}_${DateTime.now().millisecondsSinceEpoch}.png";
-      final text = "${_capitalizeDay(day.day)}, ${_formatDate(day.date)}";
+      final fileName = "schedule_$safeDate.png";
       final dir = await getTemporaryDirectory();
       final file = File("${dir.path}/$fileName");
       await file.writeAsBytes(pngBytes, flush: true);
+      if (!context.mounted) return;
       await SharePlus.instance.share(
         ShareParams(
+          text: " ",
           files: [XFile(file.path, mimeType: "image/png", name: fileName)],
-          text: text,
         ),
       );
     } catch (_) {
@@ -332,18 +333,24 @@ class _DayCard extends StatelessWidget {
     BuildContext context,
     List<ScheduleItem> items,
   ) async {
-    final theme = Theme.of(context);
-    const width = 1200.0;
-    const horizontalPadding = 44.0;
-    const topPadding = 36.0;
-    const headerGap = 16.0;
-    const rowGap = 10.0;
-    const rowMinHeight = 88.0;
-    const badgeSize = 44.0;
-    const footerHeight = 34.0;
+    const width = 800.0;
+    const horizontalPadding = 28.0;
+    const topPadding = 24.0;
+    const headerGap = 12.0;
+    const tileGap = 8.0;
+    const badgeSize = 32.0;
+    const footerHeight = 24.0;
+    const linePadding = 8.0;
+    const subgroupChipPaddingH = 6.0;
+    const subgroupChipPaddingV = 4.0;
 
+    final theme = Theme.of(context);
     final sortedItems = items.toList()
-      ..sort((a, b) => a.lessonNumber.compareTo(b.lessonNumber));
+      ..sort((a, b) {
+        final cn = a.lessonNumber.compareTo(b.lessonNumber);
+        if (cn != 0) return cn;
+        return (a.subgroup ?? 0).compareTo(b.subgroup ?? 0);
+      });
 
     final isDark = theme.brightness == Brightness.dark;
     final baseA = isDark ? const Color(0xFF0E172A) : const Color(0xFFEFF4FF);
@@ -360,7 +367,6 @@ class _DayCard extends StatelessWidget {
         .toColor();
     final blendSoft = Color.alphaBlend(accent.withAlpha(78), baseB);
     final blendDeep = Color.alphaBlend(accent.withAlpha(44), baseA);
-
     final fgPrimary = isDark ? Colors.white : const Color(0xFF0F172A);
     final fgSecondary =
         isDark ? Colors.white.withAlpha(210) : const Color(0xFF334155);
@@ -369,26 +375,32 @@ class _DayCard extends StatelessWidget {
 
     final headerStyle = TextStyle(
       color: fgPrimary,
-      fontSize: 44,
+      fontSize: 28,
       fontWeight: FontWeight.w700,
-      height: 1.08,
+      height: 1.1,
     );
     final subStyle = TextStyle(
       color: fgSecondary,
-      fontSize: 24,
+      fontSize: 16,
       fontWeight: FontWeight.w500,
-      height: 1.16,
+      height: 1.2,
     );
     final titleStyle = TextStyle(
       color: fgPrimary,
-      fontSize: 26,
+      fontSize: 17,
       fontWeight: FontWeight.w700,
-      height: 1.14,
+      height: 1.15,
     );
     final detailsStyle = TextStyle(
       color: fgMuted,
-      fontSize: 20,
+      fontSize: 13,
       fontWeight: FontWeight.w500,
+      height: 1.2,
+    );
+    final subgroupChipStyle = TextStyle(
+      color: theme.colorScheme.primary,
+      fontSize: 12,
+      fontWeight: FontWeight.w700,
       height: 1.2,
     );
 
@@ -408,24 +420,170 @@ class _DayCard extends StatelessWidget {
     }
 
     final dateLabel = "${_capitalizeDay(day.day)}, ${_formatDate(day.date)}";
-    final titlePainter =
-        tp("Расписание", headerStyle, width - horizontalPadding * 2);
+    final titlePainter = tp("Расписание", headerStyle, width - horizontalPadding * 2);
     final datePainter = tp(dateLabel, subStyle, width - horizontalPadding * 2);
     final groupPainter = tp(
       prefs.selectedGroupName.isEmpty ? "Группа не выбрана" : prefs.selectedGroupName,
-      subStyle.copyWith(fontSize: 20, color: fgMuted),
+      subStyle.copyWith(fontSize: 14, color: fgMuted),
       width - horizontalPadding * 2,
       maxLines: 1,
     );
 
-    final rows = sortedItems
-        .map((item) {
+    final contentWidth = width - horizontalPadding * 2;
+    final textAreaWidth = contentWidth - badgeSize - 16;
+
+    final grouped = <int, List<ScheduleItem>>{};
+    for (final item in sortedItems) {
+      grouped.putIfAbsent(item.lessonNumber, () => []).add(item);
+    }
+    final lessonNumbers = grouped.keys.toList()..sort();
+
+    double contentHeight = 0;
+    final tileHeights = <double>[];
+    final sel = prefs.selectedGroupName.trim();
+
+    for (final lessonNum in lessonNumbers) {
+      final lessonItems = grouped[lessonNum]!;
+      double tileH = linePadding;
+      for (final item in lessonItems) {
+        final time = LessonTimes.formatTime(item.lessonNumber, college: college);
+        final title = item.subject?.trim().isNotEmpty == true ? item.subject!.trim() : "—";
+        final isViewByClassroom = item.classroom != null &&
+            item.classroom!.isNotEmpty &&
+            (sel == "Ауд. ${item.classroom}".trim() || sel == item.classroom!.trim());
+        final detailsParts = <String>[
+          if (time.isNotEmpty) time,
+          if (item.classroom?.isNotEmpty == true && !isViewByClassroom) "Ауд. ${item.classroom}",
+          if (item.teacher?.isNotEmpty == true) item.teacher!,
+        ];
+        final details = detailsParts.join("  ·  ");
+        final titleLayout = tp(title, titleStyle, textAreaWidth - 50, maxLines: 2);
+        final detailsP = details.isEmpty ? null : tp(details, detailsStyle, textAreaWidth - 50, maxLines: 1);
+        final sg = item.subgroup;
+        final chipP = sg == null ? null : tp("$sg п/г", subgroupChipStyle, 40, maxLines: 1);
+        final lineContentH = titleLayout.height +
+            (detailsP?.height ?? 0) + (detailsP != null ? 3 : 0);
+        final chipH = chipP != null ? (chipP.height + subgroupChipPaddingV * 2) : 0.0;
+        tileH += (lineContentH > chipH ? lineContentH : chipH) + linePadding;
+      }
+      final minTileH = badgeSize + 16;
+      tileHeights.add(tileH < minTileH ? minTileH : tileH);
+      contentHeight += (tileH < minTileH ? minTileH : tileH) + tileGap;
+    }
+    if (contentHeight > 0) contentHeight -= tileGap;
+
+    final emptyHeight = 48.0;
+    if (lessonNumbers.isEmpty) contentHeight = emptyHeight;
+
+    final headerHeight = titlePainter.height + 4 + datePainter.height + 2 + groupPainter.height;
+    final height = topPadding + headerHeight + headerGap + contentHeight + footerHeight + 16;
+
+    final recorder = ui.PictureRecorder();
+    final canvas = Canvas(recorder, Rect.fromLTWH(0, 0, width, height));
+    final primary = theme.colorScheme.primary;
+
+    canvas.drawRect(
+      Rect.fromLTWH(0, 0, width, height),
+      Paint()
+        ..shader = ui.Gradient.linear(
+          const Offset(0, 0),
+          Offset(width, height),
+          [blendDeep, baseA, blendSoft, baseB],
+          const [0.0, 0.28, 0.68, 1.0],
+        ),
+    );
+    canvas.drawCircle(
+      Offset(width - 80, -30),
+      180,
+      Paint()..color = accent.withAlpha(30),
+    );
+
+    titlePainter.paint(canvas, Offset(horizontalPadding, topPadding));
+    datePainter.paint(
+      canvas,
+      Offset(horizontalPadding, topPadding + titlePainter.height + 4),
+    );
+    groupPainter.paint(
+      canvas,
+      Offset(horizontalPadding, topPadding + titlePainter.height + datePainter.height + 6),
+    );
+
+    final totalLessons = sortedItems.length;
+    final countChip = tp(
+      "$totalLessons ${_lessonsWord(totalLessons)}",
+      subStyle.copyWith(fontSize: 12, color: fgPrimary),
+      140,
+      maxLines: 1,
+    );
+    final chipW = countChip.width + 16;
+    const chipH = 26.0;
+    final chipX = width - horizontalPadding - chipW;
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        Rect.fromLTWH(chipX, topPadding + 2, chipW, chipH),
+        const Radius.circular(10),
+      ),
+      Paint()..color = (isDark ? Colors.white : Colors.black).withAlpha(22),
+    );
+    countChip.paint(
+      canvas,
+      Offset(chipX + 8, topPadding + 2 + (chipH - countChip.height) / 2),
+    );
+
+    var y = topPadding + headerHeight + headerGap;
+    final rowBgPaint = Paint()
+      ..color = (isDark ? Colors.white : Colors.black).withAlpha(isDark ? 24 : 12);
+    final badgePaint = Paint()..color = primary.withAlpha(220);
+    final badgeTextStyle = TextStyle(
+      color: theme.colorScheme.onPrimary,
+      fontSize: 14,
+      fontWeight: FontWeight.w700,
+    );
+
+    if (lessonNumbers.isEmpty) {
+      final rect = RRect.fromRectAndRadius(
+        Rect.fromLTWH(horizontalPadding, y, contentWidth, emptyHeight),
+        const Radius.circular(14),
+      );
+      canvas.drawRRect(rect, rowBgPaint);
+      final emptyP = tp("Нет занятий", titleStyle, contentWidth - 20, maxLines: 1);
+      emptyP.paint(
+        canvas,
+        Offset(horizontalPadding + 12, y + (emptyHeight - emptyP.height) / 2),
+      );
+    } else {
+      for (var ti = 0; ti < lessonNumbers.length; ti++) {
+        final lessonNum = lessonNumbers[ti];
+        final lessonItems = grouped[lessonNum]!;
+        final tileH = tileHeights[ti];
+
+        final rect = RRect.fromRectAndRadius(
+          Rect.fromLTWH(horizontalPadding, y, contentWidth, tileH),
+          const Radius.circular(14),
+        );
+        canvas.drawRRect(rect, rowBgPaint);
+
+        const badgeX = horizontalPadding + 8;
+        final badgeY = y + (tileH - badgeSize) / 2;
+        canvas.drawCircle(
+          Offset(badgeX + badgeSize / 2, badgeY + badgeSize / 2),
+          badgeSize / 2,
+          badgePaint,
+        );
+        final badgeText = tp("$lessonNum", badgeTextStyle, badgeSize);
+        badgeText.paint(
+          canvas,
+          Offset(
+            badgeX + (badgeSize - badgeText.width) / 2,
+            badgeY + (badgeSize - badgeText.height) / 2,
+          ),
+        );
+
+        final textX = badgeX + badgeSize + 8;
+        var lineY = y + linePadding;
+        for (final item in lessonItems) {
           final time = LessonTimes.formatTime(item.lessonNumber, college: college);
-          final baseTitle = item.subject?.trim().isNotEmpty == true
-              ? item.subject!.trim()
-              : "—";
-          final subgroupLabel = item.subgroup == null ? null : "П/Г ${item.subgroup}";
-          final sel = prefs.selectedGroupName.trim();
+          final title = item.subject?.trim().isNotEmpty == true ? item.subject!.trim() : "—";
           final isViewByClassroom = item.classroom != null &&
               item.classroom!.isNotEmpty &&
               (sel == "Ауд. ${item.classroom}".trim() || sel == item.classroom!.trim());
@@ -435,249 +593,51 @@ class _DayCard extends StatelessWidget {
             if (item.teacher?.isNotEmpty == true) item.teacher!,
           ];
           final details = detailsParts.join("  ·  ");
-          return (
-            num: item.lessonNumber,
-            title: baseTitle,
-            subgroup: subgroupLabel,
-            details: details,
-          );
-        })
-        .toList();
-
-    const contentWidth = width - horizontalPadding * 2;
-    const textAreaWidth = contentWidth - badgeSize - 22;
-
-    var rowsHeight = 0.0;
-    if (rows.isEmpty) {
-      final emptyPainter = tp("Нет занятий", titleStyle, contentWidth - 28, maxLines: 1);
-      rowsHeight = (emptyPainter.height + 24) > rowMinHeight
-          ? (emptyPainter.height + 24)
-          : rowMinHeight;
-    } else {
-      for (final row in rows) {
-        final rowTitle = tp(row.title, titleStyle, textAreaWidth, maxLines: 2);
-        final subgroupPainter = row.subgroup == null
-            ? null
-            : tp(
-                row.subgroup!,
-                detailsStyle.copyWith(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w600,
-                  color: fgSecondary,
-                ),
-                textAreaWidth * 0.6,
-                maxLines: 1,
-              );
-        final rowDetails =
-            row.details.isEmpty ? null : tp(row.details, detailsStyle, textAreaWidth, maxLines: 2);
-        final textHeight = rowTitle.height +
-            (subgroupPainter?.height ?? 0) +
-            (rowDetails?.height ?? 0) +
-            (subgroupPainter != null ? 6 : 0) +
-            (rowDetails != null ? 8 : 0);
-        final rowHeight = (textHeight + 20) > rowMinHeight
-            ? (textHeight + 20)
-            : rowMinHeight;
-        rowsHeight += rowHeight + rowGap;
-      }
-      if (rowsHeight > 0) rowsHeight -= rowGap;
-    }
-
-    final headerHeight = titlePainter.height + 6 + datePainter.height + 4 + groupPainter.height;
-    final height =
-        topPadding + headerHeight + headerGap + rowsHeight + footerHeight + 20;
-    final recorder = ui.PictureRecorder();
-    final canvas = Canvas(recorder, Rect.fromLTWH(0, 0, width, height));
-    final primary = theme.colorScheme.primary;
-    final bgPaint = Paint()
-      ..shader = ui.Gradient.linear(
-        const Offset(0, 0),
-        Offset(width, height),
-        [
-          blendDeep,
-          baseA,
-          blendSoft,
-          baseB,
-        ],
-        const [0.0, 0.28, 0.68, 1.0],
-      );
-    canvas.drawRect(Rect.fromLTWH(0, 0, width, height), bgPaint);
-
-    // Soft glows make gradient transitions smoother.
-    canvas.drawCircle(
-      const Offset(width - 120, -40),
-      260,
-      Paint()..color = accent.withAlpha(30),
-    );
-    canvas.drawCircle(
-      Offset(-70, height + 30),
-      280,
-      Paint()..color = accent.withAlpha(20),
-    );
-
-    titlePainter.paint(canvas, const Offset(horizontalPadding, topPadding));
-    datePainter.paint(
-      canvas,
-      Offset(horizontalPadding, topPadding + titlePainter.height + 6),
-    );
-    groupPainter.paint(
-      canvas,
-      Offset(horizontalPadding, topPadding + titlePainter.height + datePainter.height + 10),
-    );
-
-    final countChip = tp(
-      "${rows.length} ${_lessonsWord(rows.length)}",
-      subStyle.copyWith(fontSize: 18, color: fgPrimary),
-      220,
-      maxLines: 1,
-    );
-    final chipW = countChip.width + 24;
-    const chipH = 34.0;
-    final chipX = width - horizontalPadding - chipW;
-    const chipY = topPadding + 6;
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(
-        Rect.fromLTWH(chipX, chipY, chipW, chipH),
-        const Radius.circular(12),
-      ),
-      Paint()..color = (isDark ? Colors.white : Colors.black).withAlpha(22),
-    );
-    countChip.paint(
-      canvas,
-      Offset(chipX + 12, chipY + (chipH - countChip.height) / 2),
-    );
-
-    var y = topPadding + headerHeight + headerGap;
-    final rowBgPaint = Paint()
-      ..color = (isDark ? Colors.white : Colors.black).withAlpha(isDark ? 24 : 12);
-    final badgePaint = Paint()..color = primary.withAlpha(220);
-    final badgeTextStyle = TextStyle(
-      color: theme.colorScheme.onPrimary,
-      fontSize: 20,
-      fontWeight: FontWeight.w700,
-    );
-
-    if (rows.isEmpty) {
-      final rect = RRect.fromRectAndRadius(
-        Rect.fromLTWH(horizontalPadding, y, contentWidth, rowMinHeight),
-        const Radius.circular(18),
-      );
-      canvas.drawRRect(rect, rowBgPaint);
-      final emptyPainter = tp("Нет занятий", titleStyle, contentWidth - 24, maxLines: 1);
-      emptyPainter.paint(
-        canvas,
-        Offset(
-          horizontalPadding + 12,
-          y + (rowMinHeight - emptyPainter.height) / 2,
-        ),
-      );
-      y += rowMinHeight;
-    } else {
-      for (final row in rows) {
-        final rowTitle = tp(row.title, titleStyle, textAreaWidth, maxLines: 2);
-        final subgroupPainter = row.subgroup == null
-            ? null
-            : tp(
-                row.subgroup!,
-                detailsStyle.copyWith(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w600,
-                  color: fgSecondary,
-                ),
-                textAreaWidth * 0.6,
-                maxLines: 1,
-              );
-        final rowDetails =
-            row.details.isEmpty ? null : tp(row.details, detailsStyle, textAreaWidth, maxLines: 2);
-        final textHeight = rowTitle.height +
-            (subgroupPainter?.height ?? 0) +
-            (rowDetails?.height ?? 0) +
-            (subgroupPainter != null ? 6 : 0) +
-            (rowDetails != null ? 8 : 0);
-        final rowHeight = (textHeight + 20) > rowMinHeight
-            ? (textHeight + 20)
-            : rowMinHeight;
-
-        final rect = RRect.fromRectAndRadius(
-          Rect.fromLTWH(horizontalPadding, y, contentWidth, rowHeight),
-          const Radius.circular(18),
-        );
-        canvas.drawRRect(rect, rowBgPaint);
-
-        const badgeX = horizontalPadding + 10;
-        final badgeY = y + (rowHeight - badgeSize) / 2;
-        canvas.drawCircle(
-          Offset(badgeX + badgeSize / 2, badgeY + badgeSize / 2),
-          badgeSize / 2,
-          badgePaint,
-        );
-        final badgeText = tp("${row.num}", badgeTextStyle, badgeSize);
-        badgeText.paint(
-          canvas,
-          Offset(
-            badgeX + (badgeSize - badgeText.width) / 2,
-            badgeY + (badgeSize - badgeText.height) / 2,
-          ),
-        );
-
-        const textX = badgeX + badgeSize + 12;
-        final titleY = y + 10;
-        final titleForPaint = tp(row.title, titleStyle, textAreaWidth, maxLines: 2);
-        titleForPaint.paint(canvas, Offset(textX, titleY));
-
-        var textCursorY = titleY + titleForPaint.height;
-        if (subgroupPainter != null) {
-          textCursorY += 6;
-          final chipW = subgroupPainter.width + 18;
-          final chipH = subgroupPainter.height + 6;
-          const chipX = textX;
-          final chipY = textCursorY;
-          canvas.drawRRect(
-            RRect.fromRectAndRadius(
-              Rect.fromLTWH(chipX, chipY, chipW, chipH),
-              const Radius.circular(8),
-            ),
-            Paint()
-              ..color = (isDark ? Colors.white : Colors.black)
-                  .withAlpha(isDark ? 18 : 10),
-          );
-          canvas.drawRRect(
-            RRect.fromRectAndRadius(
-              Rect.fromLTWH(chipX, chipY, chipW, chipH),
-              const Radius.circular(8),
-            ),
-            Paint()
-              ..style = PaintingStyle.stroke
-              ..strokeWidth = 1
-              ..color = fgSecondary.withAlpha(isDark ? 85 : 70),
-          );
-          subgroupPainter.paint(
-            canvas,
-            Offset(
-              chipX + (chipW - subgroupPainter.width) / 2,
-              chipY + (chipH - subgroupPainter.height) / 2,
-            ),
-          );
-          textCursorY += chipH;
+          final sg = item.subgroup;
+          final chipP = sg == null ? null : tp("$sg п/г", subgroupChipStyle, 40, maxLines: 1);
+          final chipW = chipP != null ? (chipP.width + subgroupChipPaddingH * 2) : 0.0;
+          final chipH = chipP != null ? (chipP.height + subgroupChipPaddingV * 2) : 0.0;
+          final titleAreaW = textAreaWidth - chipW - 4;
+          final titleP = tp(title, titleStyle, titleAreaW, maxLines: 2);
+          final detailsP = details.isEmpty ? null : tp(details, detailsStyle, titleAreaW, maxLines: 1);
+          final lineContentH = titleP.height + (detailsP != null ? 3 + detailsP.height : 0);
+          titleP.paint(canvas, Offset(textX, lineY));
+          var curY = lineY + titleP.height;
+          if (detailsP != null) {
+            detailsP.paint(canvas, Offset(textX, curY + 3));
+            curY += 3 + detailsP.height;
+          }
+          if (chipP != null) {
+            final cx = horizontalPadding + contentWidth - 8 - chipW;
+            final cy = lineY + (lineContentH - chipH) / 2;
+            canvas.drawRRect(
+              RRect.fromRectAndRadius(
+                Rect.fromLTWH(cx, cy, chipW, chipH),
+                const Radius.circular(6),
+              ),
+              Paint()..color = theme.colorScheme.primary.withAlpha(25),
+            );
+            chipP.paint(
+              canvas,
+              Offset(cx + (chipW - chipP.width) / 2, cy + (chipH - chipP.height) / 2),
+            );
+          }
+          lineY = lineY + (lineContentH > chipH ? lineContentH : chipH) + linePadding;
         }
-        if (rowDetails != null) {
-          textCursorY += 6;
-          rowDetails.paint(canvas, Offset(textX, textCursorY));
-        }
-        y += rowHeight + rowGap;
+        y += tileH + tileGap;
       }
     }
 
     final footerPainter = tp(
-      "Raspisanie • $dateLabel",
+      "Raspisanie",
       TextStyle(
         color: fgMuted.withAlpha(190),
-        fontSize: 18,
+        fontSize: 12,
         fontWeight: FontWeight.w500,
       ),
       width - horizontalPadding * 2,
     );
-    footerPainter.paint(canvas, Offset(horizontalPadding, height - footerHeight));
+    footerPainter.paint(canvas, Offset(horizontalPadding, height - footerHeight - 8));
 
     return recorder.endRecording().toImage(width.toInt(), height.toInt());
   }
@@ -1022,6 +982,7 @@ class _LessonTile extends StatelessWidget {
         icon: Icons.meeting_room_outlined,
         text: item.classroom!,
         href: item.classroomHref,
+        subScheduleKind: SubScheduleKind.classroom,
       ));
     }
     if (controller.prefs.isTeacherMode) {
@@ -1032,6 +993,7 @@ class _LessonTile extends StatelessWidget {
           icon: Icons.groups_2_outlined,
           text: item.subject!,
           href: item.subjectHref,
+          subScheduleKind: SubScheduleKind.teacherOrGroup,
         ));
       }
     } else if (item.teacher != null && item.teacher!.isNotEmpty) {
@@ -1041,6 +1003,7 @@ class _LessonTile extends StatelessWidget {
         icon: Icons.person_outline_rounded,
         text: item.teacher!,
         href: item.teacherHref,
+        subScheduleKind: SubScheduleKind.teacherOrGroup,
       ));
     }
     if (lines.isEmpty) return const SizedBox.shrink();
@@ -1080,6 +1043,7 @@ class _LessonTile extends StatelessWidget {
     required IconData icon,
     required String text,
     required String? href,
+    SubScheduleKind subScheduleKind = SubScheduleKind.teacherOrGroup,
   }) {
     final tappable = href != null && href.isNotEmpty;
     final textColor = tappable
@@ -1118,6 +1082,7 @@ class _LessonTile extends StatelessWidget {
         file: href,
         controller: controller,
         title: text,
+        kind: subScheduleKind,
       ),
       child: line,
     );

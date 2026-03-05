@@ -59,6 +59,11 @@ class NoteItem {
     this.lessonNumber,
     this.groupFile,
     this.college,
+    this.imagePath,
+    this.imagePaths = const [],
+    this.voicePaths = const [],
+    this.replyToId,
+    this.replyPreview,
   });
 
   final String id;
@@ -79,6 +84,11 @@ class NoteItem {
   final int? lessonNumber;
   final String? groupFile;
   final String? college;
+  final String? imagePath;
+  final List<String> imagePaths;
+  final List<String> voicePaths;
+  final String? replyToId;
+  final String? replyPreview;
 
   bool get isEmpty =>
       title.trim().isEmpty && content.trim().isEmpty && checklist.isEmpty;
@@ -165,6 +175,11 @@ class NoteItem {
     int? lessonNumber,
     String? groupFile,
     String? college,
+    String? imagePath,
+    List<String>? imagePaths,
+    List<String>? voicePaths,
+    String? replyToId,
+    String? replyPreview,
   }) {
     return NoteItem(
       id: id ?? this.id,
@@ -185,6 +200,11 @@ class NoteItem {
       lessonNumber: lessonNumber ?? this.lessonNumber,
       groupFile: groupFile ?? this.groupFile,
       college: college ?? this.college,
+      imagePath: imagePath ?? this.imagePath,
+      imagePaths: imagePaths ?? this.imagePaths,
+      voicePaths: voicePaths ?? this.voicePaths,
+      replyToId: replyToId ?? this.replyToId,
+      replyPreview: replyPreview ?? this.replyPreview,
     );
   }
 
@@ -206,6 +226,11 @@ class NoteItem {
         "lesson_number": lessonNumber,
         "group_file": groupFile,
         "college": college,
+        "image_path": imagePath,
+        "image_paths": jsonEncode(imagePaths),
+        "voice_paths": jsonEncode(voicePaths),
+        "reply_to_id": replyToId,
+        "reply_preview": replyPreview,
       };
 
   factory NoteItem.fromDbMap(
@@ -221,9 +246,31 @@ class NoteItem {
           .toList();
     } catch (_) {}
 
+    List<String> parsedImagePaths = [];
+    try {
+      final raw = map["image_paths"] as String? ?? "[]";
+      final arr = jsonDecode(raw) as List<dynamic>;
+      parsedImagePaths = arr.map((e) => e.toString()).toList();
+    } catch (_) {}
+    if (parsedImagePaths.isEmpty) {
+      final single = map["image_path"] as String?;
+      if (single != null && single.isNotEmpty) {
+        parsedImagePaths = [single];
+      }
+    }
+
+    List<String> parsedVoicePaths = [];
+    try {
+      final raw = map["voice_paths"] as String? ?? "[]";
+      final arr = jsonDecode(raw) as List<dynamic>;
+      parsedVoicePaths = arr.map((e) => e.toString()).toList();
+    } catch (_) {}
+
     final typeRaw = map["type"] as String? ?? "text";
     final type =
         typeRaw == NoteType.checklist.name ? NoteType.checklist : NoteType.text;
+
+    final singleImagePath = map["image_path"] as String?;
 
     return NoteItem(
       id: map["id"] as String? ?? "",
@@ -244,6 +291,11 @@ class NoteItem {
       lessonNumber: map["lesson_number"] as int?,
       groupFile: map["group_file"] as String?,
       college: map["college"] as String?,
+      imagePath: singleImagePath,
+      imagePaths: parsedImagePaths,
+      voicePaths: parsedVoicePaths,
+      replyToId: map["reply_to_id"] as String?,
+      replyPreview: map["reply_preview"] as String?,
     );
   }
 }

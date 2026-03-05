@@ -10,7 +10,6 @@ import "package:url_launcher/url_launcher.dart";
 import "../../../app/theme.dart";
 import "../../../core/database/schedule_database.dart";
 import "../../../core/services/font_service.dart";
-import "../../notes/data/backup_import_export_service.dart";
 import "../../schedule/data/lesson_times.dart";
 import "../../schedule/data/preferences_manager.dart";
 import "../../schedule/domain/models.dart";
@@ -41,9 +40,6 @@ class _SettingsPageState extends State<SettingsPage> {
   bool _dbBusy = false;
   bool _dbTransferBusy = false;
   int? _lastDbBackupAt;
-  bool _notesBackupBusy = false;
-  int? _lastNotesBackupAt;
-  final _backupService = BackupImportExportService();
   Map<int, LessonTime> _editingLessonTimes = {};
   bool _lessonTimesDirty = false;
 
@@ -92,8 +88,6 @@ class _SettingsPageState extends State<SettingsPage> {
             _fontSizeCard(theme),
             const SizedBox(height: 12),
             _section(theme, "ДАННЫЕ"),
-            _notesBackupCard(theme),
-            const SizedBox(height: 12),
             _dbSettingsCard(theme),
             const SizedBox(height: 20),
             _section(theme, "ВИДЖЕТ"),
@@ -101,8 +95,6 @@ class _SettingsPageState extends State<SettingsPage> {
             const SizedBox(height: 20),
             _section(theme, "ОФОРМЛЕНИЕ"),
             _themeGrid(theme),
-            const SizedBox(height: 12),
-            _notesCardThemeCard(theme),
             const SizedBox(height: 20),
             _section(theme, "О ПРИЛОЖЕНИИ"),
             _appInfoCard(theme),
@@ -116,19 +108,15 @@ class _SettingsPageState extends State<SettingsPage> {
   Future<void> _loadDbSettings() async {
     final saved =
         await ScheduleDatabase.instance.getDatabaseSetting("retention_days");
-    final lastBackup = await ScheduleDatabase.instance
-        .getDatabaseSetting("notes_last_backup_at");
     final lastDbBackup = await ScheduleDatabase.instance
         .getDatabaseSetting("db_last_backup_at");
     final parsed = int.tryParse(saved ?? "");
-    final parsedBackup = int.tryParse(lastBackup ?? "");
     final parsedDbBackup = int.tryParse(lastDbBackup ?? "");
     final count = await ScheduleDatabase.instance.getSnapshotCount();
     if (!mounted) return;
     setState(() {
       _dbRetentionDays = (parsed ?? 90).clamp(14, 365);
       _dbRecords = count;
-      _lastNotesBackupAt = parsedBackup;
       _lastDbBackupAt = parsedDbBackup;
     });
   }
@@ -876,9 +864,9 @@ class _SettingsPageState extends State<SettingsPage> {
   void _loadLessonTimesForSelectedCollege() {
     final college = ctrl.college;
     final custom = prefs.getCustomLessonTimes(college);
-    final source = custom == null || custom.isEmpty
-        ? LessonTimes.timesForCollege(college)
-        : custom;
+    final remote = prefs.getRemoteLessonTimes(college);
+    final builtIn = LessonTimes.getBuiltInTimes(college);
+    final source = custom ?? remote ?? builtIn;
     final sortedKeys = source.keys.toList()..sort();
     final normalized = <int, LessonTime>{};
     for (final key in sortedKeys) {
@@ -956,14 +944,31 @@ class _SettingsPageState extends State<SettingsPage> {
 
   Future<void> _resetLessonTimes() async {
     final college = ctrl.college;
+    final ok = await ctrl.refreshLessonTimesFromRemote(silent: true);
+    if (!mounted) return;
     prefs.clearCustomLessonTimes(college);
-    LessonTimes.clearCustomTimes(college);
+    final remote = prefs.getRemoteLessonTimes(college);
+    if (remote != null && remote.isNotEmpty) {
+      LessonTimes.setCustomTimes(college: college, times: remote);
+    } else {
+      LessonTimes.clearCustomTimes(college);
+    }
     _loadLessonTimesForSelectedCollege();
     await ctrl.loadSchedule(useCache: true);
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text("Возвращено стандартное время пар")),
-    );
+    if (ok && remote != null && remote.isNotEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Время пар загружено с сервера и применено")),
+      );
+    } else if (remote != null && remote.isNotEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Восстановлено сохранённое время пар с сервера")),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Возвращено стандартное время пар")),
+      );
+    }
   }
 
   Widget _lessonTimesCard(ThemeData theme) {
@@ -1141,37 +1146,6 @@ class _SettingsPageState extends State<SettingsPage> {
           ),
         );
       }).toList(),
-    );
-  }
-
-  Widget _notesCardThemeCard(ThemeData theme) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Row(
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    "Темные карточки заметок",
-                    style: theme.textTheme.bodyLarge,
-                  ),
-                  Text(
-                    "Использовать более темные цвета карточек в заметках",
-                    style: theme.textTheme.bodySmall,
-                  ),
-                ],
-              ),
-            ),
-            Switch(
-              value: prefs.notesDarkCards,
-              onChanged: (v) => setState(() => prefs.notesDarkCards = v),
-            ),
-          ],
-        ),
-      ),
     );
   }
 
@@ -1430,102 +1404,6 @@ class _SettingsPageState extends State<SettingsPage> {
         ),
       ),
     );
-  }
-
-  Widget _notesBackupCard(ThemeData theme) {
-    final lastBackupText = _lastNotesBackupAt == null
-        ? "не выполнялся"
-        : DateTime.fromMillisecondsSinceEpoch(_lastNotesBackupAt!).toString();
-
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text("Локальный backup/import заметок",
-                style: theme.textTheme.bodyLarge),
-            const SizedBox(height: 6),
-            Text(
-              "Последний экспорт: $lastBackupText",
-              style: theme.textTheme.bodySmall,
-            ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(
-                  child: FilledButton.tonalIcon(
-                    onPressed: _notesBackupBusy ? null : _exportNotes,
-                    icon: const Icon(Icons.upload_file_outlined),
-                    label: const Text("Экспорт"),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: FilledButton.tonalIcon(
-                    onPressed: _notesBackupBusy ? null : _importNotes,
-                    icon: const Icon(Icons.download_outlined),
-                    label: const Text("Импорт"),
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Future<void> _exportNotes() async {
-    setState(() => _notesBackupBusy = true);
-    try {
-      await _backupService.exportNotes();
-      final ts = DateTime.now().millisecondsSinceEpoch;
-      await ScheduleDatabase.instance
-          .saveDatabaseSetting("notes_last_backup_at", ts.toString());
-      if (mounted) {
-        setState(() => _lastNotesBackupAt = ts);
-      }
-    } finally {
-      if (mounted) setState(() => _notesBackupBusy = false);
-    }
-  }
-
-  Future<void> _importNotes() async {
-    final replace = await showDialog<bool>(
-          context: context,
-          builder: (ctx) => AlertDialog(
-            title: const Text("Импорт заметок"),
-            content: const Text(
-              "Заменить существующие заметки полностью?\n\n"
-              "Да — удалить текущие и импортировать файл.\n"
-              "Нет — объединить с текущими.",
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(ctx, false),
-                child: const Text("Объединить"),
-              ),
-              FilledButton(
-                onPressed: () => Navigator.pop(ctx, true),
-                child: const Text("Заменить"),
-              ),
-            ],
-          ),
-        ) ??
-        false;
-
-    setState(() => _notesBackupBusy = true);
-    try {
-      await _backupService.importNotes(replace: replace);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Импорт заметок завершен")),
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _notesBackupBusy = false);
-    }
   }
 
   Future<void> _exportDatabase() async {

@@ -56,6 +56,10 @@ class LessonTimes {
   static Map<int, LessonTime> _defaultForCollege(String college) =>
       college == "zabgc" ? _zabgc : _chtotib;
 
+  /// Built-in (hardcoded) times for a college. Use when showing "effective" times without remote/custom.
+  static Map<int, LessonTime> getBuiltInTimes(String college) =>
+      Map<int, LessonTime>.from(_defaultForCollege(college));
+
   static Map<int, LessonTime> _forCollege(String college) =>
       _custom[college] ?? _defaultForCollege(college);
 

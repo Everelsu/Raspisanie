@@ -40,7 +40,7 @@ class _HomePageState extends State<HomePage> {
     _pages = [
       SchedulePage(controller: widget.controller),
       StatisticsPage(controller: widget.controller),
-      NotesPage(controller: widget.controller),
+      const NotesPage(),
       SettingsPage(
         controller: widget.controller,
         onThemeChanged: widget.onThemeChanged,
