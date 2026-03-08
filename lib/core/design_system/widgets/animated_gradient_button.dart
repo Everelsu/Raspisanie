@@ -55,7 +55,17 @@ class AnimatedGradientButton extends StatelessWidget {
                 width: double.infinity,
                 height: height,
                 decoration: BoxDecoration(
-                  gradient: LinearGradient(colors: [startColor, endColor]),
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    stops: const [0.0, 0.4, 0.85, 1.0],
+                    colors: [
+                      startColor,
+                      Color.lerp(startColor, endColor, 0.35)!,
+                      Color.lerp(startColor, endColor, 0.7)!,
+                      endColor,
+                    ],
+                  ),
                   borderRadius: BorderRadius.circular(borderRadius),
                   boxShadow: [
                     BoxShadow(color: shadowColor, blurRadius: 8 * value, offset: Offset(0, 4 * value)),

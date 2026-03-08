@@ -135,20 +135,27 @@ class AppThemes {
         backgroundColor: c.surface,
         foregroundColor: c.onSurface,
         elevation: 0,
-        scrolledUnderElevation: 0,
+        scrolledUnderElevation: 1,
+        shadowColor: c.onSurface.withAlpha(25),
+        surfaceTintColor: Colors.transparent,
         titleTextStyle: textTheme.titleLarge,
       ),
       cardTheme: CardThemeData(
         color: c.card,
         elevation: isLight ? 2 : 0,
-        shadowColor: isLight ? Colors.black.withAlpha(22) : Colors.transparent,
+        shadowColor: isLight ? Colors.black.withAlpha(28) : Colors.transparent,
         margin: EdgeInsets.zero,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(22),
+          borderRadius: BorderRadius.circular(20),
           side: isLight
               ? BorderSide.none
-              : BorderSide(color: c.onSurfaceSecondary.withAlpha(20)),
+              : BorderSide(color: c.onSurfaceSecondary.withAlpha(18)),
         ),
+      ),
+      progressIndicatorTheme: ProgressIndicatorThemeData(
+        color: c.primary,
+        linearTrackColor: c.primary.withAlpha(40),
+        circularTrackColor: c.primary.withAlpha(40),
       ),
       navigationBarTheme: NavigationBarThemeData(
         backgroundColor: c.navBar,
@@ -197,7 +204,8 @@ class AppThemes {
         activeTrackColor: c.primary,
         inactiveTrackColor: c.primary.withAlpha(40),
         thumbColor: c.primary,
-        overlayColor: c.primary.withAlpha(20),
+        overlayColor: c.primary.withAlpha(26),
+        trackHeight: 4,
       ),
       chipTheme: ChipThemeData(
         backgroundColor: c.card,
@@ -231,8 +239,10 @@ class AppThemes {
       bottomSheetTheme: BottomSheetThemeData(
         backgroundColor: c.card,
         shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
         ),
+        dragHandleColor: c.onSurface.withAlpha(76),
+        showDragHandle: false,
       ),
       floatingActionButtonTheme: FloatingActionButtonThemeData(
         backgroundColor: c.primary,
@@ -244,7 +254,8 @@ class AppThemes {
         backgroundColor: c.card,
         contentTextStyle: TextStyle(color: c.onSurface),
         behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        insetPadding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
       ),
       textTheme: textTheme,
     );
@@ -335,10 +346,13 @@ class AppThemes {
 
   static LinearGradient primaryGradient(String key) {
     final c = _colors[key] ?? _colors["dark"]!;
+    final mid = Color.alphaBlend(c.primary.withAlpha(235), c.surface);
+    final end = Color.alphaBlend(c.primary.withAlpha(195), c.surface);
     return LinearGradient(
       begin: Alignment.topLeft,
       end: Alignment.bottomRight,
-      colors: [c.primary, Color.alphaBlend(c.primary.withAlpha(180), c.surface)],
+      stops: const [0.0, 0.35, 0.7, 1.0],
+      colors: [c.primary, mid, mid, end],
     );
   }
 

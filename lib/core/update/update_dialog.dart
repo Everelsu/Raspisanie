@@ -38,33 +38,35 @@ class UpdateDialog extends StatelessWidget {
           ),
         ],
       ),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            "Версия ${release.version} (у вас $currentVersion)",
-            style: theme.textTheme.titleSmall,
-          ),
-          const SizedBox(height: 12),
-          if (release.releaseNotes.isNotEmpty) ...[
-            Text("Что нового:", style: theme.textTheme.labelLarge),
-            const SizedBox(height: 6),
-            SizedBox(
-              height: 180,
-              child: SingleChildScrollView(
-                child: MarkdownBody(
-                  data: release.releaseNotes,
-                  selectable: true,
-                  styleSheet: MarkdownStyleSheet.fromTheme(theme).copyWith(
-                    p: theme.textTheme.bodySmall,
-                    listBullet: theme.textTheme.bodySmall,
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              "Версия ${release.version} (у вас $currentVersion)",
+              style: theme.textTheme.titleSmall,
+            ),
+            const SizedBox(height: 12),
+            if (release.releaseNotes.isNotEmpty) ...[
+              Text("Что нового:", style: theme.textTheme.labelLarge),
+              const SizedBox(height: 6),
+              SizedBox(
+                height: 180,
+                child: SingleChildScrollView(
+                  child: MarkdownBody(
+                    data: release.releaseNotes,
+                    selectable: true,
+                    styleSheet: MarkdownStyleSheet.fromTheme(theme).copyWith(
+                      p: theme.textTheme.bodySmall,
+                      listBullet: theme.textTheme.bodySmall,
+                    ),
                   ),
                 ),
               ),
-            ),
+            ],
           ],
-        ],
+        ),
       ),
       actions: [
         TextButton(

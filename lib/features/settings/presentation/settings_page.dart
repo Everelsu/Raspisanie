@@ -11,10 +11,10 @@ import "package:url_launcher/url_launcher.dart";
 import "../../../app/theme.dart";
 import "../../../core/database/schedule_database.dart";
 import "../../../core/notifications/notification_service.dart";
-import "../../../core/storage/storage_cleanup.dart";
-import "../../../core/services/font_service.dart";
 import "../../../core/update/app_update_service.dart";
 import "../../../core/update/update_dialog.dart";
+import "../../../core/storage/storage_cleanup.dart";
+import "../../../core/services/font_service.dart";
 import "../../schedule/data/lesson_times.dart";
 import "../../schedule/data/preferences_manager.dart";
 import "../../schedule/domain/models.dart";
@@ -794,10 +794,11 @@ class _SettingsPageState extends State<SettingsPage> {
         children: [
           Expanded(
             child: Column(
+              mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(title, style: theme.textTheme.bodyLarge),
-                Text(subtitle, style: theme.textTheme.bodySmall),
+                Text(title, style: theme.textTheme.bodyLarge, maxLines: 2, overflow: TextOverflow.ellipsis),
+                Text(subtitle, style: theme.textTheme.bodySmall, maxLines: 2, overflow: TextOverflow.ellipsis),
               ],
             ),
           ),
@@ -1646,7 +1647,6 @@ class _SettingsPageState extends State<SettingsPage> {
       );
     }
   }
-
 }
 
 class _AuthorAvatar extends StatelessWidget {

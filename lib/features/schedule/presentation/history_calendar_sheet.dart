@@ -39,14 +39,18 @@ class _HistoryCalendarSheetState extends State<HistoryCalendarSheet> {
     final nextKey = _scopeKey();
     if (nextKey == _lastScopeKey) return;
     _lastScopeKey = nextKey;
-    setState(() {
-      _selectedDay = null;
-      _selectedSchedule = null;
-      _markedDays = {};
-      _loading = true;
-      _focusedDay = DateTime.now();
+    if (!mounted) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      setState(() {
+        _selectedDay = null;
+        _selectedSchedule = null;
+        _markedDays = {};
+        _loading = true;
+        _focusedDay = DateTime.now();
+      });
+      _loadMarkedDays();
     });
-    _loadMarkedDays();
   }
 
   String _scopeKey() =>
@@ -269,9 +273,14 @@ class _CalendarView extends StatelessWidget {
               ),
               selectedDecoration: BoxDecoration(
                 gradient: LinearGradient(
-                  colors: [primary, primary.withAlpha(200)],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
+                  begin: Alignment(-0.7, -0.7),
+                  end: Alignment(0.9, 0.9),
+                  stops: const [0.0, 0.45, 1.0],
+                  colors: [
+                    primary,
+                    primary.withAlpha(230),
+                    primary.withAlpha(195),
+                  ],
                 ),
                 shape: BoxShape.circle,
               ),
@@ -386,8 +395,11 @@ class _HistoryDayCard extends StatelessWidget {
             gradient: LinearGradient(
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
+              stops: const [0.0, 0.35, 0.7, 1.0],
               colors: [
+                Color.alphaBlend(primary.withAlpha(14), cardColor),
                 Color.alphaBlend(primary.withAlpha(8), cardColor),
+                Color.alphaBlend(primary.withAlpha(4), cardColor),
                 cardColor,
               ],
             ),

@@ -19,7 +19,7 @@ class _StatisticsPageState extends State<StatisticsPage> {
   @override
   void initState() {
     super.initState();
-    _maybeLoad();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _maybeLoad());
   }
 
   void _maybeLoad() {
@@ -47,10 +47,22 @@ class _StatisticsPageState extends State<StatisticsPage> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(Icons.bar_chart_outlined,
-                    size: 64,
-                    color: theme.colorScheme.onSurface.withAlpha(60)),
-                const SizedBox(height: 12),
+                Container(
+                  width: 80,
+                  height: 80,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: theme.colorScheme.primary.withAlpha(18),
+                    border: Border.all(
+                      color: theme.colorScheme.primary.withAlpha(35),
+                      width: 1,
+                    ),
+                  ),
+                  child: Icon(Icons.bar_chart_outlined,
+                      size: 40,
+                      color: theme.colorScheme.primary.withAlpha(160)),
+                ),
+                const SizedBox(height: 20),
                 Text(hint, style: theme.textTheme.bodyLarge),
               ],
             ),
@@ -72,13 +84,25 @@ class _StatisticsPageState extends State<StatisticsPage> {
                 Center(
                   child: Column(
                     children: [
-                      Icon(Icons.bar_chart_outlined,
-                          size: 64,
-                          color: theme.colorScheme.onSurface.withAlpha(60)),
-                      const SizedBox(height: 12),
+                      Container(
+                        width: 80,
+                        height: 80,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: theme.colorScheme.primary.withAlpha(18),
+                          border: Border.all(
+                            color: theme.colorScheme.primary.withAlpha(35),
+                            width: 1,
+                          ),
+                        ),
+                        child: Icon(Icons.bar_chart_outlined,
+                            size: 40,
+                            color: theme.colorScheme.primary.withAlpha(160)),
+                      ),
+                      const SizedBox(height: 20),
                       Text("Нет данных для статистики",
                           style: theme.textTheme.bodyLarge),
-                      const SizedBox(height: 8),
+                      const SizedBox(height: 10),
                       Text("Потяните вниз для обновления",
                           style: theme.textTheme.bodySmall),
                     ],
@@ -212,18 +236,29 @@ class _SummaryBadge extends StatelessWidget {
         builder: (_, scale, child) =>
             Transform.scale(scale: scale, child: child),
         child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 10),
+          padding: const EdgeInsets.symmetric(vertical: 12),
           decoration: BoxDecoration(
             gradient: LinearGradient(
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
+              stops: const [0.0, 0.5, 1.0],
               colors: [
                 theme.cardTheme.color ?? theme.cardColor,
-                (theme.cardTheme.color ?? theme.cardColor).withAlpha(220),
+                (theme.cardTheme.color ?? theme.cardColor).withAlpha(242),
+                (theme.cardTheme.color ?? theme.cardColor).withAlpha(228),
               ],
             ),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: color.withAlpha(80), width: 1),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: color.withAlpha(70), width: 1),
+            boxShadow: theme.brightness == Brightness.light
+                ? [
+                    BoxShadow(
+                      color: Colors.black.withAlpha(18),
+                      blurRadius: 8,
+                      offset: const Offset(0, 2),
+                    ),
+                  ]
+                : null,
           ),
           child: Column(
             children: [
@@ -280,9 +315,13 @@ class _DisciplineCard extends StatelessWidget {
                 child: Container(
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
+                      begin: Alignment.centerLeft,
+                      end: Alignment.centerRight,
+                      stops: const [0.0, 0.5, 1.0],
                       colors: [
-                        theme.colorScheme.primary.withAlpha(30),
-                        theme.colorScheme.primary.withAlpha(10),
+                        theme.colorScheme.primary.withAlpha(38),
+                        theme.colorScheme.primary.withAlpha(18),
+                        theme.colorScheme.primary.withAlpha(8),
                       ],
                     ),
                   ),
@@ -303,7 +342,7 @@ class _DisciplineCard extends StatelessWidget {
                       height: 36,
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
-                        color: theme.colorScheme.onSurface.withAlpha(18),
+                        color: theme.colorScheme.primary.withAlpha(28),
                       ),
                       alignment: Alignment.center,
                       child: Text(

@@ -53,15 +53,11 @@ Future<String?> downloadApk(String url, {void Function(double)? onProgress}) asy
 }
 
 /// Запускает установку APK по пути. Только Android.
-/// После успешного вызова установки удаляет APK из темп-дира, чтобы не занимать место.
+/// Файл не удаляем сразу — установщик читает его асинхронно; кэш почистится при необходимости.
 Future<bool> installApk(String filePath) async {
   if (!Platform.isAndroid) return false;
   try {
     await _channel.invokeMethod<void>("install", {"path": filePath});
-    try {
-      final file = File(filePath);
-      if (await file.exists()) await file.delete();
-    } catch (_) {}
     return true;
   } on PlatformException catch (e) {
     if (kDebugMode) debugPrint("Install APK error: ${e.message}");

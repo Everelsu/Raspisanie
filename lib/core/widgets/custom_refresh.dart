@@ -302,9 +302,12 @@ class _RingPainter extends CustomPainter {
     final sweepShader = SweepGradient(
       startAngle: startRad,
       endAngle: endRad,
+      stops: const [0.0, 0.25, 0.6, 1.0],
       colors: [
-        accent.withOpacity(loading ? 0.6 : 0.4 + progress * 0.3),
-        accent.withOpacity(loading ? 1.0 : 0.85 + progress * 0.15),
+        accent.withOpacity(loading ? 0.5 : 0.3 + progress * 0.2),
+        accent.withOpacity(loading ? 0.75 : 0.55 + progress * 0.25),
+        accent.withOpacity(loading ? 0.95 : 0.85 + progress * 0.12),
+        accent.withOpacity(loading ? 1.0 : 0.92 + progress * 0.08),
       ],
     ).createShader(rect.inflate(4));
 

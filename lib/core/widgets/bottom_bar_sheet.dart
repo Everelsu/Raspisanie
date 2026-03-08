@@ -43,7 +43,50 @@ class _BottomBarWithSheetState extends State<BottomBarWithSheet>
   late final CurvedAnimation _sheetAnim;
   late final AnimationController _btnCtrl;
   late final CurvedAnimation _btnAnim;
+  late final AnimationController _leadCtrl;
+  late final AnimationController _followCtrl;
   bool _closingByDrag = false;
+
+  final GlobalKey _barKey = GlobalKey();
+  final List<GlobalKey> _navKeys = List.generate(4, (_) => GlobalKey());
+  List<(double x, double w)>? _itemSlots;
+  Rect? _leadFrom;
+  Rect? _leadTo;
+  Rect? _followFrom;
+  Rect? _followTo;
+
+  void _measureSlots() {
+    final barBox = _barKey.currentContext?.findRenderObject() as RenderBox?;
+    if (barBox == null) return;
+    final list = <(double, double)>[];
+    for (var i = 0; i < 4; i++) {
+      final box = _navKeys[i].currentContext?.findRenderObject() as RenderBox?;
+      if (box == null) {
+        list.add((0, 0));
+        continue;
+      }
+      final pos = barBox.globalToLocal(box.localToGlobal(Offset.zero));
+      list.add((pos.dx, box.size.width));
+    }
+    if (!mounted) return;
+    final slotsChanged = _itemSlots == null ||
+        _itemSlots!.length != list.length ||
+        list.asMap().entries.any((e) =>
+            _itemSlots![e.key].$1 != e.value.$1 || _itemSlots![e.key].$2 != e.value.$2);
+    if (!slotsChanged && _itemSlots != null && _itemSlots!.length == 4 && _leadTo != null) return;
+    setState(() {
+      _itemSlots = list;
+      if (list.length == 4 && _leadTo == null) {
+        final barH = _effectiveBarHeight(context);
+        final idx = widget.selectedIndex.clamp(0, 3);
+        final r = Rect.fromLTWH(list[idx].$1, 0, list[idx].$2, barH);
+        _leadFrom = r;
+        _leadTo = r;
+        _followFrom = r;
+        _followTo = r;
+      }
+    });
+  }
 
   @override
   void initState() {
@@ -61,18 +104,43 @@ class _BottomBarWithSheetState extends State<BottomBarWithSheet>
       value: widget.sheetOpen ? 1.0 : 0.0,
     );
     _btnAnim = CurvedAnimation(parent: _btnCtrl, curve: _curve);
+
+    _leadCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 160),
+    );
+    _followCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 300),
+    );
   }
 
   @override
   void didUpdateWidget(BottomBarWithSheet old) {
     super.didUpdateWidget(old);
-    if (widget.sheetOpen == old.sheetOpen) return;
-    if (widget.sheetOpen) {
-      _sheetCtrl.forward();
-      _btnCtrl.forward();
-    } else {
-      _sheetCtrl.reverse();
-      _btnCtrl.reverse();
+    if (widget.sheetOpen != old.sheetOpen) {
+      if (widget.sheetOpen) {
+        _sheetCtrl.forward();
+        _btnCtrl.forward();
+      } else {
+        _sheetCtrl.reverse();
+        _btnCtrl.reverse();
+      }
+    }
+    if (widget.selectedIndex != old.selectedIndex && _itemSlots != null) {
+      final barH = _effectiveBarHeight(context);
+      final target = Rect.fromLTWH(
+        _itemSlots![widget.selectedIndex].$1,
+        0,
+        _itemSlots![widget.selectedIndex].$2,
+        barH,
+      );
+      _leadFrom = _leadTo ?? target;
+      _leadTo = target;
+      _followFrom = _followTo ?? target;
+      _followTo = target;
+      _leadCtrl.forward(from: 0);
+      _followCtrl.forward(from: 0);
     }
   }
 
@@ -80,6 +148,8 @@ class _BottomBarWithSheetState extends State<BottomBarWithSheet>
   void dispose() {
     _sheetAnim.dispose();
     _btnAnim.dispose();
+    _leadCtrl.dispose();
+    _followCtrl.dispose();
     _sheetCtrl.dispose();
     _btnCtrl.dispose();
     super.dispose();
@@ -100,9 +170,9 @@ class _BottomBarWithSheetState extends State<BottomBarWithSheet>
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        _sheet(cardBg, cs, barH),
+        Flexible(child: _sheet(cardBg, cs, barH)),
         ColoredBox(
-            color: divider,
+            color: divider.withAlpha(80),
             child: const SizedBox(height: 0.5, width: double.infinity)),
         _bar(navBg, cs.primary, cs.onPrimary, unselected, theme, barH),
       ],
@@ -125,10 +195,14 @@ class _BottomBarWithSheetState extends State<BottomBarWithSheet>
             ((h - _sheetHandleBlockH) / (revealAt - _sheetHandleBlockH))
                 .clamp(0.0, 1.0);
         final showHandle = h >= _sheetHandleBlockH;
-        return ClipRRect(
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-          child: SizedBox(
-            height: h,
+        return LayoutBuilder(
+          builder: (context, parentConstraints) {
+            final actualH = math.min(h, parentConstraints.maxHeight);
+            if (actualH < 1) return const SizedBox.shrink();
+            return ClipRRect(
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+              child: SizedBox(
+                height: actualH,
             width: double.infinity,
             child: ColoredBox(
               color: bg,
@@ -164,13 +238,13 @@ class _BottomBarWithSheetState extends State<BottomBarWithSheet>
                       children: [
                         if (showHandle)
                           Padding(
-                            padding: const EdgeInsets.only(top: 10, bottom: 6),
+                            padding: const EdgeInsets.only(top: 12, bottom: 8),
                             child: DecoratedBox(
                               decoration: BoxDecoration(
-                                color: cs.onSurface.withAlpha(46),
-                                borderRadius: BorderRadius.circular(2),
+                                color: cs.onSurface.withAlpha(56),
+                                borderRadius: BorderRadius.circular(3),
                               ),
-                              child: const SizedBox(width: 40, height: 4),
+                              child: const SizedBox(width: 44, height: 5),
                             ),
                           ),
                         Expanded(
@@ -189,6 +263,8 @@ class _BottomBarWithSheetState extends State<BottomBarWithSheet>
               ),
             ),
           ),
+        );
+          },
         );
       },
       child: widget.sheetChild,
@@ -212,6 +288,7 @@ class _BottomBarWithSheetState extends State<BottomBarWithSheet>
     ThemeData theme,
     double barH,
   ) {
+    WidgetsBinding.instance.addPostFrameCallback((_) => _measureSlots());
     return Material(
       color: bg,
       elevation: 10,
@@ -219,17 +296,70 @@ class _BottomBarWithSheetState extends State<BottomBarWithSheet>
       child: SafeArea(
         top: false,
         child: SizedBox(
+          key: _barKey,
           height: barH,
-          child: Row(
+          child: Stack(
             children: [
-              _navItem(0, primary, unselected, barH),
-              _navItem(1, primary, unselected, barH),
-              _centerBtn(primary, onPrimary),
-              _navItem(2, primary, unselected, barH),
-              _navItem(3, primary, unselected, barH),
+              Row(
+                children: [
+                  _navItem(0, primary, unselected, barH),
+                  _navItem(1, primary, unselected, barH),
+                  _centerBtn(primary, onPrimary),
+                  _navItem(2, primary, unselected, barH),
+                  _navItem(3, primary, unselected, barH),
+                ],
+              ),
+              if (_itemSlots != null &&
+                  _leadFrom != null &&
+                  _leadTo != null &&
+                  _followFrom != null &&
+                  _followTo != null)
+                IgnorePointer(child: _jellyLayer(primary, barH)),
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _jellyLayer(Color primary, double barH) {
+    final leadCurve = CurvedAnimation(parent: _leadCtrl, curve: Curves.easeOutCubic);
+    final followCurve = CurvedAnimation(parent: _followCtrl, curve: Curves.easeOutBack);
+    return RepaintBoundary(
+      child: ListenableBuilder(
+        listenable: Listenable.merge([leadCurve, followCurve]),
+        builder: (context, _) {
+          final leadR = Rect.lerp(_leadFrom!, _leadTo!, leadCurve.value)!;
+          final followR = Rect.lerp(_followFrom!, _followTo!, followCurve.value)!;
+          return Stack(
+            children: [
+              Positioned(
+                left: followR.left + 2,
+                top: followR.top + 2,
+                width: followR.width - 4,
+                height: followR.height - 4,
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: primary.withAlpha(36),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                ),
+              ),
+              Positioned(
+                left: leadR.left + 2,
+                top: leadR.top + 2,
+                width: leadR.width - 4,
+                height: leadR.height - 4,
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: primary.withAlpha(55),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                ),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
@@ -240,34 +370,43 @@ class _BottomBarWithSheetState extends State<BottomBarWithSheet>
     final color = sel ? primary : unselected;
 
     return Expanded(
-      child: InkWell(
-        onTap: () => widget.onIndexChanged(i),
-        splashFactory: InkSparkle.splashFactory,
-        highlightColor: Colors.transparent,
-        child: SizedBox(
-          height: barH,
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            mainAxisSize: MainAxisSize.min,
-            children: [
+      key: _navKeys[i],
+      child: Material(
+        color: Colors.transparent,
+        clipBehavior: Clip.antiAlias,
+        borderRadius: BorderRadius.circular(16),
+        child: InkWell(
+          onTap: () => widget.onIndexChanged(i),
+          splashFactory: InkRipple.splashFactory,
+          splashColor: primary.withAlpha(40),
+          highlightColor: primary.withAlpha(20),
+          borderRadius: BorderRadius.circular(16),
+          child: SizedBox(
+            height: barH,
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              mainAxisSize: MainAxisSize.min,
+              children: [
               AnimatedContainer(
-                duration: const Duration(milliseconds: 180),
+                duration: const Duration(milliseconds: 150),
                 curve: Curves.easeOutCubic,
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                 decoration: BoxDecoration(
-                  color: sel ? primary.withAlpha(26) : Colors.transparent,
+                  color: sel && _itemSlots == null
+                      ? primary.withAlpha(26)
+                      : Colors.transparent,
                   borderRadius: BorderRadius.circular(14),
                 ),
                 child: AnimatedScale(
-                  scale: sel ? 1.12 : 1.0,
-                  duration: const Duration(milliseconds: 180),
-                  curve: Curves.easeOutBack,
+                  scale: sel ? 1.1 : 1.0,
+                  duration: const Duration(milliseconds: 150),
+                  curve: Curves.easeOutCubic,
                   child: Icon(sel ? item.$2 : item.$1, color: color, size: 24),
                 ),
               ),
               const SizedBox(height: 2),
               AnimatedSize(
-                duration: const Duration(milliseconds: 180),
+                duration: const Duration(milliseconds: 150),
                 curve: Curves.easeOutCubic,
                 child: sel
                     ? Text(
@@ -282,7 +421,8 @@ class _BottomBarWithSheetState extends State<BottomBarWithSheet>
                       )
                     : const SizedBox.shrink(),
               ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
@@ -312,13 +452,19 @@ class _BottomBarWithSheetState extends State<BottomBarWithSheet>
                 scale: scale,
                 child: Transform.rotate(
                   angle: _btnAnim.value * math.pi,
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                        colors: [primary, primary.withAlpha(200)],
-                      ),
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment(-0.8, -0.8),
+                          end: Alignment(1.0, 1.0),
+                          stops: const [0.0, 0.4, 0.85, 1.0],
+                          colors: [
+                            primary,
+                            primary.withAlpha(250),
+                            primary.withAlpha(218),
+                            primary.withAlpha(188),
+                          ],
+                        ),
                       shape: BoxShape.circle,
                       boxShadow: [
                         BoxShadow(

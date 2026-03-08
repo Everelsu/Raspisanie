@@ -33,6 +33,7 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> {
   int _currentIndex = 0;
+  int? _previousIndex;
   bool _sheetOpen = false;
 
   static const _titles = ["Расписание", "Итоги", "Заметки", "Настройки"];
@@ -83,9 +84,12 @@ class _HomePageState extends State<HomePage> {
   void _onOpenScheduleRequested() {
     if (!NotificationService.openScheduleOnTap.value || !mounted) return;
     NotificationService.openScheduleOnTap.value = false;
-    setState(() {
-      _currentIndex = 0;
-      _sheetOpen = false;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      setState(() {
+        _currentIndex = 0;
+        _sheetOpen = false;
+      });
     });
   }
 
@@ -105,12 +109,18 @@ class _HomePageState extends State<HomePage> {
 
                   if (groupName != null && _currentIndex != 3) {
                     return Column(
+                      mainAxisSize: MainAxisSize.min,
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(title),
+                        Text(title, overflow: TextOverflow.ellipsis, maxLines: 1),
                         Text(
                           groupName,
-                          style: theme.textTheme.bodySmall?.copyWith(fontSize: 13),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            fontSize: 13,
+                            color: theme.colorScheme.onSurface.withAlpha(200),
+                          ),
                         ),
                       ],
                     );
@@ -131,30 +141,41 @@ class _HomePageState extends State<HomePage> {
               ],
             ),
       body: AnimatedSwitcher(
-        duration: const Duration(milliseconds: 200),
+        duration: const Duration(milliseconds: 300),
         switchInCurve: Curves.easeOutCubic,
         switchOutCurve: Curves.easeInCubic,
+        layoutBuilder: (currentChild, previousChildren) {
+          return Stack(
+            alignment: Alignment.topCenter,
+            children: [
+              ...previousChildren,
+              if (currentChild != null) currentChild,
+            ],
+          );
+        },
         transitionBuilder: (child, animation) {
+          final prev = _previousIndex ?? _currentIndex;
+          final fromRight = _currentIndex > prev;
           return FadeTransition(
             opacity: CurvedAnimation(
               parent: animation,
-              curve: const Interval(0.0, 1.0),
+              curve: const Interval(0.0, 1.0, curve: Curves.easeOut),
             ),
             child: SlideTransition(
               position: Tween<Offset>(
-                begin: const Offset(0, 0.02),
+                begin: Offset(fromRight ? 0.05 : -0.05, 0),
                 end: Offset.zero,
               ).animate(CurvedAnimation(
                 parent: animation,
                 curve: Curves.easeOutCubic,
               )),
-              child: child,
+              child: RepaintBoundary(child: child),
             ),
           );
         },
         child: KeyedSubtree(
           key: ValueKey(_currentIndex),
-          child: _pages[_currentIndex],
+          child: RepaintBoundary(child: _pages[_currentIndex]),
         ),
       ),
       bottomNavigationBar: BottomBarWithSheet(
@@ -164,6 +185,7 @@ class _HomePageState extends State<HomePage> {
           HapticFeedback.selectionClick();
           setState(() {
             _sheetOpen = false;
+            _previousIndex = _currentIndex;
             _currentIndex = index;
           });
           if (index == 1) {
@@ -185,36 +207,75 @@ class _HomePageState extends State<HomePage> {
     final theme = Theme.of(context);
     final ctrl = widget.controller;
     final prefs = ctrl.prefs;
+    final bg = theme.cardTheme.color ?? theme.cardColor;
+    final primary = theme.colorScheme.primary;
 
     showModalBottomSheet<void>(
       context: context,
-      backgroundColor: theme.cardTheme.color ?? theme.cardColor,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (ctx) => ListenableBuilder(
-        listenable: ctrl,
-        builder: (ctx, _) => StatefulBuilder(
-          builder: (ctx, setSheetState) => SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Center(
-                    child: Container(
-                      width: 40,
-                      height: 4,
-                      decoration: BoxDecoration(
-                        color: theme.colorScheme.onSurface.withAlpha(60),
-                        borderRadius: BorderRadius.circular(2),
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (ctx) => Container(
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.of(ctx).size.height * 0.6,
+        ),
+        decoration: BoxDecoration(
+          color: bg,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withAlpha(40),
+              blurRadius: 20,
+              offset: const Offset(0, -4),
+            ),
+          ],
+        ),
+        child: ListenableBuilder(
+          listenable: ctrl,
+          builder: (ctx, _) => StatefulBuilder(
+            builder: (ctx, setSheetState) => SafeArea(
+              top: false,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 10, 20, 24),
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                    Center(
+                      child: Container(
+                        width: 36,
+                        height: 4,
+                        decoration: BoxDecoration(
+                          color: theme.colorScheme.onSurface.withAlpha(80),
+                          borderRadius: BorderRadius.circular(2),
+                        ),
                       ),
                     ),
-                  ),
-                  const SizedBox(height: 16),
-                  Text("Уведомления", style: theme.textTheme.titleLarge),
-                  const SizedBox(height: 16),
+                    const SizedBox(height: 20),
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: primary.withAlpha(24),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Icon(
+                            Icons.notifications_outlined,
+                            size: 22,
+                            color: primary,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Text(
+                          "Уведомления",
+                          style: theme.textTheme.titleLarge?.copyWith(
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 20),
                   _notificationSwitchTile(
                     theme,
                     setSheetState,
@@ -228,15 +289,20 @@ class _HomePageState extends State<HomePage> {
                       } else {
                         await ctrl.syncNotificationsNow();
                       }
-                      if (mounted) setState(() {});
+                      WidgetsBinding.instance.addPostFrameCallback((_) {
+                        if (mounted) setState(() {});
+                      });
                     },
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 16),
                   Text(
                     "За сколько минут до пары",
-                    style: theme.textTheme.bodyMedium,
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                      fontWeight: FontWeight.w500,
+                    ),
                   ),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 10),
                   Wrap(
                     spacing: 8,
                     runSpacing: 8,
@@ -245,11 +311,13 @@ class _HomePageState extends State<HomePage> {
                       return ChoiceChip(
                         label: Text("$m мин"),
                         selected: selected,
-                        selectedColor: theme.colorScheme.primary.withAlpha(40),
+                        selectedColor: primary.withAlpha(48),
                         onSelected: (_) async {
                           setSheetState(() => prefs.notificationOffset = m);
                           await ctrl.syncNotificationsNow();
-                          if (mounted) setState(() {});
+                          WidgetsBinding.instance.addPostFrameCallback((_) {
+                            if (mounted) setState(() {});
+                          });
                         },
                       );
                     }).toList(),
@@ -263,11 +331,15 @@ class _HomePageState extends State<HomePage> {
                     prefs.notifyScheduleChanges,
                     (v) {
                       setSheetState(() => prefs.notifyScheduleChanges = v);
-                      if (mounted) setState(() {});
+                      WidgetsBinding.instance.addPostFrameCallback((_) {
+                        if (mounted) setState(() {});
+                      });
                     },
                   ),
 
-                ],
+                  ],
+                ),
+                ),
               ),
             ),
           ),

@@ -174,11 +174,13 @@ class _DayCard extends StatelessWidget {
         child: Container(
           decoration: BoxDecoration(
             gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
+              begin: Alignment(-0.6, -0.8),
+              end: Alignment(0.8, 1.0),
+              stops: const [0.0, 0.4, 0.75, 1.0],
               colors: [
-                Color.alphaBlend(primary.withAlpha(28), cardColor),
-                Color.alphaBlend(primary.withAlpha(12), cardColor),
+                Color.alphaBlend(primary.withAlpha(32), cardColor),
+                Color.alphaBlend(primary.withAlpha(18), cardColor),
+                Color.alphaBlend(primary.withAlpha(10), cardColor),
                 cardColor,
               ],
             ),
@@ -905,9 +907,14 @@ class _LessonTile extends StatelessWidget {
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(12),
           gradient: LinearGradient(
+            begin: Alignment.centerLeft,
+            end: Alignment.centerRight,
+            stops: const [0.0, 0.3, 0.7, 1.0],
             colors: [
-              theme.colorScheme.primary.withAlpha(16),
-              theme.colorScheme.primary.withAlpha(6),
+              theme.colorScheme.primary.withAlpha(22),
+              theme.colorScheme.primary.withAlpha(12),
+              theme.colorScheme.primary.withAlpha(8),
+              theme.colorScheme.primary.withAlpha(5),
             ],
           ),
           border: Border(

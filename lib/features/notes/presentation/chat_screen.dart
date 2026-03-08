@@ -149,7 +149,11 @@ class _ChatScreenState extends State<ChatScreen> {
   void initState() {
     super.initState();
     context.read<ChatBloc>().add(ChatLoadMessages(chatId: widget.chatId));
-    _composerController.addListener(() => setState(() {}));
+    _composerController.addListener(() {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) setState(() {});
+      });
+    });
   }
 
   @override

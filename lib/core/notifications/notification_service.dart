@@ -139,7 +139,6 @@ class NotificationService {
     }
 
     _initialized = true;
-    print("[NS] initialized");
   }
 
   // ─────────────────────────────────────────────────────────────────────────────
@@ -169,23 +168,14 @@ class NotificationService {
       enabled: enabled,
     );
 
-    if (!enabled) {
-      print("[NS] disabled — done");
-      return;
-    }
-
-    int ok = 0, skipped = 0;
+    if (!enabled) return;
 
     for (final lesson in lessons) {
       final notifyAt = lesson.todayStartsAt
           .subtract(Duration(minutes: offsetMinutes));
       final now = DateTime.now();
 
-      if (!notifyAt.isAfter(now.add(const Duration(seconds: 30)))) {
-        print("[NS] skip past: ${lesson.subject} (${lesson.startTime})");
-        skipped++;
-        continue;
-      }
+      if (!notifyAt.isAfter(now.add(const Duration(seconds: 30)))) continue;
 
       try {
         await _plugin.zonedSchedule(
@@ -196,14 +186,8 @@ class NotificationService {
           notificationDetails: _lessonDetails(lesson, offsetMinutes),
           androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
         );
-        print("[NS] ✓ '${lesson.subject}' at $notifyAt");
-        ok++;
-      } catch (e) {
-        print("[NS] ✗ FAILED '${lesson.subject}': $e");
-      }
+      } catch (_) {}
     }
-
-    print("[NS] scheduled=$ok, skipped=$skipped");
   }
 
   /// Восстановить уведомления из кеша.
@@ -228,12 +212,10 @@ class NotificationService {
       lessons = list
           .map((e) => Lesson.fromJson(e as Map<String, dynamic>))
           .toList();
-    } catch (e) {
-      print("[NS] restore: bad cache — $e");
+    } catch (_) {
       return;
     }
 
-    print("[NS] restoring ${lessons.length} lessons from cache");
     await scheduleToday(
       lessons: lessons,
       offsetMinutes: offset,
@@ -247,7 +229,6 @@ class NotificationService {
     await _plugin.cancelAll();
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_kEnabled, false);
-    print("[NS] all cancelled");
   }
 
   /// Уведомление «Расписание обновлено».
@@ -285,10 +266,8 @@ class NotificationService {
         notificationDetails: _details(_channel),
         androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
       );
-      print("[NS] test scheduled at $at");
       return true;
-    } catch (e) {
-      print("[NS] test FAILED: $e");
+    } catch (_) {
       return false;
     }
   }
