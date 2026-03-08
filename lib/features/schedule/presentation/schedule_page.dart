@@ -39,17 +39,21 @@ class SchedulePage extends StatelessWidget {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Container(
-                    width: 72,
-                    height: 72,
+                    width: 80,
+                    height: 80,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      color: theme.colorScheme.primary.withAlpha(15),
+                      color: theme.colorScheme.primary.withAlpha(18),
+                      border: Border.all(
+                        color: theme.colorScheme.primary.withAlpha(35),
+                        width: 1,
+                      ),
                     ),
                     child: Icon(Icons.event_note_outlined,
-                        size: 36,
-                        color: theme.colorScheme.primary.withAlpha(120)),
+                        size: 40,
+                        color: theme.colorScheme.primary.withAlpha(180)),
                   ),
-                  const SizedBox(height: 20),
+                  const SizedBox(height: 24),
                   Text(
                     prefs.isGroupSelected
                         ? "Потяните вниз для загрузки"
@@ -79,16 +83,20 @@ class SchedulePage extends StatelessWidget {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Container(
-                    width: 72,
-                    height: 72,
+                    width: 80,
+                    height: 80,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      color: theme.colorScheme.error.withAlpha(15),
+                      color: theme.colorScheme.error.withAlpha(18),
+                      border: Border.all(
+                        color: theme.colorScheme.error.withAlpha(50),
+                        width: 1,
+                      ),
                     ),
                     child: Icon(Icons.cloud_off_outlined,
-                        size: 36, color: theme.colorScheme.error),
+                        size: 40, color: theme.colorScheme.error),
                   ),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 20),
                   Text(error,
                       textAlign: TextAlign.center,
                       style: TextStyle(color: theme.colorScheme.error)),
@@ -176,7 +184,7 @@ class _DayCard extends StatelessWidget {
             ),
           ),
           child: InkWell(
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(20),
             onLongPress: () => _showShareMenu(context, items),
             child: Padding(
               padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
