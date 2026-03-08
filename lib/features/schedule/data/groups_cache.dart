@@ -35,4 +35,38 @@ class GroupsCache {
     _prefs.remove(_key(college, scope));
     _prefs.remove(_tsKey(college, scope));
   }
+
+  void clearAll() {
+    final keys = _prefs.getKeys().toList();
+    for (final key in keys) {
+      if (key.startsWith("groups_cache_") || key.startsWith("groups_ts_")) {
+        _prefs.remove(key);
+      }
+    }
+  }
+
+  /// Оставляет только [maxEntries] последних записей (college+scope) по времени.
+  void trimToMaxEntries(int maxEntries) {
+    final keys = _prefs.getKeys();
+    final timestamps = <String, int>{};
+    for (final key in keys) {
+      if (key.startsWith("groups_ts_")) {
+        final ts = _prefs.getInt(key);
+        if (ts != null) timestamps[key] = ts;
+      }
+    }
+    if (timestamps.length <= maxEntries) return;
+    final sorted = timestamps.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+    for (var i = maxEntries; i < sorted.length; i++) {
+      final tsKey = sorted[i].key;
+      final suffix = tsKey.substring("groups_ts_".length);
+      final scopeCollege = suffix.split("_");
+      if (scopeCollege.length >= 2) {
+        final scope = scopeCollege[0];
+        final college = scopeCollege.sublist(1).join("_");
+        clear(college, scope: scope);
+      }
+    }
+  }
 }

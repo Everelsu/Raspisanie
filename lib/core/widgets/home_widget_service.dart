@@ -41,7 +41,17 @@ class HomeWidgetService {
       displayDay = displayDay ?? (sortedDays.isEmpty ? null : sortedDays.first);
 
       final items = (displayDay?.items ?? const <ScheduleItem>[]).toList()
-        ..sort((a, b) => a.lessonNumber.compareTo(b.lessonNumber));
+        ..sort((a, b) {
+          final cn = a.lessonNumber.compareTo(b.lessonNumber);
+          if (cn != 0) return cn;
+          return (a.subgroup ?? 0).compareTo(b.subgroup ?? 0);
+        });
+
+      final grouped = <int, List<ScheduleItem>>{};
+      for (final item in items) {
+        grouped.putIfAbsent(item.lessonNumber, () => []).add(item);
+      }
+      final lessonNumbers = grouped.keys.toList()..sort();
 
       final title = groupName.isEmpty ? "Расписание" : groupName;
       final subtitle = displayDay == null
@@ -53,17 +63,16 @@ class HomeWidgetService {
       String footer = "Raspisanie";
       String dayItemsPayload = "";
 
-      if (items.isNotEmpty) {
-        final first = items.first;
-        primary = "${first.lessonNumber}. ${first.subject ?? "—"}";
-        final details = <String>[
-          if (first.classroom?.isNotEmpty == true) "Ауд. ${first.classroom}",
-          if (first.teacher?.isNotEmpty == true) first.teacher!,
-          if (first.subgroup != null) "${first.subgroup} п/г",
-        ];
-        secondary = details.isEmpty ? "Без деталей" : details.join(" · ");
-        footer = "${items.length} ${_lessonWord(items.length)} • нажмите для открытия";
-        dayItemsPayload = items.map(_lineForWidget).join(_itemSeparator);
+      if (lessonNumbers.isNotEmpty) {
+        final firstBlock = grouped[lessonNumbers.first]!;
+        final firstSubject = (firstBlock.first.subject ?? "—").trim();
+        primary = "${firstBlock.first.lessonNumber}. $firstSubject";
+        secondary = _blockDetailsForWidget(firstBlock);
+        if (secondary.isEmpty) secondary = "Без деталей";
+        footer = "${lessonNumbers.length} ${_lessonWord(lessonNumbers.length)} • нажмите для открытия";
+        dayItemsPayload = lessonNumbers
+            .map((n) => _blockLineForWidget(n, grouped[n]!))
+            .join(_itemSeparator);
       }
 
       await HomeWidget.saveWidgetData<String>("widget_title", title);
@@ -173,13 +182,45 @@ class HomeWidgetService {
     return "пар";
   }
 
-  static String _lineForWidget(ScheduleItem i) {
-    final parts = <String>[
-      "${i.lessonNumber}. ${(i.subject ?? "—").trim()}",
-      if (i.classroom?.isNotEmpty == true) "Ауд. ${i.classroom}",
-      if (i.teacher?.isNotEmpty == true) i.teacher!,
-      if (i.subgroup != null) "${i.subgroup} п/г",
-    ];
-    return parts.join(" · ");
+  /// One block per lesson; text with newlines for readability.
+  static String _blockLineForWidget(int lessonNumber, List<ScheduleItem> block) {
+    final sorted = block.toList()
+      ..sort((a, b) => (a.subgroup ?? 0).compareTo(b.subgroup ?? 0));
+    final subject = (sorted.first.subject ?? "—").trim();
+    final lines = <String>["$lessonNumber. $subject"];
+    for (final item in sorted) {
+      final sg = item.subgroup;
+      final detailParts = <String>[
+        if (item.classroom?.isNotEmpty == true) "Ауд. ${item.classroom}",
+        if (item.teacher?.isNotEmpty == true) item.teacher!,
+      ];
+      final detailStr = detailParts.join(", ");
+      if (sg != null) {
+        lines.add("  $sg п/г: ${detailStr.isEmpty ? "—" : detailStr}");
+      } else if (detailStr.isNotEmpty) {
+        lines.add("  $detailStr");
+      }
+    }
+    return lines.join("\n");
+  }
+
+  static String _blockDetailsForWidget(List<ScheduleItem> block) {
+    final sorted = block.toList()
+      ..sort((a, b) => (a.subgroup ?? 0).compareTo(b.subgroup ?? 0));
+    final lines = <String>[];
+    for (final item in sorted) {
+      final sg = item.subgroup;
+      final detailParts = <String>[
+        if (item.classroom?.isNotEmpty == true) "Ауд. ${item.classroom}",
+        if (item.teacher?.isNotEmpty == true) item.teacher!,
+      ];
+      final detailStr = detailParts.join(", ");
+      if (sg != null) {
+        lines.add("$sg п/г: ${detailStr.isEmpty ? "—" : detailStr}");
+      } else if (detailStr.isNotEmpty) {
+        lines.add(detailStr);
+      }
+    }
+    return lines.join("\n");
   }
 }

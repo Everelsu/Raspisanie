@@ -133,7 +133,7 @@ private class ScheduleWidgetFactory(
     }
 
     private fun parseRow(row: String): Pair<String, String> {
-        val m = Regex("""^\s*(\d+)\.\s*(.+)$""").find(row)
+        val m = Regex("""^\s*(\d+)\.\s*(.+)$""", RegexOption.DOT_MATCHES_ALL).find(row)
         if (m != null) {
             val num = m.groupValues[1]
             val text = m.groupValues[2]

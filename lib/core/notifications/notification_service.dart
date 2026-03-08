@@ -1,167 +1,429 @@
+// ignore_for_file: avoid_print
+
+import "dart:convert";
 import "dart:io";
 
+import "package:flutter/foundation.dart";
 import "package:flutter_local_notifications/flutter_local_notifications.dart";
-import "package:timezone/timezone.dart" as tz;
+import "package:shared_preferences/shared_preferences.dart";
 import "package:timezone/data/latest_all.dart" as tz_data;
+import "package:timezone/timezone.dart" as tz;
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// MODEL
+// ═══════════════════════════════════════════════════════════════════════════════
+
+class Lesson {
+  final int number;
+  final String subject;
+  final String startTime;
+  /// Кабинет/аудитория.
+  final String? classroom;
+  /// Подгруппа (1, 2 и т.д.), если пара по подгруппам.
+  final int? subgroup;
+  /// Преподаватель — для режима «Студент».
+  final String? teacher;
+  /// Название группы — для режима «Преподаватель» (у кого пара).
+  final String? groupName;
+
+  const Lesson({
+    required this.number,
+    required this.subject,
+    required this.startTime,
+    this.classroom,
+    this.subgroup,
+    this.teacher,
+    this.groupName,
+  });
+
+  /// Момент начала пары сегодня.
+  DateTime get todayStartsAt {
+    final now = DateTime.now();
+    final parts = startTime.split(":");
+    final h = int.tryParse(parts[0].trim()) ?? 0;
+    final m = parts.length > 1 ? (int.tryParse(parts[1].trim()) ?? 0) : 0;
+    return DateTime(now.year, now.month, now.day, h, m);
+  }
+
+  /// Уникальный id: (YYYYMMDD * 100) + number. Нет коллизий.
+  int notificationId() {
+    final d = DateTime.now();
+    return (d.year * 10000 + d.month * 100 + d.day) * 100 + number;
+  }
+
+  Map<String, dynamic> toJson() => {
+        "n": number,
+        "s": subject,
+        "t": startTime,
+        if (classroom != null && classroom!.isNotEmpty) "c": classroom,
+        if (subgroup != null) "g": subgroup,
+        if (teacher != null && teacher!.isNotEmpty) "p": teacher,
+        if (groupName != null && groupName!.isNotEmpty) "gr": groupName,
+      };
+
+  factory Lesson.fromJson(Map<String, dynamic> j) => Lesson(
+        number: j["n"] as int,
+        subject: j["s"] as String,
+        startTime: j["t"] as String,
+        classroom: j["c"] as String?,
+        subgroup: j["g"] as int?,
+        teacher: j["p"] as String?,
+        groupName: j["gr"] as String?,
+      );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SERVICE
+// ═══════════════════════════════════════════════════════════════════════════════
 
 class NotificationService {
-  static final NotificationService _instance = NotificationService._();
-  factory NotificationService() => _instance;
   NotificationService._();
+  static final NotificationService instance = NotificationService._();
 
   final _plugin = FlutterLocalNotificationsPlugin();
   bool _initialized = false;
 
-  static const _channelLessons = "lesson_reminders";
+  /// Поставить true при нажатии на уведомление — HomePage переключится на вкладку «Расписание».
+  static final ValueNotifier<bool> openScheduleOnTap = ValueNotifier(false);
+
+  static const _channel = "lesson_reminders";
   static const _channelChanges = "schedule_changes";
-  static const _groupLessons = "lesson_reminders_group";
+
+  static const _kEnabled = "ns_enabled";
+  static const _kOffset = "ns_offset";
+  static const _kLessons = "ns_lessons";
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // INIT
+  // ─────────────────────────────────────────────────────────────────────────────
 
   Future<void> init() async {
     if (_initialized) return;
 
-    tz_data.initializeTimeZones();
-    try {
-      tz.setLocalLocation(tz.getLocation("Europe/Moscow"));
-    } catch (_) {
-      tz.setLocalLocation(tz.UTC);
-    }
+    _initTimezone();
 
-    const android = AndroidInitializationSettings("@mipmap/ic_launcher");
-    const ios = DarwinInitializationSettings(
-      requestAlertPermission: true,
-      requestBadgePermission: true,
-      requestSoundPermission: true,
+    await _plugin.initialize(
+      settings: const InitializationSettings(
+        android: AndroidInitializationSettings("@mipmap/ic_launcher"),
+        iOS: DarwinInitializationSettings(
+          requestAlertPermission: true,
+          requestBadgePermission: true,
+          requestSoundPermission: true,
+          notificationCategories: [],
+        ),
+      ),
+      onDidReceiveNotificationResponse: _onNotificationTapped,
     );
-    const settings = InitializationSettings(android: android, iOS: ios);
-    await _plugin.initialize(settings: settings);
-    _initialized = true;
 
     if (Platform.isAndroid) {
-      final androidPlugin =
-          _plugin.resolvePlatformSpecificImplementation<
-              AndroidFlutterLocalNotificationsPlugin>();
-      await androidPlugin?.requestNotificationsPermission();
-      await androidPlugin?.requestExactAlarmsPermission();
+      final ap = _androidPlugin;
+      await ap?.requestNotificationsPermission();
+      await ap?.requestExactAlarmsPermission();
+      await ap?.createNotificationChannel(const AndroidNotificationChannel(
+        _channel,
+        "Напоминания о парах",
+        description: "За N минут до начала пары — предмет, время, аудитория",
+        importance: Importance.max,
+        playSound: true,
+        enableVibration: true,
+        showBadge: true,
+      ));
+      await ap?.createNotificationChannel(const AndroidNotificationChannel(
+        _channelChanges,
+        "Изменения расписания",
+        description: "Когда данные расписания обновились",
+        importance: Importance.high,
+        playSound: true,
+        enableVibration: true,
+      ));
+    }
+
+    _initialized = true;
+    print("[NS] initialized");
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // PUBLIC API
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  /// Запланировать уведомления на сегодня.
+  ///
+  /// Старые уведомления отменяются автоматически — можно вызывать
+  /// повторно при любом изменении расписания.
+  ///
+  /// [lessons]       — список пар на сегодня.
+  /// [offsetMinutes] — за сколько минут до начала пары уведомлять.
+  /// [enabled]       — false: отменяет всё и ничего не планирует.
+  Future<void> scheduleToday({
+    required List<Lesson> lessons,
+    required int offsetMinutes,
+    required bool enabled,
+  }) async {
+    await _ensureInit();
+
+    await _plugin.cancelAll();
+
+    await _saveToPrefs(
+      lessons: lessons,
+      offsetMinutes: offsetMinutes,
+      enabled: enabled,
+    );
+
+    if (!enabled) {
+      print("[NS] disabled — done");
+      return;
+    }
+
+    int ok = 0, skipped = 0;
+
+    for (final lesson in lessons) {
+      final notifyAt = lesson.todayStartsAt
+          .subtract(Duration(minutes: offsetMinutes));
+      final now = DateTime.now();
+
+      if (!notifyAt.isAfter(now.add(const Duration(seconds: 30)))) {
+        print("[NS] skip past: ${lesson.subject} (${lesson.startTime})");
+        skipped++;
+        continue;
+      }
+
+      try {
+        await _plugin.zonedSchedule(
+          id: lesson.notificationId(),
+          title: _title(lesson.number, offsetMinutes),
+          body: _bodyShort(lesson),
+          scheduledDate: tz.TZDateTime.from(notifyAt, tz.local),
+          notificationDetails: _lessonDetails(lesson, offsetMinutes),
+          androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+        );
+        print("[NS] ✓ '${lesson.subject}' at $notifyAt");
+        ok++;
+      } catch (e) {
+        print("[NS] ✗ FAILED '${lesson.subject}': $e");
+      }
+    }
+
+    print("[NS] scheduled=$ok, skipped=$skipped");
+  }
+
+  /// Восстановить уведомления из кеша.
+  ///
+  /// Вызывать при каждом запуске приложения — на случай если
+  /// уведомления были сброшены системой.
+  Future<void> restoreIfNeeded() async {
+    await _ensureInit();
+
+    final prefs = await SharedPreferences.getInstance();
+    final enabled = prefs.getBool(_kEnabled) ?? false;
+    if (!enabled) return;
+
+    final raw = prefs.getString(_kLessons);
+    if (raw == null) return;
+
+    final offset = prefs.getInt(_kOffset) ?? 10;
+
+    List<Lesson> lessons;
+    try {
+      final list = jsonDecode(raw) as List<dynamic>;
+      lessons = list
+          .map((e) => Lesson.fromJson(e as Map<String, dynamic>))
+          .toList();
+    } catch (e) {
+      print("[NS] restore: bad cache — $e");
+      return;
+    }
+
+    print("[NS] restoring ${lessons.length} lessons from cache");
+    await scheduleToday(
+      lessons: lessons,
+      offsetMinutes: offset,
+      enabled: true,
+    );
+  }
+
+  /// Отменить все уведомления.
+  Future<void> cancelAll() async {
+    await _ensureInit();
+    await _plugin.cancelAll();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_kEnabled, false);
+    print("[NS] all cancelled");
+  }
+
+  /// Уведомление «Расписание обновлено».
+  Future<void> showScheduleChanged({required String groupName}) async {
+    await _ensureInit();
+    await _plugin.show(
+      id: 99989,
+      title: "Расписание обновлено",
+      body: groupName.isEmpty ? "Данные обновлены" : groupName,
+      notificationDetails: _details(_channelChanges),
+    );
+  }
+
+  // ─── Тесты ──────────────────────────────────────────────────────────────────
+
+  Future<void> showTestNow() async {
+    await _ensureInit();
+    await _plugin.show(
+      id: 99990,
+      title: "Уведомления работают ✓",
+      body: "Напоминания о парах будут приходить вовремя",
+      notificationDetails: _details(_channel),
+    );
+  }
+
+  Future<bool> scheduleTestIn1Min() async {
+    await _ensureInit();
+    final at = tz.TZDateTime.now(tz.local).add(const Duration(minutes: 1));
+    try {
+      await _plugin.zonedSchedule(
+        id: 99991,
+        title: "Тест: таймер ✓",
+        body: "Пришло через 1 мин — exact alarm работает",
+        scheduledDate: at,
+        notificationDetails: _details(_channel),
+        androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+      );
+      print("[NS] test scheduled at $at");
+      return true;
+    } catch (e) {
+      print("[NS] test FAILED: $e");
+      return false;
     }
   }
 
-  /// Формат в стиле Telegram: короткий заголовок, тело "предмет · время" (одна строка).
-  static String _formatReminderTitle(int offsetMinutes) =>
-      "Пара через $offsetMinutes мин";
-  static String _formatReminderBody(String subject, String time) {
-    const maxSubject = 48;
-    final s = subject.length > maxSubject
-        ? "${subject.substring(0, maxSubject)}…"
-        : subject;
-    return "$s · $time";
-  }
+  // ─────────────────────────────────────────────────────────────────────────────
+  // PRIVATE
+  // ─────────────────────────────────────────────────────────────────────────────
 
-  Future<void> scheduleLessonReminder({
-    required int id,
-    required String subject,
-    required String time,
-    required DateTime scheduledDate,
+  Future<void> _saveToPrefs({
+    required List<Lesson> lessons,
     required int offsetMinutes,
+    required bool enabled,
   }) async {
-    if (!_initialized) await init();
-
-    final notifyAt = scheduledDate.subtract(Duration(minutes: offsetMinutes));
-    if (notifyAt.isBefore(DateTime.now())) return;
-
-    final tzDate = tz.TZDateTime.from(notifyAt, tz.local);
-    final android = AndroidNotificationDetails(
-      _channelLessons,
-      "Пары",
-      channelDescription: "Напоминания перед началом пары",
-      importance: Importance.high,
-      priority: Priority.high,
-      icon: "@mipmap/ic_launcher",
-      groupKey: _groupLessons,
-    );
-    const ios = DarwinNotificationDetails();
-    final details = NotificationDetails(android: android, iOS: ios);
-
-    await _plugin.zonedSchedule(
-      id: id,
-      title: _formatReminderTitle(offsetMinutes),
-      body: _formatReminderBody(subject, time),
-      scheduledDate: tzDate,
-      notificationDetails: details,
-      androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_kEnabled, enabled);
+    await prefs.setInt(_kOffset, offsetMinutes);
+    await prefs.setString(
+      _kLessons,
+      jsonEncode(lessons.map((l) => l.toJson()).toList()),
     );
   }
 
-  Future<void> cancelAll() async {
-    if (!_initialized) await init();
-    await _plugin.cancelAll();
-  }
-
-  Future<void> showTestNotification() async {
-    if (!_initialized) await init();
-
-    const android = AndroidNotificationDetails(
-      _channelLessons,
-      "Пары",
-      channelDescription: "Напоминания перед началом пары",
-      importance: Importance.high,
-      priority: Priority.high,
-      icon: "@mipmap/ic_launcher",
-    );
-    const ios = DarwinNotificationDetails();
-    const details = NotificationDetails(android: android, iOS: ios);
-
-    await _plugin.show(
-      id: 9999,
-      title: "Уведомления включены",
-      body: "Напоминания о парах будут приходить в фоне",
-      notificationDetails: details,
-    );
-  }
-
-  /// Как в Telegram: короткий заголовок, тело с сутью (группа/контекст).
-  Future<void> showScheduleChanged({required String groupName}) async {
-    if (!_initialized) await init();
-
-    const android = AndroidNotificationDetails(
-      _channelChanges,
-      "Расписание",
-      channelDescription: "Уведомления об изменении расписания",
-      importance: Importance.high,
-      priority: Priority.high,
-      icon: "@mipmap/ic_launcher",
-    );
-    const ios = DarwinNotificationDetails();
-    const details = NotificationDetails(android: android, iOS: ios);
-
-    await _plugin.show(
-      id: 8888,
-      title: "Расписание обновлено",
-      body: groupName.isNotEmpty ? groupName : "Данные изменены",
-      notificationDetails: details,
-    );
-  }
-
-  Future<void> scheduleForDay({
-    required List<({int number, String subject, String startTime})> lessons,
-    required DateTime date,
-    required int offsetMinutes,
-  }) async {
-    await cancelAll();
-    for (final lesson in lessons) {
-      final timeParts = lesson.startTime.split(":");
-      if (timeParts.length != 2) continue;
-      final hour = int.tryParse(timeParts[0]) ?? 0;
-      final minute = int.tryParse(timeParts[1]) ?? 0;
-      final scheduledDate =
-          DateTime(date.year, date.month, date.day, hour, minute);
-
-      await scheduleLessonReminder(
-        id: lesson.number,
-        subject: lesson.subject,
-        time: lesson.startTime,
-        scheduledDate: scheduledDate,
-        offsetMinutes: offsetMinutes,
+  NotificationDetails _details(String channelId) => NotificationDetails(
+        android: AndroidNotificationDetails(
+          channelId,
+          channelId == _channelChanges ? "Изменения расписания" : "Напоминания о парах",
+          channelDescription: "Уведомления",
+          importance: Importance.max,
+          priority: Priority.max,
+          icon: "@mipmap/ic_launcher",
+          playSound: true,
+          enableVibration: true,
+        ),
+        iOS: const DarwinNotificationDetails(
+          presentAlert: true,
+          presentBadge: true,
+          presentSound: true,
+        ),
       );
+
+  /// Оформление уведомления о паре: заголовок, краткий текст и развёрнутый (BigText).
+  /// Структура: название · кабинет (погруппа) · препод / группа.
+  NotificationDetails _lessonDetails(Lesson lesson, int offsetMinutes) {
+    final title = _title(lesson.number, offsetMinutes);
+    final big = _bodyBig(lesson);
+
+    return NotificationDetails(
+      android: AndroidNotificationDetails(
+        _channel,
+        "Напоминания о парах",
+        channelDescription: "За N минут до начала пары",
+        importance: Importance.max,
+        priority: Priority.high,
+        icon: "@mipmap/ic_launcher",
+        playSound: true,
+        enableVibration: true,
+        visibility: NotificationVisibility.public,
+        styleInformation: BigTextStyleInformation(
+          big,
+          contentTitle: title,
+          summaryText: "Начало в ${lesson.startTime}",
+        ),
+      ),
+      iOS: DarwinNotificationDetails(
+        presentAlert: true,
+        presentBadge: true,
+        presentSound: true,
+        subtitle: "Начало в ${lesson.startTime}",
+      ),
+    );
+  }
+
+  static String _title(int lessonNumber, int offsetMinutes) =>
+      "Пара $lessonNumber через $offsetMinutes мин";
+
+  /// Одна строка: название · кабинет (погруппа) · препод/группа.
+  static String _bodyShort(Lesson lesson) {
+    const maxSubjectLen = 36;
+    final subject = lesson.subject.length > maxSubjectLen
+        ? "${lesson.subject.substring(0, maxSubjectLen)}…"
+        : lesson.subject;
+    final parts = <String>[subject];
+    if (lesson.classroom != null && lesson.classroom!.trim().isNotEmpty) {
+      parts.add(lesson.classroom!.trim());
+    }
+    if (lesson.subgroup != null) {
+      parts.add("п/г ${lesson.subgroup}");
+    }
+    final last = lesson.teacher ?? lesson.groupName;
+    if (last != null && last.trim().isNotEmpty) {
+      parts.add(last.trim());
+    }
+    return parts.join(" · ");
+  }
+
+  /// Развёрнутый текст (BigText): название, кабинет, погруппа, препод/группа, время.
+  static String _bodyBig(Lesson lesson) {
+    final lines = <String>[lesson.subject];
+    if (lesson.classroom != null && lesson.classroom!.trim().isNotEmpty) {
+      lines.add("Кабинет: ${lesson.classroom!.trim()}");
+    }
+    if (lesson.subgroup != null) {
+      lines.add("Подгруппа ${lesson.subgroup}");
+    }
+    if (lesson.teacher != null && lesson.teacher!.trim().isNotEmpty) {
+      lines.add("Преподаватель: ${lesson.teacher!.trim()}");
+    }
+    if (lesson.groupName != null && lesson.groupName!.trim().isNotEmpty) {
+      lines.add("Группа: ${lesson.groupName!.trim()}");
+    }
+    lines.add("Начало в ${lesson.startTime}");
+    return lines.join("\n");
+  }
+
+  AndroidFlutterLocalNotificationsPlugin? get _androidPlugin =>
+      _plugin.resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin>();
+
+  Future<void> _ensureInit() async {
+    if (!_initialized) await init();
+  }
+
+  static void _onNotificationTapped(NotificationResponse response) {
+    openScheduleOnTap.value = true;
+  }
+
+  static void _initTimezone() {
+    tz_data.initializeTimeZones();
+    final offset = DateTime.now().timeZoneOffset;
+    final h = offset.inHours.clamp(-12, 14);
+    try {
+      tz.setLocalLocation(
+          tz.getLocation("Etc/GMT${h <= 0 ? '+' : '-'}${h.abs()}"));
+    } catch (_) {
+      tz.setLocalLocation(tz.UTC);
     }
   }
 }

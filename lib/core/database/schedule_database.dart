@@ -978,6 +978,11 @@ class ScheduleDatabase {
     }
   }
 
+  /// Вызывается периодически и из [StorageCleanup] для уменьшения размера БД.
+  Future<void> runCleanupIfNeeded() async {
+    await _maybeCleanup();
+  }
+
   Future<void> _maybeCleanup() async {
     final now = DateTime.now();
     if (_lastCleanup != null &&

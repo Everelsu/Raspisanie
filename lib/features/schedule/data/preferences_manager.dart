@@ -35,6 +35,9 @@ class PreferencesManager {
 
   final SharedPreferences _prefs;
 
+  /// Для очистки кэша и служебных ключей (StorageCleanup).
+  SharedPreferences get sharedPreferences => _prefs;
+
   static const collegeDefault = "chtotib";
   static const collegeZabgc = "zabgc";
 
@@ -151,22 +154,6 @@ class PreferencesManager {
 
   bool get isTeacherMode => userMode == "teacher";
 
-  // --- Notifications ---
-  bool get notificationsEnabled =>
-      _prefs.getBool("notifications_enabled") ?? false;
-  set notificationsEnabled(bool v) =>
-      _prefs.setBool("notifications_enabled", v);
-
-  int get notificationOffset =>
-      _prefs.getInt("notification_offset_minutes") ?? 10;
-  set notificationOffset(int v) =>
-      _prefs.setInt("notification_offset_minutes", v);
-
-  bool get notifyScheduleChanges =>
-      _prefs.getBool("notify_schedule_changes") ?? true;
-  set notifyScheduleChanges(bool v) =>
-      _prefs.setBool("notify_schedule_changes", v);
-
   // --- Auto refresh ---
   bool get autoRefreshEnabled =>
       _prefs.getBool("auto_refresh_enabled") ?? true;
@@ -198,6 +185,25 @@ class PreferencesManager {
   }
 
   bool isFavoriteGroup(String name) => favoriteGroups.contains(name);
+
+  // --- Notifications (включены по умолчанию, планируются автоматически) ---
+  bool get notificationsEnabled =>
+      _prefs.getBool("notifications_enabled") ?? true;
+  set notificationsEnabled(bool v) =>
+      _prefs.setBool("notifications_enabled", v);
+
+  int get notificationOffset =>
+      _prefs.getInt("notification_offset_minutes") ?? 10;
+  set notificationOffset(int v) =>
+      _prefs.setInt("notification_offset_minutes", v);
+
+  bool get notifyScheduleChanges =>
+      _prefs.getBool("notify_schedule_changes") ?? true;
+  set notifyScheduleChanges(bool v) =>
+      _prefs.setBool("notify_schedule_changes", v);
+
+  String get lastScheduleHash => _prefs.getString("last_schedule_hash") ?? "";
+  set lastScheduleHash(String v) => _prefs.setString("last_schedule_hash", v);
 
   // --- Notes ---
   String get notesText => _prefs.getString("notes_text") ?? "";

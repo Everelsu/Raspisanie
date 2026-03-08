@@ -53,7 +53,9 @@ class SchedulePage extends StatelessWidget {
                   Text(
                     prefs.isGroupSelected
                         ? "Потяните вниз для загрузки"
-                        : "Выберите группу в настройках",
+                        : (prefs.isTeacherMode
+                            ? "Выберите преподавателя в настройках"
+                            : "Выберите группу в настройках"),
                     textAlign: TextAlign.center,
                     style: theme.textTheme.bodyLarge,
                   ),
@@ -307,15 +309,18 @@ class _DayCard extends StatelessWidget {
       if (bytes == null) return;
       final pngBytes = bytes.buffer.asUint8List();
       final safeDate = day.date.replaceAll(".", "-");
-      final fileName = "schedule_$safeDate.png";
+      final fileName =
+          "schedule_${safeDate}_${DateTime.now().millisecondsSinceEpoch}.png";
       final dir = await getTemporaryDirectory();
       final file = File("${dir.path}/$fileName");
       await file.writeAsBytes(pngBytes, flush: true);
+      await Future.delayed(const Duration(milliseconds: 250));
       if (!context.mounted) return;
       await SharePlus.instance.share(
         ShareParams(
-          text: " ",
-          files: [XFile(file.path, mimeType: "image/png", name: fileName)],
+          files: [
+            XFile(file.path, mimeType: "image/png", name: fileName),
+          ],
         ),
       );
     } catch (_) {

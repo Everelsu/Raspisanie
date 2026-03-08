@@ -32,7 +32,7 @@ class AppThemes {
       brightness: Brightness.dark,
     ),
     "light": AppThemeColors(
-      primary: Color(0xFF3478F6),
+      primary: Color(0xFF7EB5D8),
       surface: Color(0xFFF2F2F7),
       card: Color(0xFFFFFFFF),
       onSurface: Color(0xFF1C1C1E),

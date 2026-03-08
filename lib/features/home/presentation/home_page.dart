@@ -1,8 +1,13 @@
+import "dart:io";
+
 import "package:flutter/material.dart";
 import "package:flutter/services.dart";
+import "package:package_info_plus/package_info_plus.dart";
 
 import "../../../core/notifications/notification_service.dart";
 import "../../../core/services/font_service.dart";
+import "../../../core/update/app_update_service.dart";
+import "../../../core/update/update_dialog.dart";
 import "../../../core/widgets/bottom_bar_sheet.dart";
 import "../../notes/presentation/notes_page.dart";
 import "../../schedule/presentation/history_calendar_sheet.dart";
@@ -37,6 +42,7 @@ class _HomePageState extends State<HomePage> {
   @override
   void initState() {
     super.initState();
+    NotificationService.openScheduleOnTap.addListener(_onOpenScheduleRequested);
     _pages = [
       SchedulePage(controller: widget.controller),
       StatisticsPage(controller: widget.controller),
@@ -47,6 +53,40 @@ class _HomePageState extends State<HomePage> {
         fontService: widget.fontService,
       ),
     ];
+    if (Platform.isAndroid) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        Future.delayed(const Duration(seconds: 2), () async {
+          if (!mounted) return;
+          final release = await checkForUpdate();
+          if (!mounted || release == null) return;
+          final info = await PackageInfo.fromPlatform();
+          final theme = Theme.of(context);
+          showDialog(
+            context: context,
+            builder: (ctx) => UpdateDialog(
+              release: release,
+              currentVersion: info.version,
+              theme: theme,
+            ),
+          );
+        });
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    NotificationService.openScheduleOnTap.removeListener(_onOpenScheduleRequested);
+    super.dispose();
+  }
+
+  void _onOpenScheduleRequested() {
+    if (!NotificationService.openScheduleOnTap.value || !mounted) return;
+    NotificationService.openScheduleOnTap.value = false;
+    setState(() {
+      _currentIndex = 0;
+      _sheetOpen = false;
+    });
   }
 
   @override
@@ -81,9 +121,11 @@ class _HomePageState extends State<HomePage> {
               actions: [
                 if (_currentIndex == 3)
                   IconButton(
-                    onPressed: () => _showNotificationSettings(context),
-                    icon: Icon(Icons.notifications_outlined,
-                        color: theme.colorScheme.onSurface),
+                    onPressed: () => _showNotificationSheet(context),
+                    icon: Icon(
+                      Icons.notifications_outlined,
+                      color: theme.colorScheme.onSurface,
+                    ),
                     tooltip: "Уведомления",
                   ),
               ],
@@ -139,117 +181,94 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  void _showNotificationSettings(BuildContext context) {
+  void _showNotificationSheet(BuildContext context) {
     final theme = Theme.of(context);
-    final prefs = widget.controller.prefs;
-    showModalBottomSheet(
+    final ctrl = widget.controller;
+    final prefs = ctrl.prefs;
+
+    showModalBottomSheet<void>(
       context: context,
-      backgroundColor: theme.cardTheme.color,
+      backgroundColor: theme.cardTheme.color ?? theme.cardColor,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setSheetState) => SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.all(20),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Center(
-                  child: Container(
-                    width: 40,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: theme.colorScheme.onSurface.withAlpha(40),
-                      borderRadius: BorderRadius.circular(2),
+      builder: (ctx) => ListenableBuilder(
+        listenable: ctrl,
+        builder: (ctx, _) => StatefulBuilder(
+          builder: (ctx, setSheetState) => SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 40,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: theme.colorScheme.onSurface.withAlpha(60),
+                        borderRadius: BorderRadius.circular(2),
+                      ),
                     ),
                   ),
-                ),
-                const SizedBox(height: 16),
-                Text("Уведомления", style: theme.textTheme.titleLarge),
-                const SizedBox(height: 16),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text("Напоминания о парах",
-                              style: theme.textTheme.bodyLarge),
-                          Text("Уведомление перед началом пары",
-                              style: theme.textTheme.bodySmall),
-                        ],
-                      ),
-                    ),
-                    Switch(
-                      value: prefs.notificationsEnabled,
-                      onChanged: (v) {
-                        setSheetState(() => prefs.notificationsEnabled = v);
-                        if (!v) {
-                          NotificationService().cancelAll();
-                        }
-                        setState(() {});
-                      },
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text("Изменения расписания",
-                              style: theme.textTheme.bodyLarge),
-                          Text("Уведомлять при обновлении данных",
-                              style: theme.textTheme.bodySmall),
-                        ],
-                      ),
-                    ),
-                    Switch(
-                      value: prefs.notifyScheduleChanges,
-                      onChanged: (v) {
-                        setSheetState(() => prefs.notifyScheduleChanges = v);
-                        setState(() {});
-                      },
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                Text("За сколько минут до пары", style: theme.textTheme.bodyMedium),
-                const SizedBox(height: 8),
-                Row(
-                  children: [5, 10, 15, 30].map((m) {
-                    final selected = prefs.notificationOffset == m;
-                    return Padding(
-                      padding: const EdgeInsets.only(right: 8),
-                      child: ChoiceChip(
+                  const SizedBox(height: 16),
+                  Text("Уведомления", style: theme.textTheme.titleLarge),
+                  const SizedBox(height: 16),
+                  _notificationSwitchTile(
+                    theme,
+                    setSheetState,
+                    "Напоминания о парах",
+                    "Приходят при открытии и обновлении расписания",
+                    prefs.notificationsEnabled,
+                    (v) async {
+                      setSheetState(() => prefs.notificationsEnabled = v);
+                      if (!v) {
+                        await NotificationService.instance.cancelAll();
+                      } else {
+                        await ctrl.syncNotificationsNow();
+                      }
+                      if (mounted) setState(() {});
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    "За сколько минут до пары",
+                    style: theme.textTheme.bodyMedium,
+                  ),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [5, 10, 15].map((m) {
+                      final selected = prefs.notificationOffset == m;
+                      return ChoiceChip(
                         label: Text("$m мин"),
                         selected: selected,
                         selectedColor: theme.colorScheme.primary.withAlpha(40),
-                        onSelected: (_) {
+                        onSelected: (_) async {
                           setSheetState(() => prefs.notificationOffset = m);
-                          setState(() {});
+                          await ctrl.syncNotificationsNow();
+                          if (mounted) setState(() {});
                         },
-                      ),
-                    );
-                  }).toList(),
-                ),
-                const SizedBox(height: 14),
-                SizedBox(
-                  width: double.infinity,
-                  child: FilledButton.tonalIcon(
-                    onPressed: () => NotificationService().showTestNotification(),
-                    icon: const Icon(Icons.notifications_active_outlined),
-                    label: const Text("Тест уведомления"),
+                      );
+                    }).toList(),
                   ),
-                ),
-                const SizedBox(height: 16),
-              ],
+                  const SizedBox(height: 12),
+                  _notificationSwitchTile(
+                    theme,
+                    setSheetState,
+                    "Обновление расписания",
+                    "Уведомлять при изменении данных",
+                    prefs.notifyScheduleChanges,
+                    (v) {
+                      setSheetState(() => prefs.notifyScheduleChanges = v);
+                      if (mounted) setState(() {});
+                    },
+                  ),
+
+                ],
+              ),
             ),
           ),
         ),
@@ -257,4 +276,35 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+  Widget _notificationSwitchTile(
+    ThemeData theme,
+    StateSetter setSheetState,
+    String title,
+    String subtitle,
+    bool value,
+    ValueChanged<bool> onChanged,
+  ) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title, style: theme.textTheme.bodyLarge),
+                Text(
+                  subtitle,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Switch(value: value, onChanged: onChanged),
+        ],
+      ),
+    );
+  }
 }

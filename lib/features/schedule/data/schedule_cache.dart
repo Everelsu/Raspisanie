@@ -54,6 +54,7 @@ class ScheduleCache {
   void clear(String groupFile, String college) {
     _prefs.remove(_scheduleKey(college, groupFile));
     _prefs.remove(_timestampKey(college, groupFile));
+    _prefs.remove("history_${college}_$groupFile");
   }
 
   void clearAll() {
@@ -65,6 +66,8 @@ class ScheduleCache {
     }
   }
 
+  static const _maxHistoryEntries = 15;
+
   void saveToHistory(
       List<DaySchedule> schedules, String groupFile, String college) {
     if (schedules.isEmpty) return;
@@ -73,10 +76,34 @@ class ScheduleCache {
     final json = jsonEncode(schedules.map((e) => e.toJson()).toList());
     final entry = "${DateTime.now().millisecondsSinceEpoch}|$json";
     existing.add(entry);
-    if (existing.length > 30) {
-      existing.removeRange(0, existing.length - 30);
+    if (existing.length > _maxHistoryEntries) {
+      existing.removeRange(0, existing.length - _maxHistoryEntries);
     }
     _prefs.setStringList(histKey, existing);
+  }
+
+  /// Оставляет в кэше только [maxPairs] последних пар (college, groupFile) по времени.
+  void trimToMaxEntries(int maxPairs) {
+    final keys = _prefs.getKeys();
+    final timestamps = <String, int>{};
+    for (final key in keys) {
+      if (key.startsWith("timestamp_")) {
+        final ts = _prefs.getInt(key);
+        if (ts != null) timestamps[key] = ts;
+      }
+    }
+    if (timestamps.length <= maxPairs) return;
+    final sorted = timestamps.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+    for (var i = maxPairs; i < sorted.length; i++) {
+      final key = sorted[i].key;
+      final suffix = key.substring("timestamp_".length);
+      final lastUnderscore = suffix.lastIndexOf("_");
+      if (lastUnderscore <= 0) continue;
+      final college = suffix.substring(0, lastUnderscore);
+      final groupFile = suffix.substring(lastUnderscore + 1);
+      clear(groupFile, college);
+    }
   }
 
   List<(DateTime date, List<DaySchedule> schedule)> loadHistory(

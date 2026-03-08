@@ -1,9 +1,10 @@
 import "dart:async";
+import "dart:convert";
 
 import "package:flutter/foundation.dart";
 import "package:shared_preferences/shared_preferences.dart";
 
-import "../../../core/notifications/notification_service.dart";
+import "../../../core/notifications/notification_service.dart" show Lesson, NotificationService;
 import "../../../core/widgets/home_widget_service.dart";
 import "../data/express_schedule_repository.dart";
 import "../data/groups_cache.dart";
@@ -31,6 +32,8 @@ class ScheduleController extends ChangeNotifier {
 
   Timer? _autoRefreshTimer;
   Timer? _remoteLessonTimesTimer;
+  DateTime? _lastScheduleRefreshAt;
+  static const Duration _staleThreshold = Duration(minutes: 25);
 
   final PreferencesManager _prefsManager;
   late final ExpressScheduleRepository _repository;
@@ -129,14 +132,13 @@ class ScheduleController extends ChangeNotifier {
         college: college,
         useCache: useCache,
       );
+      _lastScheduleRefreshAt = DateTime.now();
       if (schedule.isEmpty) {
         error = "Расписание не найдено.";
       }
-      if (_repository.scheduleChanged) {
-        _repository.clearChangedFlag();
-        _notifyScheduleChanged();
-      }
-      _syncLessonNotifications();
+      if (_repository.scheduleChanged) _repository.clearChangedFlag();
+      _checkScheduleHashAndNotify();
+      await _syncLessonNotifications();
       _updateHomeWidget();
     } catch (e) {
       error = _humanReadableError(e);
@@ -157,6 +159,123 @@ class ScheduleController extends ChangeNotifier {
 
   Future<void> refreshSchedule() => loadSchedule(useCache: false);
 
+  /// Вызывать при возврате в приложение: тихо обновляет расписание, если кэш устарел.
+  Future<void> onAppResumed() async {
+    if (!_prefsManager.autoRefreshEnabled || selectedGroup == null) return;
+    final now = DateTime.now();
+    if (_lastScheduleRefreshAt != null &&
+        now.difference(_lastScheduleRefreshAt!) < _staleThreshold) {
+      return;
+    }
+    await _refreshScheduleSilent();
+  }
+
+  /// Фоновое обновление без индикатора загрузки (для resume и таймера).
+  Future<void> _refreshScheduleSilent() async {
+    final group = selectedGroup;
+    if (group == null) return;
+    try {
+      final result = await _repository.fetchSchedule(
+        groupFile: group.fileName,
+        college: college,
+        useCache: false,
+      );
+      if (result.isEmpty) return;
+      schedule = result;
+      _lastScheduleRefreshAt = DateTime.now();
+      if (_repository.scheduleChanged) _repository.clearChangedFlag();
+      _checkScheduleHashAndNotify();
+      await _syncLessonNotifications();
+      _updateHomeWidget();
+      notifyListeners();
+    } catch (_) {}
+  }
+
+  void _checkScheduleHashAndNotify() {
+    final newHash = _computeScheduleHash(schedule);
+    final old = _prefsManager.lastScheduleHash;
+    if (old.isNotEmpty && old != newHash && _prefsManager.notifyScheduleChanges) {
+      try {
+        NotificationService.instance.showScheduleChanged(
+          groupName: selectedGroup?.name ?? _prefsManager.selectedGroupName,
+        );
+      } catch (_) {}
+    }
+    _prefsManager.lastScheduleHash = newHash;
+  }
+
+  static String _computeScheduleHash(List<DaySchedule> schedule) {
+    try {
+      final json = jsonEncode(schedule.map((d) => d.toJson()).toList());
+      return "${json.length}:${json.hashCode}";
+    } catch (_) {
+      return "";
+    }
+  }
+
+  /// Перепланировать напоминания на сегодня. Возвращает сообщение для пользователя.
+  Future<String> syncNotificationsNow() async {
+    try {
+      return await _syncLessonNotifications();
+    } catch (e) {
+      return "Ошибка: $e";
+    }
+  }
+
+  Future<String> _syncLessonNotifications() async {
+    final today = DateTime.now();
+    final todayKey =
+        "${today.day.toString().padLeft(2, "0")}.${today.month.toString().padLeft(2, "0")}.${today.year}";
+    final todayKeyAlt =
+        "${today.year}-${today.month.toString().padLeft(2, "0")}-${today.day.toString().padLeft(2, "0")}";
+    final todaySchedule = schedule
+        .where((d) => d.date == todayKey || d.date == todayKeyAlt)
+        .toList();
+    final enabled = _prefsManager.notificationsEnabled;
+
+    if (!enabled) {
+      await NotificationService.instance.scheduleToday(
+        lessons: const [],
+        offsetMinutes: _prefsManager.notificationOffset,
+        enabled: false,
+      );
+      return "Напоминания выключены";
+    }
+    if (todaySchedule.isEmpty || todaySchedule.first.items.isEmpty) {
+      await NotificationService.instance.scheduleToday(
+        lessons: const [],
+        offsetMinutes: _prefsManager.notificationOffset,
+        enabled: true,
+      );
+      return "Нет пар на сегодня";
+    }
+
+    final isTeacher = _prefsManager.isTeacherMode;
+    final lessonList = todaySchedule.first.items
+        .map(
+          (e) => Lesson(
+            number: e.lessonNumber,
+            subject: e.subject ?? "Пара ${e.lessonNumber}",
+            startTime: LessonTimes.getTime(e.lessonNumber, college: college)
+                    ?.startTime ??
+                "08:00",
+            classroom: e.classroom,
+            subgroup: e.subgroup,
+            teacher: isTeacher ? null : e.teacher,
+            groupName: isTeacher ? selectedGroup?.name : null,
+          ),
+        )
+        .toList()
+      ..sort((a, b) => a.number.compareTo(b.number));
+
+    await NotificationService.instance.scheduleToday(
+      lessons: lessonList,
+      offsetMinutes: _prefsManager.notificationOffset,
+      enabled: true,
+    );
+    return "Запланировано ${lessonList.length} напоминаний на сегодня";
+  }
+
   void startAutoRefresh() {
     stopAutoRefresh();
     if (!_prefsManager.autoRefreshEnabled) return;
@@ -165,7 +284,7 @@ class ScheduleController extends ChangeNotifier {
       Duration(minutes: interval),
       (_) {
         if (selectedGroup != null) {
-          loadSchedule(useCache: false);
+          _refreshScheduleSilent();
         }
       },
     );
@@ -248,48 +367,6 @@ class ScheduleController extends ChangeNotifier {
     _prefsManager.selectedGroupFile = "";
     _prefsManager.selectedGroupName = "";
     notifyListeners();
-  }
-
-  void _notifyScheduleChanged() {
-    if (!_prefsManager.notifyScheduleChanges) return;
-    try {
-      NotificationService().showScheduleChanged(
-        groupName: selectedGroup?.name ?? _prefsManager.selectedGroupName,
-      );
-    } catch (_) {}
-  }
-
-  void _syncLessonNotifications() {
-    if (!_prefsManager.notificationsEnabled) {
-      NotificationService().cancelAll();
-      return;
-    }
-    final today = DateTime.now();
-    final todayKey =
-        "${today.day.toString().padLeft(2, "0")}.${today.month.toString().padLeft(2, "0")}.${today.year}";
-    final todaySchedule = schedule.where((d) => d.date == todayKey).toList();
-    if (todaySchedule.isEmpty || todaySchedule.first.items.isEmpty) {
-      NotificationService().cancelAll();
-      return;
-    }
-
-    final lessons = todaySchedule.first.items
-        .map(
-          (e) => (
-            number: e.lessonNumber,
-            subject: e.subject ?? "Пара ${e.lessonNumber}",
-            startTime:
-                LessonTimes.getTime(e.lessonNumber, college: college)?.startTime ??
-                    "08:00",
-          ),
-        )
-        .toList()
-      ..sort((a, b) => a.number.compareTo(b.number));
-    NotificationService().scheduleForDay(
-      lessons: lessons,
-      date: today,
-      offsetMinutes: _prefsManager.notificationOffset,
-    );
   }
 
   void _updateHomeWidget() {

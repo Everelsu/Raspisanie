@@ -40,6 +40,9 @@ class _StatisticsPageState extends State<StatisticsPage> {
         final isTeacher = widget.controller.prefs.isTeacherMode;
 
         if (!widget.controller.prefs.isGroupSelected) {
+          final hint = isTeacher
+              ? "Выберите преподавателя в настройках"
+              : "Выберите группу в настройках";
           return Center(
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -48,8 +51,7 @@ class _StatisticsPageState extends State<StatisticsPage> {
                     size: 64,
                     color: theme.colorScheme.onSurface.withAlpha(60)),
                 const SizedBox(height: 12),
-                Text("Выберите группу в настройках",
-                    style: theme.textTheme.bodyLarge),
+                Text(hint, style: theme.textTheme.bodyLarge),
               ],
             ),
           );
@@ -179,7 +181,7 @@ class _SummaryRow extends StatelessWidget {
         _SummaryBadge(
           value: "${stats.plannedHours ?? '—'}",
           label: "План",
-          color: const Color(0xFFF44336),
+          color: const Color.fromARGB(255, 54, 143, 244),
           theme: theme,
         ),
       ],

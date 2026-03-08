@@ -3,13 +3,18 @@ import "dart:io";
 import "package:file_picker/file_picker.dart";
 import "package:flutter/material.dart";
 import "package:flutter/services.dart";
+import "package:package_info_plus/package_info_plus.dart";
 import "package:path_provider/path_provider.dart";
 import "package:share_plus/share_plus.dart";
 import "package:url_launcher/url_launcher.dart";
 
 import "../../../app/theme.dart";
 import "../../../core/database/schedule_database.dart";
+import "../../../core/notifications/notification_service.dart";
+import "../../../core/storage/storage_cleanup.dart";
 import "../../../core/services/font_service.dart";
+import "../../../core/update/app_update_service.dart";
+import "../../../core/update/update_dialog.dart";
 import "../../schedule/data/lesson_times.dart";
 import "../../schedule/data/preferences_manager.dart";
 import "../../schedule/domain/models.dart";
@@ -42,6 +47,7 @@ class _SettingsPageState extends State<SettingsPage> {
   int? _lastDbBackupAt;
   Map<int, LessonTime> _editingLessonTimes = {};
   bool _lessonTimesDirty = false;
+  String _appVersion = "…";
 
   void _dismissKeyboard() {
     FocusManager.instance.primaryFocus?.unfocus();
@@ -52,6 +58,9 @@ class _SettingsPageState extends State<SettingsPage> {
     super.initState();
     _loadDbSettings();
     _loadLessonTimesForSelectedCollege();
+    PackageInfo.fromPlatform().then((info) {
+      if (mounted) setState(() => _appVersion = info.version);
+    });
   }
 
   @override
@@ -82,7 +91,7 @@ class _SettingsPageState extends State<SettingsPage> {
             _displayCard(theme),
             const SizedBox(height: 12),
             _lessonTimesCard(theme),
-            const SizedBox(height: 12),
+            const SizedBox(height: 20),
             FontSettingsTile(fontService: widget.fontService),
             const SizedBox(height: 20),
             _fontSizeCard(theme),
@@ -958,11 +967,11 @@ class _SettingsPageState extends State<SettingsPage> {
     if (!mounted) return;
     if (ok && remote != null && remote.isNotEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Время пар загружено с сервера и применено")),
+        const SnackBar(content: Text("Время пар загружено и применено")),
       );
     } else if (remote != null && remote.isNotEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Восстановлено сохранённое время пар с сервера")),
+        const SnackBar(content: Text("Восстановлено сохранённое время пар")),
       );
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1241,61 +1250,150 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   Widget _appInfoCard(ThemeData theme) {
-    const link = "https://everelsu.github.io/RelsevLink/";
+    const authorLink = "https://everelsu.github.io/RelsevLink/";
+    const releasesLink = "https://github.com/Everelsu/Raspisanie/releases";
+    const authorAvatarUrl ="https://raw.githubusercontent.com/Everelsu/RelsevLink/main/avatar.png";
     return Card(
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(20),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text("Raspisanie", style: theme.textTheme.titleLarge),
-                    const SizedBox(height: 4),
-                    Text("v2.0.0", style: theme.textTheme.bodySmall),
-                  ],
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.primaryContainer.withAlpha(80),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Icon(
+                    Icons.calendar_month_rounded,
+                    size: 32,
+                    color: theme.colorScheme.onPrimaryContainer,
+                  ),
                 ),
-                IconButton(
-                  onPressed: () => _checkForUpdate(theme),
-                  icon: Icon(Icons.system_update_outlined,
-                      color: theme.colorScheme.primary),
-                  tooltip: "Проверить обновления",
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        "Raspisanie",
+                        style: theme.textTheme.titleLarge?.copyWith(
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        "Версия $_appVersion",
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ],
             ),
-            const SizedBox(height: 8),
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              leading: CircleAvatar(
-                backgroundColor: theme.colorScheme.primary.withAlpha(24),
-                child: Text(
-                  "@",
-                  style: TextStyle(
-                    color: theme.colorScheme.primary,
-                    fontWeight: FontWeight.w700,
+            const SizedBox(height: 24),
+            Text(
+              "Обновления",
+              style: theme.textTheme.titleSmall?.copyWith(
+                color: theme.colorScheme.primary,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              "Приложение проверяет новые версии при запуске. Обновления устанавливаются из GitHub.",
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+                height: 1.35,
+              ),
+            ),
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed: () => _checkForUpdate(theme),
+                icon: const Icon(Icons.system_update_rounded, size: 20),
+                label: const Text("Проверить обновления"),
+              ),
+            ),
+            const SizedBox(height: 20),
+            Text(
+              "Автор",
+              style: theme.textTheme.titleSmall?.copyWith(
+                color: theme.colorScheme.primary,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 10),
+            Material(
+              color: theme.colorScheme.surfaceContainerHighest.withAlpha(40),
+              borderRadius: BorderRadius.circular(12),
+              child: InkWell(
+                onTap: () async {
+                  final uri = Uri.parse(authorLink);
+                  final opened = await launchUrl(
+                    uri,
+                    mode: LaunchMode.externalApplication,
+                  );
+                  if (opened || !mounted) return;
+                  await Clipboard.setData(const ClipboardData(text: authorLink));
+                  if (!mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text("Ссылка скопирована"),
+                      duration: Duration(seconds: 1),
+                    ),
+                  );
+                },
+                borderRadius: BorderRadius.circular(12),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 10,
+                  ),
+                  child: Row(
+                    children: [
+                      _AuthorAvatar(avatarUrl: authorAvatarUrl, theme: theme),
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              "Relsev",
+                              style: theme.textTheme.titleSmall?.copyWith(
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Icon(
+                        Icons.open_in_new_rounded,
+                        size: 20,
+                        color: theme.colorScheme.primary,
+                      ),
+                    ],
                   ),
                 ),
               ),
-              title: Text("@Relsev", style: theme.textTheme.bodyLarge),
-              subtitle: Text(link, style: theme.textTheme.bodySmall),
-              trailing: Icon(Icons.open_in_new_rounded, color: theme.colorScheme.primary),
-              onTap: () async {
-                final uri = Uri.parse(link);
-                final opened = await launchUrl(
-                  uri,
-                  mode: LaunchMode.externalApplication,
-                );
-                if (opened || !mounted) return;
-                await Clipboard.setData(const ClipboardData(text: link));
-                if (!mounted) return;
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text("Не удалось открыть, ссылка скопирована")),
-                );
+            ),
+            const SizedBox(height: 10),
+            OutlinedButton.icon(
+              onPressed: () async {
+                final uri = Uri.parse(releasesLink);
+                await launchUrl(uri, mode: LaunchMode.externalApplication);
               },
+              icon: const Icon(Icons.code_rounded, size: 18),
+              label: const Text("Релизы на GitHub"),
+              style: OutlinedButton.styleFrom(
+                minimumSize: const Size(double.infinity, 44),
+              ),
             ),
           ],
         ),
@@ -1383,21 +1481,51 @@ class _SettingsPageState extends State<SettingsPage> {
               ],
             ),
             const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: FilledButton.tonalIcon(
+                    onPressed: _dbBusy ? null : () async {
+                      setState(() => _dbBusy = true);
+                      await ScheduleDatabase.instance.clearAll();
+                      await _loadDbSettings();
+                      if (mounted) setState(() => _dbBusy = false);
+                    },
+                    icon: const Icon(Icons.delete_outline, size: 18),
+                    label: const Text("Очистить БД"),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: FilledButton.tonalIcon(
+                    onPressed: () {
+                      StorageCleanup.clearAllPrefsCache(prefs.sharedPreferences);
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text("Кэш расписания очищен")),
+                        );
+                      }
+                    },
+                    icon: const Icon(Icons.cached_outlined, size: 18),
+                    label: const Text("Кэш"),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
             SizedBox(
               width: double.infinity,
-              child: FilledButton.tonalIcon(
-                onPressed: _dbBusy
-                        ? null
-                        : () async {
-                            setState(() => _dbBusy = true);
-                            await ScheduleDatabase.instance.clearAll();
-                            await _loadDbSettings();
-                            if (mounted) {
-                              setState(() => _dbBusy = false);
-                            }
-                          },
-                icon: const Icon(Icons.delete_outline, size: 18),
-                label: const Text("Очистить БД"),
+              child: OutlinedButton.icon(
+                onPressed: () async {
+                  await StorageCleanup.clearTempDirectory();
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text("Временные файлы удалены")),
+                    );
+                  }
+                },
+                icon: const Icon(Icons.folder_off_outlined, size: 18),
+                label: const Text("Очистить временные файлы"),
               ),
             ),
           ],
@@ -1488,27 +1616,69 @@ class _SettingsPageState extends State<SettingsPage> {
     }
   }
 
-  void _checkForUpdate(ThemeData theme) {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: theme.cardTheme.color,
-        title: const Text("Обновления"),
-        content: const Text(
-          "Для обновления приложения скачайте последнюю версию APK "
-          "из репозитория на GitHub и установите вручную.\n\n"
-          "Автообновление через GitHub Releases будет добавлено позже.",
+  Future<void> _checkForUpdate(ThemeData theme) async {
+    final release = await checkForUpdate();
+    if (!mounted) return;
+    if (release != null) {
+      final info = await PackageInfo.fromPlatform();
+      showDialog(
+        context: context,
+        builder: (ctx) => UpdateDialog(
+          release: release,
+          currentVersion: info.version,
+          theme: theme,
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text("OK"),
+      );
+    } else {
+      showDialog(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          backgroundColor: theme.cardTheme.color,
+          title: const Text("Обновления"),
+          content: const Text("У вас установлена последняя версия."),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text("OK"),
+            ),
+          ],
+        ),
+      );
+    }
+  }
+
+}
+
+class _AuthorAvatar extends StatelessWidget {
+  const _AuthorAvatar({required this.avatarUrl, required this.theme});
+  final String avatarUrl;
+  final ThemeData theme;
+
+  @override
+  Widget build(BuildContext context) {
+    return CircleAvatar(
+      radius: 24,
+      backgroundColor: theme.colorScheme.surfaceContainerHighest,
+      child: ClipOval(
+        child: Image.network(
+          avatarUrl,
+          width: 48,
+          height: 48,
+          fit: BoxFit.cover,
+          errorBuilder: (_, __, ___) => Center(
+            child: Text(
+              "@",
+              style: TextStyle(
+                fontWeight: FontWeight.w700,
+                fontSize: 20,
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
           ),
-        ],
+        ),
       ),
     );
   }
-
 }
 
 class _GroupSelectorSheet extends StatefulWidget {

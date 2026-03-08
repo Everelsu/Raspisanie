@@ -4,38 +4,49 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <!-- Calendar body -->
+    <!-- Calendar top bar (dark) -->
+    <path
+        android:fillColor="#1C1C1E"
+        android:pathData="M24,34 h60 v16 h-60 z" />
+    <!-- Calendar body (white/light) -->
     <path
         android:fillColor="#FFFFFF"
-        android:pathData="M28,32 h52 a6,6 0,0,1 6,6 v38 a6,6 0,0,1 -6,6 h-52 a6,6 0,0,1 -6,-6 v-38 a6,6 0,0,1 6,-6 z" />
-    <!-- Calendar top bar -->
+        android:pathData="M26,50 h56 a4,4 0,0,1 4,4 v32 a4,4 0,0,1 -4,4 h-56 a4,4 0,0,1 -4,-4 v-32 a4,4 0,0,1 4,-4 z" />
+    <!-- 12 dots grid 4x3 -->
     <path
-        android:fillColor="#3478F6"
-        android:pathData="M22,32 h64 v14 a0,0 0,0,1 0,0 h-64 a0,0 0,0,1 0,0 v-14 z" />
-    <!-- Calendar ring left -->
+        android:fillColor="#1C1C1E"
+        android:pathData="M34,62 m-3,0 a3,3 0,1,1 6,0 a3,3 0,1,1 -6,0" />
     <path
-        android:fillColor="#FFFFFF"
-        android:pathData="M38,28 a2,2 0,0,1 4,0 v8 a2,2 0,0,1 -4,0 z" />
-    <!-- Calendar ring right -->
+        android:fillColor="#1C1C1E"
+        android:pathData="M46,62 m-3,0 a3,3 0,1,1 6,0 a3,3 0,1,1 -6,0" />
     <path
-        android:fillColor="#FFFFFF"
-        android:pathData="M66,28 a2,2 0,0,1 4,0 v8 a2,2 0,0,1 -4,0 z" />
-    <!-- Grid lines horizontal -->
+        android:fillColor="#1C1C1E"
+        android:pathData="M58,62 m-3,0 a3,3 0,1,1 6,0 a3,3 0,1,1 -6,0" />
     <path
-        android:fillColor="#E0E0E0"
-        android:pathData="M28,56 h52 v1 h-52 z" />
+        android:fillColor="#1C1C1E"
+        android:pathData="M70,62 m-3,0 a3,3 0,1,1 6,0 a3,3 0,1,1 -6,0" />
     <path
-        android:fillColor="#E0E0E0"
-        android:pathData="M28,66 h52 v1 h-52 z" />
-    <!-- Grid lines vertical -->
+        android:fillColor="#1C1C1E"
+        android:pathData="M34,74 m-3,0 a3,3 0,1,1 6,0 a3,3 0,1,1 -6,0" />
     <path
-        android:fillColor="#E0E0E0"
-        android:pathData="M45,46 v30 h1 v-30 z" />
+        android:fillColor="#1C1C1E"
+        android:pathData="M46,74 m-3,0 a3,3 0,1,1 6,0 a3,3 0,1,1 -6,0" />
     <path
-        android:fillColor="#E0E0E0"
-        android:pathData="M62,46 v30 h1 v-30 z" />
-    <!-- Dot accent for today -->
+        android:fillColor="#1C1C1E"
+        android:pathData="M58,74 m-3,0 a3,3 0,1,1 6,0 a3,3 0,1,1 -6,0" />
     <path
-        android:fillColor="#3478F6"
-        android:pathData="M54,62 m-4,0 a4,4 0,1,1 8,0 a4,4 0,1,1 -8,0" />
+        android:fillColor="#1C1C1E"
+        android:pathData="M70,74 m-3,0 a3,3 0,1,1 6,0 a3,3 0,1,1 -6,0" />
+    <path
+        android:fillColor="#1C1C1E"
+        android:pathData="M34,86 m-3,0 a3,3 0,1,1 6,0 a3,3 0,1,1 -6,0" />
+    <path
+        android:fillColor="#1C1C1E"
+        android:pathData="M46,86 m-3,0 a3,3 0,1,1 6,0 a3,3 0,1,1 -6,0" />
+    <path
+        android:fillColor="#1C1C1E"
+        android:pathData="M58,86 m-3,0 a3,3 0,1,1 6,0 a3,3 0,1,1 -6,0" />
+    <path
+        android:fillColor="#1C1C1E"
+        android:pathData="M70,86 m-3,0 a3,3 0,1,1 6,0 a3,3 0,1,1 -6,0" />
 </vector>

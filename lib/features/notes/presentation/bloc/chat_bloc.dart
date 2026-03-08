@@ -1,233 +1,122 @@
-import "package:flutter_bloc/flutter_bloc.dart";
-import "package:equatable/equatable.dart";
+import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:equatable/equatable.dart';
 
-import "../../data/chat_repository.dart";
-import "../../domain/chat_message.dart";
+import '../../data/message.dart';
+import '../../data/message_repository.dart';
 
-// Events
-abstract class ChatEvent extends Equatable {
-  const ChatEvent();
-  @override
-  List<Object?> get props => [];
-}
-
-class ChatLoadRequested extends ChatEvent {
-  const ChatLoadRequested();
-}
-
-class ChatSendTextRequested extends ChatEvent {
-  const ChatSendTextRequested(this.text);
-  final String text;
-  @override
-  List<Object?> get props => [text];
-}
-
-class ChatSendVoiceRequested extends ChatEvent {
-  const ChatSendVoiceRequested({required this.filePath, required this.durationSec});
-  final String filePath;
-  final int durationSec;
-  @override
-  List<Object?> get props => [filePath, durationSec];
-}
-
-class ChatSendImageRequested extends ChatEvent {
-  const ChatSendImageRequested({required this.filePath, this.caption});
-  final String filePath;
-  final String? caption;
-  @override
-  List<Object?> get props => [filePath, caption];
-}
-
-class ChatPinToggled extends ChatEvent {
-  const ChatPinToggled(this.messageId);
-  final String messageId;
-  @override
-  List<Object?> get props => [messageId];
-}
-
-class ChatFavoriteToggled extends ChatEvent {
-  const ChatFavoriteToggled(this.messageId);
-  final String messageId;
-  @override
-  List<Object?> get props => [messageId];
-}
-
-class ChatMessageDeleted extends ChatEvent {
-  const ChatMessageDeleted(this.messageId);
-  final String messageId;
-  @override
-  List<Object?> get props => [messageId];
-}
-
-class ChatMessageUpdated extends ChatEvent {
-  const ChatMessageUpdated(this.messageId, this.newText);
-  final String messageId;
-  final String newText;
-  @override
-  List<Object?> get props => [messageId, newText];
-}
-
-class ChatSearchChanged extends ChatEvent {
-  const ChatSearchChanged(this.query);
-  final String query;
-  @override
-  List<Object?> get props => [query];
-}
-
-// State
-class ChatState extends Equatable {
-  const ChatState({
-    this.messages = const [],
-    this.pinned = const [],
-    this.searchQuery = "",
-    this.searchResults = const [],
-    this.status = ChatStatus.initial,
-    this.error,
-  });
-
-  final List<ChatMessage> messages;
-  final List<ChatMessage> pinned;
-  final String searchQuery;
-  final List<ChatMessage> searchResults;
-  final ChatStatus status;
-  final String? error;
-
-  List<ChatMessage> get displayMessages => searchQuery.trim().isEmpty ? messages : searchResults;
-
-  @override
-  List<Object?> get props => [messages, pinned, searchQuery, searchResults, status, error];
-
-  ChatState copyWith({
-    List<ChatMessage>? messages,
-    List<ChatMessage>? pinned,
-    String? searchQuery,
-    List<ChatMessage>? searchResults,
-    ChatStatus? status,
-    String? error,
-  }) {
-    return ChatState(
-      messages: messages ?? this.messages,
-      pinned: pinned ?? this.pinned,
-      searchQuery: searchQuery ?? this.searchQuery,
-      searchResults: searchResults ?? this.searchResults,
-      status: status ?? this.status,
-      error: error,
-    );
-  }
-}
-
-enum ChatStatus { initial, loading, loaded, error }
+part 'chat_event.dart';
+part 'chat_state.dart';
 
 class ChatBloc extends Bloc<ChatEvent, ChatState> {
-  ChatBloc(this._repository) : super(const ChatState()) {
-    on<ChatLoadRequested>(_onLoad);
-    on<ChatSendTextRequested>(_onSendText);
-    on<ChatSendVoiceRequested>(_onSendVoice);
-    on<ChatSendImageRequested>(_onSendImage);
-    on<ChatPinToggled>(_onPinToggled);
-    on<ChatFavoriteToggled>(_onFavoriteToggled);
-    on<ChatMessageDeleted>(_onMessageDeleted);
-    on<ChatMessageUpdated>(_onMessageUpdated);
-    on<ChatSearchChanged>(_onSearchChanged);
+  ChatBloc(this._repo) : super(ChatInitial()) {
+    on<ChatLoadMessages>(_onLoadMessages);
+    on<ChatSendMessage>(_onSendMessage);
+    on<ChatEditMessage>(_onEditMessage);
+    on<ChatDeleteMessage>(_onDeleteMessage);
+    on<ChatLoadMoreMessages>(_onLoadMore);
+    on<ChatPinMessage>(_onPinMessage);
+    on<ChatUnpinMessage>(_onUnpinMessage);
+    on<ChatClearAll>(_onClearAll);
   }
 
-  final ChatRepository _repository;
+  final MessageRepository _repo;
+  int _offset = 0;
+  static const int _pageSize = 50;
 
-  Future<void> _onLoad(ChatLoadRequested event, Emitter<ChatState> emit) async {
-    emit(state.copyWith(status: ChatStatus.loading, error: null));
+  Future<void> _onLoadMessages(ChatLoadMessages event, Emitter<ChatState> emit) async {
+    emit(ChatLoading());
     try {
-      await _repository.migrateFromScheduleDatabaseIfNeeded();
-      final messages = await _repository.getMessages();
-      final pinned = await _repository.getPinnedMessages();
-      emit(state.copyWith(
+      _offset = 0;
+      final messages = await _repo.getMessages(event.chatId, limit: _pageSize, offset: 0);
+      _offset = messages.length;
+      final pinned = await _repo.getPinnedMessages(event.chatId);
+      emit(ChatLoaded(
+        chatId: event.chatId,
         messages: messages,
-        pinned: pinned,
-        status: ChatStatus.loaded,
-        error: null,
+        hasMore: messages.length == _pageSize,
+        pinnedMessages: pinned,
+        isLoadingMore: false,
       ));
     } catch (e) {
-      emit(state.copyWith(status: ChatStatus.error, error: e.toString()));
+      emit(ChatError(e.toString()));
     }
   }
 
-  Future<void> _onSendText(ChatSendTextRequested event, Emitter<ChatState> emit) async {
-    final text = event.text.trim();
-    if (text.isEmpty) return;
-    final id = "${DateTime.now().millisecondsSinceEpoch}_${DateTime.now().microsecond}";
-    final msg = ChatMessage(
-      id: id,
-      type: "text",
-      text: text,
-      createdAt: DateTime.now().toUtc(),
-      status: MessageStatus.saved,
+  Future<void> _onSendMessage(ChatSendMessage event, Emitter<ChatState> emit) async {
+    if (state is! ChatLoaded) return;
+    final current = state as ChatLoaded;
+    final message = Message(
+      id: event.messageId ?? MessageRepository.generateId(),
+      chatId: event.chatId,
+      type: event.type,
+      content: event.content,
+      replyToId: event.replyToId,
+      status: MessageStatus.sent,
+      createdAt: DateTime.now(),
+      mediaFiles: event.mediaFiles ?? [],
     );
-    await _repository.addMessage(msg);
-    add(const ChatLoadRequested());
+    await _repo.insertMessage(message, media: event.mediaFiles);
+    final updated = await _repo.getMessages(event.chatId, limit: _pageSize, offset: 0);
+    emit(current.copyWith(messages: updated, pinnedMessages: await _repo.getPinnedMessages(event.chatId)));
   }
 
-  Future<void> _onSendVoice(ChatSendVoiceRequested event, Emitter<ChatState> emit) async {
-    final id = "${DateTime.now().millisecondsSinceEpoch}_${DateTime.now().microsecond}";
-    final msg = ChatMessage(
-      id: id,
-      type: "voice",
-      text: event.durationSec.toString(),
-      payload: event.filePath,
-      createdAt: DateTime.now().toUtc(),
-      status: MessageStatus.saved,
-    );
-    await _repository.addMessage(msg);
-    add(const ChatLoadRequested());
+  Future<void> _onEditMessage(ChatEditMessage event, Emitter<ChatState> emit) async {
+    await _repo.editMessage(event.messageId, event.newContent);
+    if (state is! ChatLoaded) return;
+    final current = state as ChatLoaded;
+    final updated = await _repo.getMessages(current.chatId, limit: current.messages.length + _pageSize, offset: 0);
+    emit(current.copyWith(messages: updated));
   }
 
-  Future<void> _onSendImage(ChatSendImageRequested event, Emitter<ChatState> emit) async {
-    final id = "${DateTime.now().millisecondsSinceEpoch}_${DateTime.now().microsecond}";
-    final msg = ChatMessage(
-      id: id,
-      type: "image",
-      text: event.caption ?? "",
-      payload: event.filePath,
-      createdAt: DateTime.now().toUtc(),
-      status: MessageStatus.saved,
-    );
-    await _repository.addMessage(msg);
-    add(const ChatLoadRequested());
-  }
-
-  Future<void> _onPinToggled(ChatPinToggled event, Emitter<ChatState> emit) async {
-    await _repository.togglePin(event.messageId);
-    add(const ChatLoadRequested());
-  }
-
-  Future<void> _onFavoriteToggled(ChatFavoriteToggled event, Emitter<ChatState> emit) async {
-    await _repository.toggleFavorite(event.messageId);
-    add(const ChatLoadRequested());
-  }
-
-  Future<void> _onMessageDeleted(ChatMessageDeleted event, Emitter<ChatState> emit) async {
-    await _repository.deleteMessage(event.messageId);
-    add(const ChatLoadRequested());
-  }
-
-  Future<void> _onMessageUpdated(ChatMessageUpdated event, Emitter<ChatState> emit) async {
-    ChatMessage? m;
-    for (final x in state.messages) {
-      if (x.id == event.messageId) {
-        m = x;
-        break;
-      }
+  Future<void> _onDeleteMessage(ChatDeleteMessage event, Emitter<ChatState> emit) async {
+    await _repo.deleteMessage(event.messageId);
+    if (state is! ChatLoaded) return;
+    final current = state as ChatLoaded;
+    final updated = current.messages.where((m) => m.id != event.messageId).toList();
+    final stillPinned = current.pinnedMessages.where((m) => m.id != event.messageId).toList();
+    if (stillPinned.length != current.pinnedMessages.length) {
+      await _repo.unpinMessage(current.chatId, messageId: event.messageId);
+      emit(current.copyWith(messages: updated, pinnedMessages: stillPinned));
+    } else {
+      emit(current.copyWith(messages: updated));
     }
-    if (m == null) return;
-    final updated = m.copyWith(text: event.newText);
-    await _repository.updateMessage(updated);
-    add(const ChatLoadRequested());
   }
 
-  Future<void> _onSearchChanged(ChatSearchChanged event, Emitter<ChatState> emit) async {
-    if (event.query.trim().isEmpty) {
-      emit(state.copyWith(searchQuery: event.query, searchResults: []));
-      return;
-    }
-    final results = await _repository.searchMessages(event.query);
-    emit(state.copyWith(searchQuery: event.query, searchResults: results));
+  Future<void> _onLoadMore(ChatLoadMoreMessages event, Emitter<ChatState> emit) async {
+    if (state is! ChatLoaded) return;
+    final current = state as ChatLoaded;
+    if (current.isLoadingMore || !current.hasMore) return;
+    emit(current.copyWith(isLoadingMore: true));
+    final more = await _repo.getMessages(event.chatId, limit: _pageSize, offset: _offset);
+    _offset += more.length;
+    emit(current.copyWith(
+      messages: [...current.messages, ...more],
+      hasMore: more.length == _pageSize,
+      isLoadingMore: false,
+    ));
+  }
+
+  Future<void> _onPinMessage(ChatPinMessage event, Emitter<ChatState> emit) async {
+    if (event.messageId.isEmpty) return;
+    await _repo.pinMessage(event.chatId, event.messageId);
+    if (state is! ChatLoaded) return;
+    final current = state as ChatLoaded;
+    final pinned = await _repo.getPinnedMessages(event.chatId);
+    emit(current.copyWith(pinnedMessages: pinned));
+  }
+
+  Future<void> _onUnpinMessage(ChatUnpinMessage event, Emitter<ChatState> emit) async {
+    await _repo.unpinMessage(event.chatId, messageId: event.messageId);
+    if (state is! ChatLoaded) return;
+    final current = state as ChatLoaded;
+    final pinned = await _repo.getPinnedMessages(event.chatId);
+    emit(current.copyWith(pinnedMessages: pinned));
+  }
+
+  Future<void> _onClearAll(ChatClearAll event, Emitter<ChatState> emit) async {
+    await _repo.deleteAllMessages(event.chatId);
+    if (state is! ChatLoaded) return;
+    final current = state as ChatLoaded;
+    emit(current.copyWith(messages: [], pinnedMessages: const []));
   }
 }

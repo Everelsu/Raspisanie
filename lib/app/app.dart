@@ -1,7 +1,5 @@
-import "package:appflowy_editor/appflowy_editor.dart";
 import "package:flutter/material.dart";
 import "package:flutter_localizations/flutter_localizations.dart";
-import "package:flutter_quill/flutter_quill.dart";
 import "package:shared_preferences/shared_preferences.dart";
 
 import "../core/services/font_service.dart";
@@ -22,13 +20,15 @@ class RaspiFlutterApp extends StatefulWidget {
   State<RaspiFlutterApp> createState() => _RaspiFlutterAppState();
 }
 
-class _RaspiFlutterAppState extends State<RaspiFlutterApp> {
+class _RaspiFlutterAppState extends State<RaspiFlutterApp>
+    with WidgetsBindingObserver {
   late ScheduleController _controller;
   late String _themeKey;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _controller = ScheduleController(prefs: widget.prefs);
     _themeKey = _controller.prefs.theme;
     WidgetsBinding.instance.addPostFrameCallback((_) => _controller.init());
@@ -36,8 +36,16 @@ class _RaspiFlutterAppState extends State<RaspiFlutterApp> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _controller.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _controller.onAppResumed();
+    }
   }
 
   void _onThemeChanged() {
@@ -59,8 +67,6 @@ class _RaspiFlutterAppState extends State<RaspiFlutterApp> {
             GlobalMaterialLocalizations.delegate,
             GlobalCupertinoLocalizations.delegate,
             GlobalWidgetsLocalizations.delegate,
-            FlutterQuillLocalizations.delegate,
-            AppFlowyEditorLocalizations.delegate,
           ],
           supportedLocales: const [
             Locale("ru", "RU"),

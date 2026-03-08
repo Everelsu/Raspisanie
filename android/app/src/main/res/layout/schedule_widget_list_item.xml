@@ -31,9 +31,9 @@
         android:layout_marginStart="8dp"
         android:layout_weight="1"
         android:ellipsize="end"
-        android:lineSpacingExtra="1dp"
-        android:maxLines="3"
-        android:text="Пара"
+        android:lineSpacingExtra="2dp"
+        android:maxLines="5"
+        android:text="Математика\nАуд. 101 · Иванов И.И."
         android:textColor="#FFFFFFFF"
         android:textSize="12sp"
         android:textStyle="bold" />

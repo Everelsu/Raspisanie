@@ -4,6 +4,7 @@ plugins {
     id("com.android.application")
     id("kotlin-android")
     id("dev.flutter.flutter-gradle-plugin")
+    id("com.google.gms.google-services")
 }
 
 android {
@@ -33,9 +34,10 @@ android {
     buildTypes {
         release {
             signingConfig = signingConfigs.getByName("debug")
-            // Отключено из-за дублирования SharedPreferencesPlugin при R8 (flutter/plugin)
-            isMinifyEnabled = false
-            isShrinkResources = false
+            // Минификация + сжатие ресурсов уменьшают размер APK. Если R8 выдаст duplicate class —
+            // поставь isMinifyEnabled = false (isShrinkResources оставь true).
+            isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
@@ -49,15 +51,15 @@ dependencies {
     implementation("androidx.multidex:multidex:2.0.1")
 }
 
-// Убираем дубликат SharedPreferencesPlugin: класс остаётся только из плагина.
+// R8 падает из-за дубликата SharedPreferencesPlugin (плагин + копия в app). Удаляем копию до minify.
 tasks.whenTaskAdded {
-    if (name == "mergeDexRelease") {
+    if (name == "minifyReleaseWithR8") {
         doFirst {
             val buildDir = layout.buildDirectory.get().asFile
-            val dexOut = File(buildDir, "intermediates/project_dex_archive/release/dexBuilderRelease/out")
-            if (dexOut.exists()) {
-                val pluginDex = File(dexOut, "io/flutter/plugins/sharedpreferences/SharedPreferencesPlugin.dex")
-                if (pluginDex.exists()) pluginDex.delete()
+            val appClasses = File(buildDir, "intermediates/javac/release/compileReleaseJavaWithJavac/classes")
+            val duplicate = File(appClasses, "io/flutter/plugins/sharedpreferences/SharedPreferencesPlugin.class")
+            if (duplicate.exists()) {
+                duplicate.delete()
             }
         }
     }

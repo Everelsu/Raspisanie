@@ -1,7 +1,19 @@
+import 'dart:math' as math;
+
+import 'package:custom_refresh_indicator/custom_refresh_indicator.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import "package:custom_refresh_indicator/custom_refresh_indicator.dart";
 
+/// Минималистичный pull-to-refresh.
+///
+/// Визуально:
+///   • Контент плавно съезжает вниз, скругляются верхние углы
+///   • Появляется одно кольцо: при тяге заполняется по прогрессу,
+///     при loading — крутится бесконечно
+///   • При armed — haptic + лёгкий scale-pop кольца
+///
+/// Никакого CustomPainter, никаких лишних контроллеров —
+/// один AnimationController, один RepaintBoundary.
 class CustomRefreshWrapper extends StatefulWidget {
   final Widget child;
   final Future<void> Function() onRefresh;
@@ -19,79 +31,106 @@ class CustomRefreshWrapper extends StatefulWidget {
 }
 
 class _CustomRefreshWrapperState extends State<CustomRefreshWrapper>
-    with TickerProviderStateMixin {
-  late final AnimationController _rotationCtrl;
+    with SingleTickerProviderStateMixin {
 
-  @override
-  void initState() {
-    super.initState();
-    _rotationCtrl = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 700),
-    );
-  }
+  late final AnimationController _ctrl = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1000),
+  );
+
+  bool _wasArmed = false;
+  /// Максимальный прогресс за текущую тягу — дуга только растёт, не откатывается
+  double _maxPullProgress = 0;
 
   @override
   void dispose() {
-    _rotationCtrl.dispose();
+    _ctrl.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     final accent = widget.color ?? Theme.of(context).colorScheme.primary;
+
     return CustomRefreshIndicator(
       onRefresh: widget.onRefresh,
-      offsetToArmed: 100,
+      offsetToArmed: 72,
       onStateChanged: (change) {
-        if (change.didChange(to: IndicatorState.armed)) {
-          HapticFeedback.mediumImpact();
+        final isArmed    = change.currentState == IndicatorState.armed;
+        final isLoading  = change.currentState.isLoading;
+        final isIdle     = change.currentState == IndicatorState.idle;
+
+        if (isArmed && !_wasArmed) {
+          HapticFeedback.lightImpact();
+        }
+        _wasArmed = isArmed;
+
+        if (isLoading) {
+          _ctrl.repeat();
+        } else if (isIdle) {
+          _maxPullProgress = 0;
+          _ctrl.stop();
+          _ctrl.reset();
         }
       },
       builder: (context, child, controller) {
-        final value = controller.value.clamp(0.0, 1.4);
-        final isRefreshing = controller.state.isLoading;
-        final willRefresh =
-            controller.state == IndicatorState.armed || value >= 1.0;
-        final offset = (value * 95).clamp(0.0, 110.0);
-        final scale = willRefresh ? 0.96 : 1.0;
-        final hasOffset = offset > 1;
+        final t       = controller.value.clamp(0.0, 1.5);
+        final p       = t.clamp(0.0, 1.0);
+        final loading = controller.state.isLoading;
+        final armed   = controller.state == IndicatorState.armed || t >= 1.0;
 
-        if (isRefreshing && !_rotationCtrl.isAnimating) {
-          _rotationCtrl.repeat();
-        } else if (!isRefreshing && _rotationCtrl.isAnimating) {
-          _rotationCtrl.stop();
+        // Дуга только растёт: запоминаем пик прогресса, при отпускании не откатываем
+        if (!loading) {
+          if (p > _maxPullProgress) _maxPullProgress = p;
         }
+        final displayProgress = loading ? 1.0 : _maxPullProgress;
+
+        // Rubber-band смещение контента
+        const zone = 72.0;
+        final offset = t <= 1.0 ? t * zone : zone + (t - 1.0) * zone * 0.12;
+        // Скругление растёт с тягой (0 → 16px)
+        final radius = offset < 1 ? 0.0 : (offset / zone).clamp(0.0, 1.0) * 16.0;
+        // Кольцо спрятано выше — выезжает с границы экрана
+        final emerge = Curves.easeOutCubic.transform(displayProgress);
+        final ringSlideY = 88.0 * (1.0 - emerge);
+
+        // Показывать индикатор только при тяге или загрузке — иначе за контентом не видно кружка
+        final isIdle = controller.state == IndicatorState.idle;
+        final showIndicator = loading || (!isIdle && displayProgress >= 0.02);
 
         return Stack(
           children: [
-            if (hasOffset)
+            // Индикатор — только когда тянем или грузим; съезжает сверху
+            if (showIndicator)
               Positioned(
                 top: 0,
                 left: 0,
                 right: 0,
-                height: offset,
-                child: Center(
-                  child: _RefreshIndicator(
-                    accent: accent,
-                    progress: value.clamp(0.0, 1.0),
-                    isRefreshing: isRefreshing,
-                    willRefresh: willRefresh,
-                    rotationCtrl: _rotationCtrl,
+                height: zone,
+                child: Transform.translate(
+                  offset: Offset(0, -ringSlideY),
+                  child: RepaintBoundary(
+                    child: _Ring(
+                      accent: accent,
+                      progress: displayProgress,
+                      loading: loading,
+                      armed: armed,
+                      ctrl: _ctrl,
+                    ),
                   ),
                 ),
               ),
-            AnimatedScale(
-              duration: const Duration(milliseconds: 260),
-              curve: Curves.easeOutBack,
-              scale: scale,
-              alignment: Alignment.topCenter,
-              child: Transform.translate(
-                offset: Offset(0, offset),
+
+            // Контент
+            Transform.translate(
+              offset: Offset(0, offset),
+              child: AnimatedScale(
+                scale: armed ? 0.98 : 1.0,
+                duration: const Duration(milliseconds: 200),
+                curve: Curves.easeOutCubic,
+                alignment: Alignment.topCenter,
                 child: ClipRRect(
-                  borderRadius: hasOffset
-                      ? const BorderRadius.vertical(top: Radius.circular(16))
-                      : BorderRadius.zero,
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(radius)),
                   child: child,
                 ),
               ),
@@ -104,78 +143,207 @@ class _CustomRefreshWrapperState extends State<CustomRefreshWrapper>
   }
 }
 
-class _RefreshIndicator extends StatelessWidget {
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _Ring extends StatelessWidget {
   final Color accent;
   final double progress;
-  final bool isRefreshing;
-  final bool willRefresh;
-  final AnimationController rotationCtrl;
+  final bool loading;
+  final bool armed;
+  final AnimationController ctrl;
 
-  const _RefreshIndicator({
+  const _Ring({
     required this.accent,
     required this.progress,
-    required this.isRefreshing,
-    required this.willRefresh,
-    required this.rotationCtrl,
+    required this.loading,
+    required this.armed,
+    required this.ctrl,
   });
 
   @override
   Widget build(BuildContext context) {
-    final size = 40.0 + (willRefresh ? 4.0 : 0.0);
+    final easedProgress = Curves.easeOutCubic.transform(progress);
+    final stableProgress = (armed && !loading) ? 1.0 : easedProgress;
+    // При загрузке — полное кольцо (360°), крутится; без загрузки — по прогрессу
+    final sweep = loading ? 360.0 : stableProgress * 360.0;
+    final isFullRing = !loading && sweep >= 355.0;
 
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 200),
-      width: size,
-      height: size,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            accent.withAlpha(isRefreshing ? 50 : 30),
-            accent.withAlpha(isRefreshing ? 80 : 50),
-          ],
-        ),
-        boxShadow: willRefresh || isRefreshing
-            ? [
-                BoxShadow(
-                  color: accent.withAlpha(40),
-                  blurRadius: 16,
-                  spreadRadius: 2,
+    return Center(
+      child: AnimatedBuilder(
+        animation: ctrl,
+        builder: (_, __) {
+          final spin = ctrl.value;
+          const ringSize = 40.0;
+          final startDeg = loading ? spin * 360.0 - 90.0 : -90.0;
+          final scale = armed ? 1.06 : 1.0;
+          // Вращение полного кольца при загрузке
+          final rotationRad = loading ? spin * 2.0 * math.pi : 0.0;
+
+          return TweenAnimationBuilder<double>(
+            tween: Tween(end: scale),
+            duration: const Duration(milliseconds: 180),
+            curve: Curves.easeOutBack,
+            builder: (_, s, __) => Transform.scale(
+              scale: s,
+              child: SizedBox(
+                width: ringSize + 20,
+                height: ringSize + 20,
+                child: CustomPaint(
+                  painter: _RingPainter(
+                    accent: accent,
+                    progress: stableProgress,
+                    loading: loading,
+                    startDeg: startDeg,
+                    sweepDeg: sweep,
+                    ringSize: ringSize,
+                    isFullRing: isFullRing || loading,
+                    rotationRad: rotationRad,
+                  ),
                 ),
-              ]
-            : null,
-      ),
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          SizedBox(
-            width: size - 8,
-            height: size - 8,
-            child: CircularProgressIndicator(
-              value: isRefreshing ? null : progress,
-              strokeWidth: 2.0,
-              color: accent,
-              backgroundColor: accent.withAlpha(20),
-            ),
-          ),
-          RotationTransition(
-            turns: isRefreshing
-                ? rotationCtrl
-                : AlwaysStoppedAnimation(progress * 0.75),
-            child: AnimatedScale(
-              scale: willRefresh || isRefreshing ? 1.0 : 0.7 + progress * 0.3,
-              duration: const Duration(milliseconds: 200),
-              child: Icon(
-                Icons.refresh_rounded,
-                size: 20,
-                color: accent,
               ),
             ),
-          ),
-        ],
+          );
+        },
       ),
     );
   }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _RingPainter extends CustomPainter {
+  final Color accent;
+  final double progress;
+  final bool loading;
+  final double startDeg;
+  final double sweepDeg;
+  final double ringSize;
+  final bool isFullRing;
+  final double rotationRad;
+
+  const _RingPainter({
+    required this.accent,
+    required this.progress,
+    required this.loading,
+    required this.startDeg,
+    required this.sweepDeg,
+    this.ringSize = 40.0,
+    this.isFullRing = false,
+    this.rotationRad = 0.0,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    // В idle при нулевом прогрессе ничего не рисуем — не показывать кружок за контентом
+    if (!loading && sweepDeg < 1) return;
+
+    final center = Offset(size.width / 2, size.height / 2);
+    if (rotationRad != 0) {
+      canvas.save();
+      canvas.translate(center.dx, center.dy);
+      canvas.rotate(rotationRad);
+      canvas.translate(-center.dx, -center.dy);
+    }
+
+    final rect = Rect.fromCenter(
+      center: center,
+      width: ringSize,
+      height: ringSize,
+    );
+    final r = ringSize / 2;
+
+    // Подложка и трек — только когда есть что показывать (дуга или полное кольцо)
+    canvas.drawCircle(
+      center,
+      r + 2,
+      Paint()
+        ..color = accent.withOpacity(0.06)
+        ..style = PaintingStyle.fill,
+    );
+
+    canvas.drawArc(
+      rect,
+      0,
+      math.pi * 2,
+      false,
+      Paint()
+        ..color = accent.withOpacity(0.12)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 3.0
+        ..strokeCap = StrokeCap.round,
+    );
+
+    if (sweepDeg < 1) {
+      if (rotationRad != 0) canvas.restore();
+      return;
+    }
+
+    final startRad = _deg(startDeg);
+
+    // Полное кольцо — одним цветом, без градиента и точки; при загрузке крутится
+    if (isFullRing) {
+      canvas.drawArc(
+        rect,
+        0,
+        math.pi * 2,
+        false,
+        Paint()
+          ..color = accent.withOpacity(0.95)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 3.0
+          ..strokeCap = StrokeCap.round,
+      );
+      if (rotationRad != 0) canvas.restore();
+      return;
+    }
+
+    // Дуга с градиентом и точкой на конце
+    final endRad = startRad + _deg(sweepDeg);
+    final sweepShader = SweepGradient(
+      startAngle: startRad,
+      endAngle: endRad,
+      colors: [
+        accent.withOpacity(loading ? 0.6 : 0.4 + progress * 0.3),
+        accent.withOpacity(loading ? 1.0 : 0.85 + progress * 0.15),
+      ],
+    ).createShader(rect.inflate(4));
+
+    canvas.drawArc(
+      rect,
+      startRad,
+      _deg(sweepDeg),
+      false,
+      Paint()
+        ..shader = sweepShader
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 3.0
+        ..strokeCap = StrokeCap.round,
+    );
+
+    final headAngle = startRad + _deg(sweepDeg);
+    final headCenter = Offset(
+      center.dx + r * math.cos(headAngle),
+      center.dy + r * math.sin(headAngle),
+    );
+    canvas.drawCircle(
+      headCenter,
+      3.5,
+      Paint()
+        ..color = accent.withOpacity(loading ? 1.0 : 0.9 + progress * 0.1)
+        ..style = PaintingStyle.fill,
+    );
+    if (rotationRad != 0) canvas.restore();
+  }
+
+  static double _deg(double d) => d * math.pi / 180.0;
+
+  @override
+  bool shouldRepaint(_RingPainter old) =>
+      old.startDeg != startDeg ||
+      old.sweepDeg != sweepDeg ||
+      old.progress != progress ||
+      old.loading != loading ||
+      old.ringSize != ringSize ||
+      old.isFullRing != isFullRing ||
+      old.rotationRad != rotationRad;
 }
