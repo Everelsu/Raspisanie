@@ -2417,6 +2417,13 @@ class _SettingsPageState extends State<SettingsPage> {
                                 fontWeight: FontWeight.w600,
                               ),
                             ),
+                            const SizedBox(height: 1),
+                            Text(
+                              "Автор",
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: theme.colorScheme.onSurfaceVariant,
+                              ),
+                            ),
                           ],
                         ),
                       ),
@@ -2466,7 +2473,7 @@ class _SettingsPageState extends State<SettingsPage> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              "Скромный Вадя",
+                              "@skromniyvadya",
                               style: theme.textTheme.titleSmall?.copyWith(
                                 fontWeight: FontWeight.w600,
                               ),
