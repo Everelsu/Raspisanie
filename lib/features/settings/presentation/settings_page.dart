@@ -579,8 +579,8 @@ class _SettingsPageState extends State<SettingsPage> {
                       const SizedBox(height: 6),
                       Text(
                         lastSync != null
-                            ? "Последняя синхронизация: ${DateFormat('HH:mm').format(lastSync!.checkedAt)} • ${lastSync!.message}"
-                            : "Последняя синхронизация: ${DateFormat('HH:mm').format(syncedAt!)}",
+                            ? "Последняя синхронизация: ${DateFormat('HH:mm:ss').format(lastSync!.checkedAt)} • ${lastSync!.message}"
+                            : "Последняя синхронизация: ${DateFormat('HH:mm:ss').format(syncedAt!)}",
                         style: theme.textTheme.labelSmall?.copyWith(
                           color: theme.colorScheme.onSurfaceVariant,
                         ),
@@ -940,9 +940,14 @@ class _SettingsPageState extends State<SettingsPage> {
         headers: const {"Accept": "application/json, text/plain, */*"},
       );
       if (response.statusCode < 200 || response.statusCode >= 300) {
+        final code = response.statusCode;
         return _CollegeSourcesSyncResult(
           savedCount: 0,
-          message: "HTTP ${response.statusCode}",
+          message: switch (code) {
+            403 => "GitHub ограничил доступ (HTTP 403)",
+            429 => "Слишком часто (HTTP 429)",
+            _ => "HTTP $code",
+          },
           checkedAt: checkedAt,
         );
       }
@@ -983,17 +988,37 @@ class _SettingsPageState extends State<SettingsPage> {
         );
       }
 
+      final before = prefs.syncedCollegeSources;
+      var changed = 0;
+      for (final e in out.entries) {
+        final prev = before[e.key];
+        if (prev == null ||
+            prev.name != e.value.name ||
+            prev.baseUrl != e.value.baseUrl) {
+          changed++;
+        }
+      }
+      // Если в синке стало меньше источников — тоже считаем как изменение.
+      if (before.length != out.length) {
+        changed = (changed == 0) ? 1 : changed;
+      }
+
       prefs.saveSyncedCollegeSources(out);
       ctrl.refreshCollegeSources();
       return _CollegeSourcesSyncResult(
         savedCount: out.length,
-        message: out.isEmpty ? "Нечего обновлять" : "Обновлено: ${out.length}",
+        message: out.isEmpty
+            ? "В синхронизации пусто"
+            : (changed == 0
+                ? "Уже актуально (${out.length})"
+                : "Обновлено: $changed • всего: ${out.length}"),
         checkedAt: checkedAt,
       );
     } catch (e) {
+      final msg = e.toString().replaceAll("Exception: ", "");
       return _CollegeSourcesSyncResult(
         savedCount: 0,
-        message: "Ошибка синхронизации",
+        message: msg.isEmpty ? "Ошибка синхронизации" : msg,
         checkedAt: checkedAt,
       );
     }
