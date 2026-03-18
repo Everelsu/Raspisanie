@@ -56,13 +56,13 @@ class PreferencesManager {
   static const builtInCollegeSources = <String, CollegeSource>{
     collegeDefault: CollegeSource(
       id: collegeDefault,
-      name: "Челябинский техникум отраслевых технологий и бизнеса",
+      name: "ЧТОТиБ",
       baseUrl: "https://www.chtotib.ru/schedule_gl/",
       builtIn: true,
     ),
     collegeZabgc: CollegeSource(
       id: collegeZabgc,
-      name: "Златоустовский базовый геологоразведочный колледж",
+      name: "ЗабГК",
       baseUrl: "https://bbb.zabgc.ru/",
       builtIn: true,
     ),
@@ -442,9 +442,80 @@ class PreferencesManager {
     }
   }
 
+  Map<String, CollegeSource> get syncedCollegeSources {
+    final raw = _prefs.getString("synced_college_sources");
+    if (raw == null || raw.isEmpty) return const {};
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map) return const {};
+      final out = <String, CollegeSource>{};
+      for (final entry in decoded.entries) {
+        final id = entry.key.toString().trim().toLowerCase();
+        final value = entry.value;
+        if (id.isEmpty || value is! Map<String, dynamic>) continue;
+        final source = CollegeSource.fromJson(value);
+        if (source.id.isEmpty || source.name.isEmpty || source.baseUrl.isEmpty) {
+          continue;
+        }
+        out[id] = CollegeSource(
+          id: id,
+          name: source.name,
+          baseUrl: source.baseUrl,
+          builtIn: true,
+        );
+      }
+      return out;
+    } catch (_) {
+      return const {};
+    }
+  }
+
+  void saveSyncedCollegeSources(Map<String, CollegeSource> sources) {
+    final safe = <String, Map<String, dynamic>>{};
+    for (final e in sources.entries) {
+      final id = e.key.trim().toLowerCase();
+      final s = e.value;
+      if (id.isEmpty || s.name.isEmpty || s.baseUrl.isEmpty) continue;
+      safe[id] = {
+        "id": id,
+        "name": s.name,
+        "baseUrl": s.baseUrl,
+      };
+    }
+    _prefs.setString("synced_college_sources", jsonEncode(safe));
+    _prefs.setInt(
+      "synced_college_sources_checked_at_ms",
+      DateTime.now().millisecondsSinceEpoch,
+    );
+  }
+
+  DateTime? get syncedCollegeSourcesCheckedAt {
+    final ms = _prefs.getInt("synced_college_sources_checked_at_ms");
+    if (ms == null || ms <= 0) return null;
+    return DateTime.fromMillisecondsSinceEpoch(ms);
+  }
+
+  List<CollegeSource> get effectiveBuiltInCollegeSources {
+    final synced = syncedCollegeSources;
+    final out = <CollegeSource>[];
+
+    // Сначала базовые встроенные (с возможной подменой).
+    for (final e in builtInCollegeSources.entries) {
+      out.add(synced[e.key] ?? e.value);
+    }
+
+    // Потом — дополнительные из синхронизации (если появились новые id).
+    for (final e in synced.entries) {
+      if (builtInCollegeSources.containsKey(e.key)) continue;
+      out.add(e.value);
+    }
+
+    return out;
+  }
+
   List<CollegeSource> get allCollegeSources {
     return [
-      ...builtInCollegeSources.values,
+      ...effectiveBuiltInCollegeSources,
       ...customCollegeSources,
     ];
   }
@@ -452,6 +523,19 @@ class PreferencesManager {
   Map<String, String> get customCollegeBaseUrls {
     final map = <String, String>{};
     for (final s in customCollegeSources) {
+      map[s.id] = s.baseUrl;
+    }
+    return map;
+  }
+
+  Map<String, String> get effectiveCollegeBaseUrls {
+    final map = <String, String>{};
+    for (final s in effectiveBuiltInCollegeSources) {
+      if (s.id.isEmpty || s.baseUrl.isEmpty) continue;
+      map[s.id] = s.baseUrl;
+    }
+    for (final s in customCollegeSources) {
+      if (s.id.isEmpty || s.baseUrl.isEmpty) continue;
       map[s.id] = s.baseUrl;
     }
     return map;

@@ -437,7 +437,7 @@ class ScheduleController extends ChangeNotifier {
   }
 
   void _applyCustomBaseUrls() {
-    _repository.setCustomBaseUrls(_prefsManager.customCollegeBaseUrls);
+    _repository.setCustomBaseUrls(_prefsManager.effectiveCollegeBaseUrls);
   }
 
   Future<bool> refreshLessonTimesFromRemote({bool silent = false}) async {

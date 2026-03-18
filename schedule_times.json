@@ -14,7 +14,7 @@
     },
     "colleges": {
       "chtotib": {
-        "name": "Челябинский техникум отраслевых технологий и бизнеса",
+        "name": "ЧТОТиБ",
         "baseUrl": "https://www.chtotib.ru/schedule_gl/",
         "groupsPage": "cg.htm",
         "teachersPage": "cp.htm",
@@ -22,7 +22,7 @@
         "reserveDayGroupsUrl": "https://chtotib-it.github.io/hg.htm"
       },
       "zabgc": {
-        "name": "Златоустовский базовый геологоразведочный колледж",
+        "name": "ЗабГК",
         "baseUrl": "https://bbb.zabgc.ru/",
         "groupsPage": "cg.htm",
         "teachersPage": "cp.htm"

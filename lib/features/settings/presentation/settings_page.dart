@@ -1,3 +1,4 @@
+import "dart:convert";
 import "dart:io";
 
 import "package:file_picker/file_picker.dart";
@@ -16,6 +17,8 @@ import "../../../app/theme.dart"
 import "../../../core/database/schedule_database.dart";
 import "../../../core/services/analytics_service.dart";
 import "../../../core/update/app_update_service.dart";
+import "../../../core/update/github_http_client.dart";
+import "../../../core/update/github_urls.dart";
 import "../../../core/update/update_dialog.dart";
 import "../../../core/storage/storage_cleanup.dart";
 import "../../../core/background/app_update_background_worker.dart";
@@ -34,6 +37,18 @@ class _UrlProbeResult {
   });
 
   final bool ok;
+  final String message;
+  final DateTime checkedAt;
+}
+
+class _CollegeSourcesSyncResult {
+  const _CollegeSourcesSyncResult({
+    required this.savedCount,
+    required this.message,
+    required this.checkedAt,
+  });
+
+  final int savedCount;
   final String message;
   final DateTime checkedAt;
 }
@@ -503,9 +518,12 @@ class _SettingsPageState extends State<SettingsPage> {
       builder: (ctx) {
         final pingById = <String, _UrlProbeResult>{};
         final runningIds = <String>{};
+        var syncRunning = false;
+        _CollegeSourcesSyncResult? lastSync;
         return StatefulBuilder(
           builder: (ctx, setSheetState) {
             final sources = prefs.allCollegeSources;
+            final syncedAt = prefs.syncedCollegeSourcesCheckedAt;
             return SafeArea(
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
@@ -519,6 +537,57 @@ class _SettingsPageState extends State<SettingsPage> {
                       "Можно добавить свой источник и выбрать его в списке техникумов.",
                       style: theme.textTheme.bodySmall,
                     ),
+                    const SizedBox(height: 10),
+                    SizedBox(
+                      width: double.infinity,
+                      child: FilledButton.tonalIcon(
+                        onPressed: syncRunning
+                            ? null
+                            : () async {
+                                setSheetState(() {
+                                  syncRunning = true;
+                                });
+                                final result =
+                                    await _syncCollegeSourcesFromRemote();
+                                if (!mounted || !ctx.mounted) return;
+                                setSheetState(() {
+                                  syncRunning = false;
+                                  lastSync = result;
+                                });
+                                setState(() {});
+                                if (ctx.mounted) {
+                                  ScaffoldMessenger.of(ctx).showSnackBar(
+                                    SnackBar(content: Text(result.message)),
+                                  );
+                                }
+                              },
+                        icon: syncRunning
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(strokeWidth: 2),
+                              )
+                            : const Icon(Icons.sync_rounded),
+                        label: Text(
+                          syncRunning
+                              ? "Синхронизация..."
+                              : "Синхронизировать ссылки",
+                        ),
+                      ),
+                    ),
+                    if (lastSync != null || syncedAt != null) ...[
+                      const SizedBox(height: 6),
+                      Text(
+                        lastSync != null
+                            ? "Последняя синхронизация: ${DateFormat('HH:mm').format(lastSync!.checkedAt)} • ${lastSync!.message}"
+                            : "Последняя синхронизация: ${DateFormat('HH:mm').format(syncedAt!)}",
+                        style: theme.textTheme.labelSmall?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
                     const SizedBox(height: 12),
                     ConstrainedBox(
                       constraints: BoxConstraints(
@@ -860,6 +929,74 @@ class _SettingsPageState extends State<SettingsPage> {
       },
     );
     return added == true;
+  }
+
+  Future<_CollegeSourcesSyncResult> _syncCollegeSourcesFromRemote() async {
+    final checkedAt = DateTime.now();
+    try {
+      final url = GitHubProjectUrls.scheduleTimesRaw.trim();
+      final response = await GitHubHttpClient.get(
+        url,
+        headers: const {"Accept": "application/json, text/plain, */*"},
+      );
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        return _CollegeSourcesSyncResult(
+          savedCount: 0,
+          message: "HTTP ${response.statusCode}",
+          checkedAt: checkedAt,
+        );
+      }
+
+      final raw = utf8.decode(response.bodyBytes);
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map<String, dynamic>) {
+        return _CollegeSourcesSyncResult(
+          savedCount: 0,
+          message: "Некорректный JSON",
+          checkedAt: checkedAt,
+        );
+      }
+
+      final sources = decoded["sources"];
+      final colleges = (sources is Map<String, dynamic>) ? sources["colleges"] : null;
+      if (colleges is! Map<String, dynamic>) {
+        return _CollegeSourcesSyncResult(
+          savedCount: 0,
+          message: "В файле нет sources.colleges",
+          checkedAt: checkedAt,
+        );
+      }
+
+      final out = <String, CollegeSource>{};
+      for (final e in colleges.entries) {
+        final id = e.key.toString().trim().toLowerCase();
+        final v = e.value;
+        if (id.isEmpty || v is! Map<String, dynamic>) continue;
+        final name = (v["name"] ?? "").toString().trim();
+        final baseUrl = (v["baseUrl"] ?? "").toString().trim();
+        if (name.isEmpty || baseUrl.isEmpty) continue;
+        out[id] = CollegeSource(
+          id: id,
+          name: name,
+          baseUrl: baseUrl,
+          builtIn: true,
+        );
+      }
+
+      prefs.saveSyncedCollegeSources(out);
+      ctrl.refreshCollegeSources();
+      return _CollegeSourcesSyncResult(
+        savedCount: out.length,
+        message: out.isEmpty ? "Нечего обновлять" : "Обновлено: ${out.length}",
+        checkedAt: checkedAt,
+      );
+    } catch (e) {
+      return _CollegeSourcesSyncResult(
+        savedCount: 0,
+        message: "Ошибка синхронизации",
+        checkedAt: checkedAt,
+      );
+    }
   }
 
   Future<_UrlProbeResult> _probeCollegeSourceUrl(String rawUrl) async {
