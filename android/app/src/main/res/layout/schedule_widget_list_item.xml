@@ -13,16 +13,22 @@
     android:paddingEnd="8dp"
     android:paddingBottom="4dp">
 
-    <TextView
-        android:id="@+id/widget_list_item_num"
+    <FrameLayout
+        android:id="@+id/widget_list_item_num_bg"
         android:layout_width="24dp"
         android:layout_height="24dp"
-        android:background="@drawable/widget_num_badge_dark"
-        android:gravity="center"
-        android:text="1"
-        android:textColor="#FFFFFF"
-        android:textSize="12sp"
-        android:textStyle="bold" />
+        android:background="@drawable/widget_num_badge_dark">
+
+        <TextView
+            android:id="@+id/widget_list_item_num"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:gravity="center"
+            android:text="1"
+            android:textColor="#FFFFFF"
+            android:textSize="12sp"
+            android:textStyle="bold" />
+    </FrameLayout>
 
     <TextView
         android:id="@+id/widget_list_item_text"

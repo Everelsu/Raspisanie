@@ -10,6 +10,8 @@ import "../../../core/parsing/statistics_parser.dart";
 import "../domain/models.dart";
 import "groups_cache.dart";
 import "schedule_cache.dart";
+import "statistics_cache.dart";
+import "sub_schedule_cache.dart";
 
 class ExpressScheduleRepository {
   ExpressScheduleRepository({
@@ -19,6 +21,8 @@ class ExpressScheduleRepository {
     StatisticsPageParser? statsParser,
     this.scheduleCache,
     this.groupsCache,
+    this.statisticsCache,
+    this.subScheduleCache,
   })  : _client = client ?? HttpClientService(),
         _decoder = decoder ?? EncodingDecoder(),
         _parser = parser ?? ExpressScheduleParser(),
@@ -30,6 +34,8 @@ class ExpressScheduleRepository {
   final StatisticsPageParser _statsParser;
   final ScheduleCache? scheduleCache;
   final GroupsCache? groupsCache;
+  final StatisticsCache? statisticsCache;
+  final SubScheduleCache? subScheduleCache;
   final Map<String, Future<List<DaySchedule>>> _inflightSchedule = {};
   final Set<String> _backgroundRefreshing = {};
   final Map<String, DateTime> _lastBackgroundRefresh = {};
@@ -150,6 +156,12 @@ class ExpressScheduleRepository {
     required String groupFile,
     required String college,
   }) async {
+    final cached = statisticsCache?.load(groupFile, college);
+    if (cached != null) {
+      // Тихо обновим статистику в фоне, чтобы кэш не устаревал.
+      _refreshStatisticsInBackground(groupFile: groupFile, college: college);
+      return cached;
+    }
     final base = baseUrlFor(college);
     String statsFile;
     if (groupFile.startsWith("cp")) {
@@ -168,7 +180,11 @@ class ExpressScheduleRepository {
       if (response.statusCode < 200 || response.statusCode >= 300) return null;
       final decoded = _decoder.decode(
           bytes: response.bodyBytes, headers: response.headers);
-      return _statsParser.parse(decoded.html);
+      final parsed = _statsParser.parse(decoded.html);
+      if (parsed != null) {
+        statisticsCache?.save(parsed, groupFile, college);
+      }
+      return parsed;
     } catch (_) {
       return null;
     }
@@ -204,6 +220,8 @@ class ExpressScheduleRepository {
     required String file,
     required String college,
   }) async {
+    final cached = subScheduleCache?.load(file, college);
+    if (cached != null && cached.isNotEmpty) return cached;
     final base = baseUrlFor(college);
     final url = "$base$file";
     final response = await _client.getBytes(url);
@@ -216,7 +234,30 @@ class ExpressScheduleRepository {
     if (days.isEmpty) {
       throw StateError("Не удалось распознать подрасписание.");
     }
+    subScheduleCache?.save(days, file, college);
     return days;
+  }
+
+  void _refreshStatisticsInBackground({
+    required String groupFile,
+    required String college,
+  }) {
+    final key = "stats::$college::$groupFile";
+    final now = DateTime.now();
+    final lastStartedAt = _lastBackgroundRefresh[key];
+    if (lastStartedAt != null &&
+        now.difference(lastStartedAt) < _backgroundRefreshThrottle) {
+      return;
+    }
+    if (_backgroundRefreshing.contains(key)) return;
+    _backgroundRefreshing.add(key);
+    _lastBackgroundRefresh[key] = now;
+    () async {
+      try {
+        await fetchStatistics(groupFile: groupFile, college: college);
+      } catch (_) {}
+      _backgroundRefreshing.remove(key);
+    }();
   }
 
   Future<void> _refreshInBackground(

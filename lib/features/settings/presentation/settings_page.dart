@@ -3,23 +3,40 @@ import "dart:io";
 import "package:file_picker/file_picker.dart";
 import "package:flutter/material.dart";
 import "package:flutter/services.dart";
+import "package:http/http.dart" as http;
+import "package:intl/intl.dart";
 import "package:package_info_plus/package_info_plus.dart";
 import "package:path_provider/path_provider.dart";
 import "package:share_plus/share_plus.dart";
 import "package:url_launcher/url_launcher.dart";
 
-import "../../../app/theme.dart";
+
+import "../../../app/theme.dart"
+    show AppThemeColors, AppThemes, contentTopUnderAppBar;
 import "../../../core/database/schedule_database.dart";
-import "../../../core/notifications/notification_service.dart";
+import "../../../core/services/analytics_service.dart";
 import "../../../core/update/app_update_service.dart";
 import "../../../core/update/update_dialog.dart";
 import "../../../core/storage/storage_cleanup.dart";
+import "../../../core/background/app_update_background_worker.dart";
+import "../../../core/background/schedule_background_worker.dart";
 import "../../../core/services/font_service.dart";
 import "../../schedule/data/lesson_times.dart";
 import "../../schedule/data/preferences_manager.dart";
 import "../../schedule/domain/models.dart";
 import "../../schedule/presentation/schedule_controller.dart";
-import "font_settings_tile.dart";
+
+class _UrlProbeResult {
+  const _UrlProbeResult({
+    required this.ok,
+    required this.message,
+    required this.checkedAt,
+  });
+
+  final bool ok;
+  final String message;
+  final DateTime checkedAt;
+}
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({
@@ -78,7 +95,12 @@ class _SettingsPageState extends State<SettingsPage> {
         return ListView(
           physics: const AlwaysScrollableScrollPhysics(
               parent: BouncingScrollPhysics()),
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 100),
+          padding: EdgeInsets.fromLTRB(
+            16,
+            contentTopUnderAppBar(context),
+            16,
+            116,
+          ),
           children: [
             _section(theme, "ОСНОВНОЕ"),
             _modeCard(theme),
@@ -92,10 +114,6 @@ class _SettingsPageState extends State<SettingsPage> {
             const SizedBox(height: 12),
             _lessonTimesCard(theme),
             const SizedBox(height: 20),
-            FontSettingsTile(fontService: widget.fontService),
-            const SizedBox(height: 20),
-            _fontSizeCard(theme),
-            const SizedBox(height: 12),
             _section(theme, "ДАННЫЕ"),
             _dbSettingsCard(theme),
             const SizedBox(height: 20),
@@ -103,9 +121,15 @@ class _SettingsPageState extends State<SettingsPage> {
             _widgetCard(theme),
             const SizedBox(height: 20),
             _section(theme, "ОФОРМЛЕНИЕ"),
+            _fontSettingsCard(theme),
+            const SizedBox(height: 10),
+            _fontSizeCard(theme),
+            const SizedBox(height: 12),
             _themeGrid(theme),
-            const SizedBox(height: 20),
+            const SizedBox(height: 12),
             _section(theme, "О ПРИЛОЖЕНИИ"),
+            _privacyCard(theme),
+            const SizedBox(height: 20),
             _appInfoCard(theme),
             const SizedBox(height: 40),
           ],
@@ -138,6 +162,189 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 
+  Widget _fontSettingsCard(ThemeData theme) {
+    final cs = theme.colorScheme;
+    final isDark = theme.brightness == Brightness.dark;
+    return ListenableBuilder(
+      listenable: widget.fontService,
+      builder: (context, _) {
+        return Card(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(18),
+            side: BorderSide(
+              color: cs.primary.withAlpha(isDark ? 30 : 20),
+              width: 0.8,
+            ),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(6),
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [
+                            cs.primary.withAlpha(40),
+                            cs.primary.withAlpha(20),
+                          ],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(
+                          color: cs.primary.withAlpha(50),
+                          width: 0.8,
+                        ),
+                      ),
+                      child: Icon(
+                        Icons.text_fields_rounded,
+                        size: 16,
+                        color: cs.primary,
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            "Шрифт приложения",
+                            style: theme.textTheme.bodyLarge?.copyWith(
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          Text(
+                            "Интерфейс и «Поделиться днём»",
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: cs.onSurfaceVariant,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                GridView.count(
+                  crossAxisCount: 2,
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  crossAxisSpacing: 8,
+                  mainAxisSpacing: 8,
+                  childAspectRatio: 2.65,
+                  children: AppFont.values.map((font) {
+                    final selected = widget.fontService.current == font;
+                    return Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(14),
+                        onTap: () async {
+                          await widget.fontService.setFont(font);
+                          await AnalyticsService.instance
+                              .logFontChanged(widget.fontService.displayName(font));
+                        },
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 200),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 6,
+                          ),
+                          decoration: BoxDecoration(
+                            gradient: selected
+                                ? LinearGradient(
+                                    begin: Alignment.topLeft,
+                                    end: Alignment.bottomRight,
+                                    colors: [
+                                      cs.primary.withAlpha(isDark ? 50 : 36),
+                                      cs.primary.withAlpha(isDark ? 28 : 18),
+                                    ],
+                                  )
+                                : LinearGradient(
+                                    colors: [
+                                      cs.surfaceContainerHighest
+                                          .withAlpha(isDark ? 100 : 80),
+                                      cs.surfaceContainerHighest
+                                          .withAlpha(isDark ? 70 : 55),
+                                    ],
+                                  ),
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(
+                              color: selected
+                                  ? cs.primary.withAlpha(120)
+                                  : cs.outlineVariant
+                                      .withAlpha(isDark ? 80 : 100),
+                              width: selected ? 1.4 : 0.8,
+                            ),
+                            boxShadow: selected
+                                ? [
+                                    BoxShadow(
+                                      color: cs.primary.withAlpha(20),
+                                      blurRadius: 8,
+                                      offset: const Offset(0, 2),
+                                    ),
+                                  ]
+                                : null,
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              SizedBox(
+                                height: 22,
+                                child: Align(
+                                  alignment: Alignment.centerLeft,
+                                  child: FittedBox(
+                                    fit: BoxFit.scaleDown,
+                                    alignment: Alignment.centerLeft,
+                                    child: Text(
+                                      "Аа",
+                                      style: widget.fontService.previewStyle(
+                                        font,
+                                        color: selected
+                                            ? cs.primary
+                                            : cs.onSurface,
+                                        fontSize: 18,
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                widget.fontService.displayName(font),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: widget.fontService.previewStyle(
+                                  font,
+                                  color: selected
+                                      ? cs.primary.withAlpha(200)
+                                      : cs.onSurfaceVariant,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    );
+                  }).toList(),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   Widget _modeCard(ThemeData theme) {
     final isTeacher = prefs.isTeacherMode;
     return Card(
@@ -154,6 +361,8 @@ class _SettingsPageState extends State<SettingsPage> {
                   child: _modeButton(
                       theme, "Студент", Icons.school_outlined, !isTeacher, () {
                     ctrl.setUserMode("student");
+                    AnalyticsService.instance.logUserModeChanged("student");
+                    ScheduleBackgroundWorker.ensureRegisteredIfNeeded(prefs: prefs);
                     _loadGroupsAsync();
                   }),
                 ),
@@ -163,6 +372,8 @@ class _SettingsPageState extends State<SettingsPage> {
                       theme, "Преподаватель", Icons.person_outline, isTeacher,
                       () {
                     ctrl.setUserMode("teacher");
+                    AnalyticsService.instance.logUserModeChanged("teacher");
+                    ScheduleBackgroundWorker.ensureRegisteredIfNeeded(prefs: prefs);
                     _loadGroupsAsync();
                   }),
                 ),
@@ -258,6 +469,8 @@ class _SettingsPageState extends State<SettingsPage> {
               onChanged: (v) {
                 if (v != null) {
                   ctrl.setCollege(v);
+                  AnalyticsService.instance.logCollegeChanged(v);
+                  ScheduleBackgroundWorker.ensureRegisteredIfNeeded(prefs: prefs);
                   _loadGroupsAsync();
                   _loadLessonTimesForSelectedCollege();
                 }
@@ -288,6 +501,8 @@ class _SettingsPageState extends State<SettingsPage> {
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
       builder: (ctx) {
+        final pingById = <String, _UrlProbeResult>{};
+        final runningIds = <String>{};
         return StatefulBuilder(
           builder: (ctx, setSheetState) {
             final sources = prefs.allCollegeSources;
@@ -298,7 +513,7 @@ class _SettingsPageState extends State<SettingsPage> {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text("Ссылки Express", style: theme.textTheme.titleLarge),
+                    Text("Ссылки", style: theme.textTheme.titleLarge),
                     const SizedBox(height: 4),
                     Text(
                       "Можно добавить свой источник и выбрать его в списке техникумов.",
@@ -316,6 +531,13 @@ class _SettingsPageState extends State<SettingsPage> {
                         itemBuilder: (_, i) {
                           final s = sources[i];
                           final selected = ctrl.college == s.id;
+                          final isRunning = runningIds.contains(s.id);
+                          final probe = pingById[s.id];
+                          final probeColor = probe == null
+                              ? theme.colorScheme.onSurfaceVariant
+                              : (probe.ok
+                                  ? theme.colorScheme.primary
+                                  : theme.colorScheme.error);
                           return ListTile(
                             dense: true,
                             shape: RoundedRectangleBorder(
@@ -327,10 +549,34 @@ class _SettingsPageState extends State<SettingsPage> {
                               ),
                             ),
                             title: Text(s.name),
-                            subtitle: Text(
-                              s.baseUrl,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
+                            subtitle: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  s.baseUrl,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                if (isRunning)
+                                  Text(
+                                    'Проверяю...',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: theme.textTheme.labelSmall?.copyWith(
+                                      color: theme.colorScheme.onSurfaceVariant,
+                                    ),
+                                  )
+                                else if (probe != null)
+                                  Text(
+                                    '${probe.message} • ${DateFormat('HH:mm').format(probe.checkedAt)}',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: theme.textTheme.labelSmall?.copyWith(
+                                      color: probeColor,
+                                    ),
+                                  ),
+                              ],
                             ),
                             leading: Icon(
                               s.builtIn
@@ -341,9 +587,73 @@ class _SettingsPageState extends State<SettingsPage> {
                                   ? theme.colorScheme.onSurfaceVariant
                                   : theme.colorScheme.primary,
                             ),
-                            trailing: s.builtIn
-                                ? null
-                                : IconButton(
+                            trailing: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                IconButton(
+                                  tooltip: "Копировать URL",
+                                  onPressed: () async {
+                                    await Clipboard.setData(
+                                        ClipboardData(text: s.baseUrl));
+                                    if (ctx.mounted) {
+                                      ScaffoldMessenger.of(ctx).showSnackBar(
+                                        const SnackBar(
+                                          content: Text("Ссылка скопирована"),
+                                        ),
+                                      );
+                                    }
+                                  },
+                                  icon: const Icon(Icons.content_copy_rounded,
+                                      size: 20),
+                                ),
+                                if (isRunning)
+                                  const SizedBox(
+                                    width: 20,
+                                    height: 20,
+                                    child: Padding(
+                                      padding: EdgeInsets.all(2),
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                      ),
+                                    ),
+                                  )
+                                else
+                                  IconButton(
+                                    tooltip: "Пинг (проверить доступность)",
+                                    onPressed: () async {
+                                      setSheetState(() {
+                                        runningIds.add(s.id);
+                                      });
+                                      final result =
+                                          await _probeCollegeSourceUrl(
+                                        s.baseUrl,
+                                      );
+                                      if (!ctx.mounted || !mounted) return;
+                                      setSheetState(() {
+                                        runningIds.remove(s.id);
+                                        pingById[s.id] = result;
+                                      });
+                                    },
+                                    icon: const Icon(Icons.wifi_tethering_rounded,
+                                        size: 20),
+                                  ),
+                                if (!s.builtIn) ...[
+                                  IconButton(
+                                    tooltip: "Изменить",
+                                    onPressed: () async {
+                                      _dismissKeyboard();
+                                      final ok =
+                                          await _showEditCollegeSourceDialog(s);
+                                      if (!ok || !mounted || !ctx.mounted) {
+                                        return;
+                                      }
+                                      ctrl.refreshCollegeSources();
+                                      setSheetState(() {});
+                                      setState(() {});
+                                    },
+                                    icon: const Icon(Icons.edit_outlined, size: 20),
+                                  ),
+                                  IconButton(
                                     tooltip: "Удалить",
                                     onPressed: () {
                                       final updated = prefs.customCollegeSources
@@ -359,14 +669,25 @@ class _SettingsPageState extends State<SettingsPage> {
                                       setSheetState(() {});
                                       setState(() {});
                                     },
-                                    icon: const Icon(Icons.delete_outline_rounded),
+                                    icon: const Icon(
+                                        Icons.delete_outline_rounded, size: 20),
                                   ),
+                                ],
+                              ],
+                            ),
                             onTap: () {
                               ctrl.setCollege(s.id);
                               _loadGroupsAsync();
                               _loadLessonTimesForSelectedCollege();
                               setSheetState(() {});
                               setState(() {});
+                            },
+                            onLongPress: () async {
+                              final u = Uri.tryParse(s.baseUrl);
+                              if (u != null && await canLaunchUrl(u)) {
+                                await launchUrl(u,
+                                    mode: LaunchMode.externalApplication);
+                              }
                             },
                           );
                         },
@@ -539,6 +860,179 @@ class _SettingsPageState extends State<SettingsPage> {
       },
     );
     return added == true;
+  }
+
+  Future<_UrlProbeResult> _probeCollegeSourceUrl(String rawUrl) async {
+    final url = _normalizeBaseUrl(rawUrl);
+    final checkedAt = DateTime.now();
+    if (!_isValidHttpUrl(url)) {
+      return _UrlProbeResult(
+        ok: false,
+        message: "Некорректный URL",
+        checkedAt: checkedAt,
+      );
+    }
+
+    try {
+      final client = http.Client();
+      try {
+        late http.BaseResponse res;
+        try {
+          res = await client
+              .head(Uri.parse(url))
+              .timeout(const Duration(seconds: 12));
+        } catch (_) {
+          // Некоторые серверы запрещают HEAD — пробуем GET.
+          res = await client
+              .get(Uri.parse(url))
+              .timeout(const Duration(seconds: 18));
+        }
+
+        final ok = res.statusCode >= 200 && res.statusCode < 400;
+        final message =
+            ok ? "Доступно (код ${res.statusCode})" : "HTTP ${res.statusCode}";
+        return _UrlProbeResult(ok: ok, message: message, checkedAt: checkedAt);
+      } finally {
+        client.close();
+      }
+    } catch (e) {
+      return _UrlProbeResult(
+        ok: false,
+        message: "Нет ответа",
+        checkedAt: checkedAt,
+      );
+    }
+  }
+
+  Future<bool> _showEditCollegeSourceDialog(CollegeSource source) async {
+    _dismissKeyboard();
+    final nameCtrl = TextEditingController(text: source.name);
+    final urlCtrl = TextEditingController(text: source.baseUrl);
+    String? validationError;
+    try {
+      final saved = await showModalBottomSheet<bool>(
+        context: context,
+        isScrollControlled: true,
+        useSafeArea: true,
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        builder: (ctx) {
+          final theme = Theme.of(ctx);
+          return StatefulBuilder(
+            builder: (ctx, setDialogState) {
+              return Padding(
+                padding: EdgeInsets.fromLTRB(
+                  16,
+                  12,
+                  16,
+                  16 + MediaQuery.viewInsetsOf(ctx).bottom,
+                ),
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text("Изменить источник",
+                          style: theme.textTheme.titleLarge),
+                      const SizedBox(height: 4),
+                      Text(
+                        "ID: ${source.id} (не меняется)",
+                        style: theme.textTheme.bodySmall,
+                      ),
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: nameCtrl,
+                        onChanged: (_) => setDialogState(() {
+                          validationError = null;
+                        }),
+                        decoration: const InputDecoration(
+                          labelText: "Название",
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      TextField(
+                        controller: urlCtrl,
+                        keyboardType: TextInputType.url,
+                        onChanged: (_) => setDialogState(() {
+                          validationError = null;
+                        }),
+                        decoration: const InputDecoration(
+                          labelText: "Ссылка",
+                        ),
+                      ),
+                      if (validationError != null) ...[
+                        const SizedBox(height: 8),
+                        Text(
+                          validationError!,
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.error,
+                          ),
+                        ),
+                      ],
+                      const SizedBox(height: 14),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: OutlinedButton(
+                              onPressed: () {
+                                _dismissKeyboard();
+                                Navigator.pop(ctx, false);
+                              },
+                              child: const Text("Отмена"),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: FilledButton(
+                              onPressed: () {
+                                _dismissKeyboard();
+                                final safeName = nameCtrl.text.trim();
+                                final safeUrl = _normalizeBaseUrl(urlCtrl.text);
+                                if (safeName.isEmpty) {
+                                  setDialogState(() {
+                                    validationError = "Введи название";
+                                  });
+                                  return;
+                                }
+                                if (!_isValidHttpUrl(safeUrl)) {
+                                  setDialogState(() {
+                                    validationError =
+                                        "Проверь ссылку: http/https и домен";
+                                  });
+                                  return;
+                                }
+                                final updated = prefs.customCollegeSources
+                                    .map((e) {
+                                      if (e.id != source.id) return e;
+                                      return CollegeSource(
+                                        id: source.id,
+                                        name: safeName,
+                                        baseUrl: safeUrl,
+                                      );
+                                    })
+                                    .toList();
+                                prefs.saveCustomCollegeSources(updated);
+                                Navigator.pop(ctx, true);
+                              },
+                              child: const Text("Сохранить"),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          );
+        },
+      );
+      return saved == true;
+    } finally {
+      nameCtrl.dispose();
+      urlCtrl.dispose();
+    }
   }
 
   String _normalizeBaseUrl(String raw) {
@@ -717,6 +1211,11 @@ class _SettingsPageState extends State<SettingsPage> {
           _dismissKeyboard();
           Navigator.pop(ctx);
           ctrl.selectGroup(g);
+          AnalyticsService.instance.logGroupSelected(
+            groupName: g.name,
+            isTeacherMode: prefs.isTeacherMode,
+          );
+          ScheduleBackgroundWorker.ensureRegisteredIfNeeded(prefs: prefs);
           ctrl.loadSchedule();
         },
         onToggleFavorite: (name) {
@@ -725,6 +1224,10 @@ class _SettingsPageState extends State<SettingsPage> {
           } else {
             prefs.addFavoriteGroup(name);
           }
+          AnalyticsService.instance.logEvent("group_favorite_toggled", {
+            "group": name,
+            "is_favorite": prefs.isFavoriteGroup(name),
+          });
           setState(() {});
         },
       ),
@@ -769,8 +1272,8 @@ class _SettingsPageState extends State<SettingsPage> {
           _divider(theme),
           _switchTile(
               theme,
-              "Автообновление",
-              "Обновлять расписание каждые ${prefs.autoRefreshInterval} мин",
+              "Автообновление расписания",
+              "Обновлять данные каждые ${prefs.autoRefreshInterval} мин и при открытии приложения",
               prefs.autoRefreshEnabled, (v) {
             setState(() {
               prefs.autoRefreshEnabled = v;
@@ -780,6 +1283,7 @@ class _SettingsPageState extends State<SettingsPage> {
                 ctrl.stopAutoRefresh();
               }
             });
+            ScheduleBackgroundWorker.ensureRegisteredIfNeeded(prefs: prefs);
           }),
         ],
       ),
@@ -814,6 +1318,26 @@ class _SettingsPageState extends State<SettingsPage> {
       indent: 16,
       endIndent: 16,
       color: theme.dividerTheme.color,
+    );
+  }
+
+  Widget _privacyCard(ThemeData theme) {
+    return Card(
+      child: Column(
+        children: [
+          _switchTile(
+            theme,
+            "Отправлять аналитику Firebase",
+            "Отправка обезличенной аналитики (экраны и действия) — помогает улучшать приложение",
+            prefs.analyticsEnabled,
+            (v) async {
+              setState(() => prefs.analyticsEnabled = v);
+              await AnalyticsService.instance.setEnabled(v);
+              AnalyticsService.instance.logEvent("analytics_toggled", {"enabled": v});
+            },
+          ),
+        ],
+      ),
     );
   }
 
@@ -987,14 +1511,6 @@ class _SettingsPageState extends State<SettingsPage> {
     final collegeName = ctrl.college == PreferencesManager.collegeZabgc
         ? "ЗабГК"
         : "ЧТОТиБ";
-    final checkedAt = prefs.lessonTimesRemoteCheckedAt;
-    final syncedAt = prefs.lessonTimesRemoteSyncedAt;
-    final checkedText = checkedAt == null
-        ? "никогда"
-        : DateTime.fromMillisecondsSinceEpoch(checkedAt).toString();
-    final syncedText = syncedAt == null
-        ? "никогда"
-        : DateTime.fromMillisecondsSinceEpoch(syncedAt).toString();
     return Card(
       child: Padding(
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
@@ -1006,6 +1522,15 @@ class _SettingsPageState extends State<SettingsPage> {
             Text(
               "Для: $collegeName. Нажми на время, чтобы изменить.",
               style: theme.textTheme.bodySmall,
+            ),
+            const SizedBox(height: 4),
+            Text(
+              prefs.lessonTimesRemoteSyncedAt != null
+                  ? "С GitHub: ${DateFormat('dd.MM.yyyy HH:mm').format(DateTime.fromMillisecondsSinceEpoch(prefs.lessonTimesRemoteSyncedAt!))} · авто-проверка каждые ${prefs.lessonTimesMinIntervalHours} ч"
+                  : "Время пар с репозитория подтянется при запуске / по кнопке «Сбросить».",
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
             ),
             const SizedBox(height: 6),
             const SizedBox(height: 10),
@@ -1072,6 +1597,11 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 
+  Color _effectivePrimaryForTheme(String themeKey, AppThemeColors colors) {
+    final v = prefs.accentColorForTheme(themeKey);
+    return v != null ? Color(v) : colors.primary;
+  }
+
   Widget _themeGrid(ThemeData theme) {
     final currentTheme = prefs.theme;
     final entries = AppThemes.allThemes.entries.toList();
@@ -1082,6 +1612,7 @@ class _SettingsPageState extends State<SettingsPage> {
       children: entries.map((entry) {
         final isSelected = entry.key == currentTheme;
         final colors = AppThemes.colorsFor(entry.key);
+        final primary = _effectivePrimaryForTheme(entry.key, colors);
         final name = entry.value;
 
         return GestureDetector(
@@ -1090,6 +1621,11 @@ class _SettingsPageState extends State<SettingsPage> {
             prefs.theme = entry.key;
             widget.onThemeChanged();
             ctrl.refreshHomeWidgetTheme();
+            AnalyticsService.instance.logThemeChanged(entry.key);
+          },
+          onLongPress: () {
+            HapticFeedback.mediumImpact();
+            _showThemeOptionsSheet(theme, entry.key, name, colors);
           },
           child: SizedBox(
             width: (MediaQuery.of(context).size.width - 42) / 2,
@@ -1100,7 +1636,7 @@ class _SettingsPageState extends State<SettingsPage> {
                 color: theme.cardTheme.color,
                 borderRadius: BorderRadius.circular(14),
                 border: isSelected
-                    ? Border.all(color: colors.primary, width: 2)
+                    ? Border.all(color: primary, width: 2)
                     : Border.all(
                         color: theme.colorScheme.onSurface.withAlpha(20)),
               ),
@@ -1133,13 +1669,16 @@ class _SettingsPageState extends State<SettingsPage> {
                           flex: 3,
                           child: Container(
                             decoration: BoxDecoration(
-                              color: colors.primary,
+                              color: primary,
                               borderRadius: const BorderRadius.horizontal(
                                   right: Radius.circular(10)),
                             ),
                             child: isSelected
-                                ? const Icon(Icons.check,
-                                    size: 16, color: Colors.white)
+                                ? Icon(Icons.check,
+                                    size: 16,
+                                    color: primary.computeLuminance() > 0.5
+                                        ? Colors.black87
+                                        : Colors.white)
                                 : null,
                           ),
                         ),
@@ -1159,6 +1698,328 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 
+  void _showThemeOptionsSheet(
+    ThemeData theme,
+    String themeKey,
+    String themeName,
+    AppThemeColors colors,
+  ) {
+    final primary = _effectivePrimaryForTheme(themeKey, colors);
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: theme.cardTheme.color,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      width: 48,
+                      height: 48,
+                      decoration: BoxDecoration(
+                        color: colors.surface,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: theme.colorScheme.onSurface.withValues(alpha: 0.15),
+                        ),
+                      ),
+                      child: Center(
+                        child: Container(
+                          width: 24,
+                          height: 24,
+                          decoration: BoxDecoration(
+                            color: primary,
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Text(
+                        themeName,
+                        style: theme.textTheme.titleLarge?.copyWith(
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 20),
+                FilledButton.icon(
+                  onPressed: () {
+                    prefs.theme = themeKey;
+                    widget.onThemeChanged();
+                    ctrl.refreshHomeWidgetTheme();
+                    AnalyticsService.instance.logThemeChanged(themeKey);
+                    if (ctx.mounted) Navigator.of(ctx).pop();
+                  },
+                  icon: const Icon(Icons.check_circle_outline, size: 20),
+                  label: const Text("Применить тему"),
+                ),
+                const SizedBox(height: 10),
+                OutlinedButton.icon(
+                  onPressed: () {
+                    Navigator.of(ctx).pop();
+                    WidgetsBinding.instance.addPostFrameCallback((_) {
+                      if (mounted) _showAccentColorPicker(theme, themeKey: themeKey);
+                    });
+                  },
+                  icon: const Icon(Icons.palette_outlined, size: 20),
+                  label: const Text("Акцентный цвет"),
+                ),
+                if (prefs.accentColorForTheme(themeKey) != null) ...[
+                  const SizedBox(height: 8),
+                  TextButton.icon(
+                    onPressed: () {
+                      prefs.setAccentColorForTheme(themeKey, null);
+                      widget.onThemeChanged();
+                      ctrl.refreshHomeWidgetTheme();
+                      AnalyticsService.instance.logAccentChanged(
+                        themeKey: themeKey,
+                        accentValue: null,
+                        source: "reset",
+                      );
+                      if (ctx.mounted) Navigator.of(ctx).pop();
+                    },
+                    icon: const Icon(Icons.restore, size: 18),
+                    label: const Text("Сбросить акцент"),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  void _showAccentColorPicker(ThemeData theme, {String? themeKey}) {
+    final targetThemeKey = themeKey ?? prefs.theme;
+    final accentValue = prefs.accentColorForTheme(targetThemeKey);
+    double customHue = 0.5;
+    double customSaturation = 0.85;
+    double customLightness = 0.55;
+    if (accentValue != null) {
+      final hsl = HSLColor.fromColor(Color(accentValue));
+      customHue = (hsl.hue / 360.0).clamp(0.0, 1.0);
+      customSaturation = hsl.saturation.clamp(0.0, 1.0);
+      customLightness = hsl.lightness.clamp(0.0, 1.0);
+    }
+
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: theme.cardTheme.color,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (context, setSheetState) {
+            // Flutter HSLColor.fromAHSL: hue 0–360°, saturation & lightness 0–1
+            final hueDeg = (customHue.clamp(0.0, 1.0) * 360.0);
+            final sat = customSaturation.clamp(0.0, 1.0);
+            final light = customLightness.clamp(0.0, 1.0);
+            final customColor = HSLColor.fromAHSL(1, hueDeg, sat, light).toColor();
+            return SafeArea(
+              child: Padding(
+                padding: EdgeInsets.fromLTRB(20, 16, 20, 24 + MediaQuery.of(ctx).viewPadding.bottom),
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Text(
+                        "Акцентный цвет",
+                        style: theme.textTheme.titleLarge?.copyWith(
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        "Для темы «${AppThemes.allThemes[targetThemeKey] ?? targetThemeKey}». По умолчанию — цвет темы.",
+                        style: theme.textTheme.bodySmall,
+                      ),
+                      const SizedBox(height: 16),
+                      Wrap(
+                        spacing: 12,
+                        runSpacing: 12,
+                        children: [
+                          GestureDetector(
+                            onTap: () {
+                              prefs.setAccentColorForTheme(targetThemeKey, null);
+                              widget.onThemeChanged();
+                              ctrl.refreshHomeWidgetTheme();
+                              AnalyticsService.instance.logAccentChanged(
+                                themeKey: targetThemeKey,
+                                accentValue: null,
+                                source: "default",
+                              );
+                              if (ctx.mounted) Navigator.of(ctx).pop();
+                            },
+                            child: Container(
+                              width: 44,
+                              height: 44,
+                              decoration: BoxDecoration(
+                                color: theme.scaffoldBackgroundColor,
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(
+                                  color: accentValue == null
+                                      ? theme.colorScheme.primary
+                                      : theme.colorScheme.onSurface.withValues(alpha: 0.2),
+                                  width: accentValue == null ? 2 : 1,
+                                ),
+                              ),
+                              child: Icon(
+                                Icons.palette_outlined,
+                                color: theme.colorScheme.onSurfaceVariant,
+                                size: 22,
+                              ),
+                            ),
+                          ),
+                          ...AppThemes.accentPalette.map((color) {
+                            final isSelected = accentValue == color.toARGB32();
+                            return GestureDetector(
+                              onTap: () {
+                                HapticFeedback.lightImpact();
+                                prefs.setAccentColorForTheme(targetThemeKey, color.toARGB32());
+                                widget.onThemeChanged();
+                                ctrl.refreshHomeWidgetTheme();
+                                AnalyticsService.instance.logAccentChanged(
+                                  themeKey: targetThemeKey,
+                                  accentValue: color.toARGB32(),
+                                  source: "palette",
+                                );
+                                if (ctx.mounted) Navigator.of(ctx).pop();
+                              },
+                              child: Container(
+                                width: 44,
+                                height: 44,
+                                decoration: BoxDecoration(
+                                  color: color,
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(
+                                    color: isSelected
+                                        ? theme.colorScheme.onSurface
+                                        : theme.colorScheme.onSurface.withValues(alpha: 0.25),
+                                    width: isSelected ? 2.5 : 1,
+                                  ),
+                                  boxShadow: isSelected
+                                      ? [
+                                          BoxShadow(
+                                            color: color.withValues(alpha: 0.4),
+                                            blurRadius: 8,
+                                            offset: const Offset(0, 2),
+                                          ),
+                                        ]
+                                      : null,
+                                ),
+                                child: isSelected
+                                    ? Icon(
+                                        Icons.check,
+                                        size: 22,
+                                        color: color.computeLuminance() > 0.5
+                                            ? Colors.black87
+                                            : Colors.white,
+                                      )
+                                    : null,
+                              ),
+                            );
+                          }),
+                        ],
+                      ),
+                      const SizedBox(height: 24),
+                      Text(
+                        "Свой цвет",
+                        style: theme.textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          Container(
+                            width: 48,
+                            height: 48,
+                            decoration: BoxDecoration(
+                              color: customColor,
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: theme.colorScheme.onSurface.withValues(alpha: 0.2),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                Text("Оттенок", style: theme.textTheme.labelSmall),
+                                Slider(
+                                  value: customHue,
+                                  onChanged: (v) => setSheetState(() => customHue = v),
+                                  min: 0,
+                                  max: 1,
+                                  activeColor: customColor,
+                                ),
+                                Text("Насыщенность", style: theme.textTheme.labelSmall),
+                                Slider(
+                                  value: customSaturation,
+                                  onChanged: (v) => setSheetState(() => customSaturation = v),
+                                  min: 0,
+                                  max: 1,
+                                  activeColor: customColor,
+                                ),
+                                Text("Яркость", style: theme.textTheme.labelSmall),
+                                Slider(
+                                  value: customLightness,
+                                  onChanged: (v) => setSheetState(() => customLightness = v),
+                                  min: 0,
+                                  max: 1,
+                                  activeColor: customColor,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      FilledButton.icon(
+                        onPressed: () {
+                          HapticFeedback.lightImpact();
+                          prefs.setAccentColorForTheme(targetThemeKey, customColor.toARGB32());
+                          widget.onThemeChanged();
+                          ctrl.refreshHomeWidgetTheme();
+                          AnalyticsService.instance.logAccentChanged(
+                            themeKey: targetThemeKey,
+                            accentValue: customColor.toARGB32(),
+                            source: "custom",
+                          );
+                          if (ctx.mounted) Navigator.of(ctx).pop();
+                        },
+                        icon: const Icon(Icons.check, size: 20),
+                        label: const Text("Применить свой цвет"),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
   Widget _widgetCard(ThemeData theme) {
     const themeOptions = [
       (PreferencesManager.themeDark, "Тёмная"),
@@ -1169,6 +2030,8 @@ class _SettingsPageState extends State<SettingsPage> {
       (PreferencesManager.themeGray, "Серая"),
       (PreferencesManager.themePurple, "Фиолетовая"),
       (PreferencesManager.themeOrange, "Оранжевая"),
+      (PreferencesManager.themeRed, "Красная"),
+      (PreferencesManager.themeTeal, "Жёлтая"),
     ];
 
     return Card(
@@ -1190,11 +2053,6 @@ class _SettingsPageState extends State<SettingsPage> {
                   onChanged: (v) {
                     setState(() {
                       prefs.widgetUseAppTheme = v;
-                      // Keep manual widget theme aligned with the current app theme
-                      // when user disables sync, so there is no sudden visual jump.
-                      if (!v) {
-                        prefs.widgetTheme = prefs.theme;
-                      }
                     });
                     ctrl.refreshHomeWidgetTheme();
                   },
@@ -1254,6 +2112,8 @@ class _SettingsPageState extends State<SettingsPage> {
     const authorLink = "https://everelsu.github.io/RelsevLink/";
     const releasesLink = "https://github.com/Everelsu/Raspisanie/releases";
     const authorAvatarUrl ="https://raw.githubusercontent.com/Everelsu/RelsevLink/main/avatar.png";
+    const betaTesterLink = "https://t.me/skromniyvadya";
+    const betaTesterAvatarUrl = "https://raw.githubusercontent.com/Everelsu/RelsevLink/6b2647524fe3ade73d931079e77f8225ccffd2f5/scromny.jpg";
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(20),
@@ -1299,27 +2159,51 @@ class _SettingsPageState extends State<SettingsPage> {
             ),
             const SizedBox(height: 24),
             Text(
-              "Обновления",
+              "Обновления приложения",
               style: theme.textTheme.titleSmall?.copyWith(
                 color: theme.colorScheme.primary,
                 fontWeight: FontWeight.w600,
               ),
             ),
-            const SizedBox(height: 6),
-            Text(
-              "Приложение проверяет новые версии при запуске. Обновления устанавливаются из GitHub.",
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-                height: 1.35,
-              ),
-            ),
-            const SizedBox(height: 12),
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton.icon(
-                onPressed: () => _checkForUpdate(theme),
-                icon: const Icon(Icons.system_update_rounded, size: 20),
-                label: const Text("Проверить обновления"),
+            const SizedBox(height: 10),
+            Card(
+              margin: EdgeInsets.zero,
+              child: Column(
+                children: [
+                  _switchTile(
+                    theme,
+                    "Проверять при запуске",
+                    "Показывать диалог обновления, если вышла новая версия",
+                    prefs.autoCheckAppUpdate,
+                    (v) async {
+                      setState(() => prefs.autoCheckAppUpdate = v);
+                      await AppUpdateBackgroundWorker.ensureRegistered(
+                          prefs: prefs);
+                    },
+                  ),
+                  _divider(theme),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+                    child: Text(
+                      "Обновления устанавливаются из GitHub.",
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                        height: 1.35,
+                      ),
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
+                    child: SizedBox(
+                      width: double.infinity,
+                      child: FilledButton.icon(
+                        onPressed: () => _checkForUpdate(theme),
+                        icon: const Icon(Icons.system_update_rounded, size: 20),
+                        label: const Text("Проверить обновления"),
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
             const SizedBox(height: 20),
@@ -1369,6 +2253,67 @@ class _SettingsPageState extends State<SettingsPage> {
                               "Relsev",
                               style: theme.textTheme.titleSmall?.copyWith(
                                 fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Icon(
+                        Icons.open_in_new_rounded,
+                        size: 20,
+                        color: theme.colorScheme.primary,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 10),
+            Material(
+              color: theme.colorScheme.surfaceContainerHighest.withAlpha(40),
+              borderRadius: BorderRadius.circular(12),
+              child: InkWell(
+                onTap: () async {
+                  final uri = Uri.parse(betaTesterLink);
+                  final opened = await launchUrl(
+                    uri,
+                    mode: LaunchMode.externalApplication,
+                  );
+                  if (opened || !mounted) return;
+                  await Clipboard.setData(const ClipboardData(text: betaTesterLink));
+                  if (!mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text("Ссылка скопирована"),
+                      duration: Duration(seconds: 1),
+                    ),
+                  );
+                },
+                borderRadius: BorderRadius.circular(12),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 10,
+                  ),
+                  child: Row(
+                    children: [
+                      _AuthorAvatar(avatarUrl: betaTesterAvatarUrl, theme: theme),
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              "Скромный Вадя",
+                              style: theme.textTheme.titleSmall?.copyWith(
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            const SizedBox(height: 1),
+                            Text(
+                              "Бета‑тестер",
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: theme.colorScheme.onSurfaceVariant,
                               ),
                             ),
                           ],
@@ -1622,6 +2567,9 @@ class _SettingsPageState extends State<SettingsPage> {
     if (!mounted) return;
     if (release != null) {
       final info = await PackageInfo.fromPlatform();
+      if (!mounted) return;
+      AnalyticsService.instance
+          .logEvent("update_dialog_shown", {"version": release.version});
       showDialog(
         context: context,
         builder: (ctx) => UpdateDialog(

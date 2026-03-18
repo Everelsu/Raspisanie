@@ -1,9 +1,10 @@
 import "dart:convert";
 
 import "package:flutter/foundation.dart";
-import "package:http/http.dart" as http;
 
+import "github_http_client.dart";
 import "github_references.dart";
+import "github_urls.dart";
 
 /// Результат последнего релиза с GitHub.
 class GitHubReleaseInfo {
@@ -19,7 +20,7 @@ class GitHubReleaseInfo {
 
 /// Получает последний релиз из GitHub API и ссылку на APK.
 Future<GitHubReleaseInfo?> getLatestGitHubRelease() async {
-  final url = "https://api.github.com/repos/${GitHubReferences.owner}/${GitHubReferences.repo}/releases/latest";
+  final url = GitHubProjectUrls.releasesLatestApi;
   final headers = <String, String>{
     "Accept": "application/vnd.github.v3+json",
   };
@@ -27,9 +28,9 @@ Future<GitHubReleaseInfo?> getLatestGitHubRelease() async {
     headers["Authorization"] = "Bearer ${GitHubReferences.token}";
   }
   try {
-    final response = await http.get(Uri.parse(url), headers: headers);
+    final response = await GitHubHttpClient.get(url, headers: headers);
     if (response.statusCode != 200) return null;
-    final data = jsonDecode(response.body) as Map<String, dynamic>;
+    final data = jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
     final tagName = data["tag_name"] as String? ?? "";
     final version = tagName.startsWith("v") ? tagName.substring(1) : tagName;
     final body = data["body"] as String? ?? "";

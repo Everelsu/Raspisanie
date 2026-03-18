@@ -9,12 +9,21 @@ import android.widget.RemoteViewsService
 
 class ScheduleWidgetRemoteService : RemoteViewsService() {
     override fun onGetViewFactory(intent: Intent): RemoteViewsFactory {
-        return ScheduleWidgetFactory(applicationContext)
+        return ScheduleWidgetFactory(applicationContext, intent)
     }
+}
+
+private fun contrastOnColor(backgroundColor: Int): Int {
+    val r = Color.red(backgroundColor) / 255.0
+    val g = Color.green(backgroundColor) / 255.0
+    val b = Color.blue(backgroundColor) / 255.0
+    val luminance = 0.299 * r + 0.587 * g + 0.114 * b
+    return if (luminance > 0.5) Color.BLACK else Color.WHITE
 }
 
 private class ScheduleWidgetFactory(
     private val context: Context,
+    private val intent: Intent,
 ) : RemoteViewsService.RemoteViewsFactory {
     private val rows = mutableListOf<String>()
     private var textColor: Int = Color.WHITE
@@ -22,6 +31,7 @@ private class ScheduleWidgetFactory(
     private var itemBgRes: Int = R.drawable.widget_list_item_bg_dark
     private var numBgRes: Int = R.drawable.widget_num_badge_dark
     private var fontScale: Float = 1.0f
+    private var accentColor: Int? = null
 
     override fun onCreate() {
         loadData()
@@ -40,13 +50,18 @@ private class ScheduleWidgetFactory(
     override fun getViewAt(position: Int): RemoteViews {
         val raw = rows.getOrElse(position) { "" }
         val parsed = parseRow(raw)
+        val accent = accentColor
         return RemoteViews(context.packageName, R.layout.schedule_widget_list_item).apply {
             setTextViewText(R.id.widget_list_item_num, parsed.first)
             setTextViewText(R.id.widget_list_item_text, parsed.second)
             setTextColor(R.id.widget_list_item_text, textColor)
-            setTextColor(R.id.widget_list_item_num, numTextColor)
+            setTextColor(R.id.widget_list_item_num, if (accent != null) contrastOnColor(accent) else numTextColor)
             setInt(R.id.widget_list_item_root, "setBackgroundResource", itemBgRes)
-            setInt(R.id.widget_list_item_num, "setBackgroundResource", numBgRes)
+            if (accent != null) {
+                setInt(R.id.widget_list_item_num_bg, "setBackgroundColor", accent)
+            } else {
+                setInt(R.id.widget_list_item_num_bg, "setBackgroundResource", numBgRes)
+            }
             setTextViewTextSize(
                 R.id.widget_list_item_text,
                 TypedValue.COMPLEX_UNIT_SP,
@@ -74,6 +89,10 @@ private class ScheduleWidgetFactory(
         val payload = prefs.getString("widget_day_items", "") ?: ""
         val themeKey = prefs.getString("widget_theme", "dark") ?: "dark"
         fontScale = readFontScale(prefs)
+        val accentStr = intent.data?.getQueryParameter("accent")?.trim()
+            ?: intent.getStringExtra("widget_accent_color")?.trim()
+            ?: prefs.getString("widget_accent_color", "")?.trim()
+        accentColor = if (!accentStr.isNullOrEmpty()) accentStr.toIntOrNull() else null
         when (themeKey) {
             "light" -> {
                 textColor = Color.parseColor("#0F172A")
@@ -112,13 +131,31 @@ private class ScheduleWidgetFactory(
                 numBgRes = R.drawable.widget_num_badge_orange
             }
             "blue" -> {
-                textColor = Color.parseColor("#E0F2FE")
+                textColor = Color.parseColor("#E0E7FF")
                 numTextColor = Color.WHITE
                 itemBgRes = R.drawable.widget_list_item_bg_blue
                 numBgRes = R.drawable.widget_num_badge_blue
             }
+            "red" -> {
+                textColor = Color.parseColor("#FFE5E3")
+                numTextColor = Color.WHITE
+                itemBgRes = R.drawable.widget_list_item_bg_red
+                numBgRes = R.drawable.widget_num_badge_red
+            }
+            "teal" -> {
+                textColor = Color.parseColor("#F8F3D0")
+                numTextColor = Color.WHITE
+                itemBgRes = R.drawable.widget_list_item_bg_teal
+                numBgRes = R.drawable.widget_num_badge_teal
+            }
+            "dark" -> {
+                textColor = Color.parseColor("#E5E7EB")
+                numTextColor = Color.WHITE
+                itemBgRes = R.drawable.widget_list_item_bg_dark
+                numBgRes = R.drawable.widget_num_badge_dark
+            }
             else -> {
-                textColor = Color.parseColor("#F3F4F6")
+                textColor = Color.parseColor("#E5E7EB")
                 numTextColor = Color.WHITE
                 itemBgRes = R.drawable.widget_list_item_bg_dark
                 numBgRes = R.drawable.widget_num_badge_dark

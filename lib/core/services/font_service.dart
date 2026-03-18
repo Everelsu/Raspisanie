@@ -4,11 +4,11 @@ import "package:shared_preferences/shared_preferences.dart";
 
 enum AppFont {
   nunito,
-  golosText,
   jost,
   manrope,
   robotoSlab,
-  spaceMono,
+  ndot77,
+  spaceGrotesk,
 }
 
 class FontService extends ChangeNotifier {
@@ -21,6 +21,10 @@ class FontService extends ChangeNotifier {
     final prefs = await SharedPreferences.getInstance();
     final saved = prefs.getString(_prefsKey);
     if (saved == null) return;
+    if (saved == "spaceGroteskLocal") {
+      _current = AppFont.spaceGrotesk;
+      return;
+    }
     _current = AppFont.values.firstWhere(
       (e) => e.name == saved,
       orElse: () => AppFont.nunito,
@@ -39,16 +43,16 @@ class FontService extends ChangeNotifier {
     switch (font) {
       case AppFont.nunito:
         return "Nunito";
-      case AppFont.golosText:
-        return "Golos Text";
       case AppFont.jost:
         return "Jost";
       case AppFont.manrope:
         return "Manrope";
       case AppFont.robotoSlab:
         return "Roboto Slab";
-      case AppFont.spaceMono:
-        return "Space Mono";
+      case AppFont.ndot77:
+        return "Ndot 77";
+      case AppFont.spaceGrotesk:
+        return "Space Grotesk";
     }
   }
 
@@ -56,17 +60,32 @@ class FontService extends ChangeNotifier {
     switch (_current) {
       case AppFont.nunito:
         return GoogleFonts.nunitoTextTheme(base);
-      case AppFont.golosText:
-        return _mapThemeWithGoogleFont(base, "Golos Text");
       case AppFont.jost:
         return GoogleFonts.jostTextTheme(base);
       case AppFont.manrope:
         return GoogleFonts.manropeTextTheme(base);
       case AppFont.robotoSlab:
         return GoogleFonts.robotoSlabTextTheme(base);
-      case AppFont.spaceMono:
-        return GoogleFonts.spaceMonoTextTheme(base);
+      case AppFont.ndot77:
+        return _mapThemeWithFontFamily(base, "Ndot77JPExtended");
+      case AppFont.spaceGrotesk:
+        return _mapThemeWithFontFamily(base, "SpaceGrotesk");
     }
+  }
+
+  /// Текст на canvas (например PNG «поделиться днём») — тот же шрифт, что в приложении.
+  TextStyle textForCanvas(
+    Color color, {
+    double fontSize = 14,
+    FontWeight fontWeight = FontWeight.w400,
+    double? height,
+  }) {
+    return previewStyle(
+      _current,
+      color: color,
+      fontSize: fontSize,
+      fontWeight: fontWeight,
+    ).copyWith(height: height);
   }
 
   TextStyle previewStyle(
@@ -78,13 +97,6 @@ class FontService extends ChangeNotifier {
     switch (font) {
       case AppFont.nunito:
         return GoogleFonts.nunito(
-          color: color,
-          fontSize: fontSize,
-          fontWeight: fontWeight,
-        );
-      case AppFont.golosText:
-        return GoogleFonts.getFont(
-          "Golos Text",
           color: color,
           fontSize: fontSize,
           fontWeight: fontWeight,
@@ -107,8 +119,16 @@ class FontService extends ChangeNotifier {
           fontSize: fontSize,
           fontWeight: fontWeight,
         );
-      case AppFont.spaceMono:
-        return GoogleFonts.spaceMono(
+      case AppFont.ndot77:
+        return TextStyle(
+          fontFamily: "Ndot77JPExtended",
+          color: color,
+          fontSize: fontSize,
+          fontWeight: fontWeight,
+        );
+      case AppFont.spaceGrotesk:
+        return TextStyle(
+          fontFamily: "SpaceGrotesk",
           color: color,
           fontSize: fontSize,
           fontWeight: fontWeight,
@@ -116,35 +136,27 @@ class FontService extends ChangeNotifier {
     }
   }
 
-  TextTheme _mapThemeWithGoogleFont(TextTheme base, String fontFamily) {
-    TextStyle? map(TextStyle? style) {
-      if (style == null) return null;
-      try {
-        return GoogleFonts.getFont(
-          fontFamily,
-          textStyle: style,
-        );
-      } catch (_) {
-        return style;
-      }
+  TextTheme _mapThemeWithFontFamily(TextTheme base, String fontFamily) {
+    TextStyle copyWithFont(TextStyle? style) {
+      if (style == null) return const TextStyle();
+      return style.copyWith(fontFamily: fontFamily);
     }
-
-    return base.copyWith(
-      displayLarge: map(base.displayLarge),
-      displayMedium: map(base.displayMedium),
-      displaySmall: map(base.displaySmall),
-      headlineLarge: map(base.headlineLarge),
-      headlineMedium: map(base.headlineMedium),
-      headlineSmall: map(base.headlineSmall),
-      titleLarge: map(base.titleLarge),
-      titleMedium: map(base.titleMedium),
-      titleSmall: map(base.titleSmall),
-      bodyLarge: map(base.bodyLarge),
-      bodyMedium: map(base.bodyMedium),
-      bodySmall: map(base.bodySmall),
-      labelLarge: map(base.labelLarge),
-      labelMedium: map(base.labelMedium),
-      labelSmall: map(base.labelSmall),
+    return TextTheme(
+      displayLarge: copyWithFont(base.displayLarge),
+      displayMedium: copyWithFont(base.displayMedium),
+      displaySmall: copyWithFont(base.displaySmall),
+      headlineLarge: copyWithFont(base.headlineLarge),
+      headlineMedium: copyWithFont(base.headlineMedium),
+      headlineSmall: copyWithFont(base.headlineSmall),
+      titleLarge: copyWithFont(base.titleLarge),
+      titleMedium: copyWithFont(base.titleMedium),
+      titleSmall: copyWithFont(base.titleSmall),
+      bodyLarge: copyWithFont(base.bodyLarge),
+      bodyMedium: copyWithFont(base.bodyMedium),
+      bodySmall: copyWithFont(base.bodySmall),
+      labelLarge: copyWithFont(base.labelLarge),
+      labelMedium: copyWithFont(base.labelMedium),
+      labelSmall: copyWithFont(base.labelSmall),
     );
   }
 

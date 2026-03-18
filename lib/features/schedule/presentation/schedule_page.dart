@@ -7,7 +7,11 @@ import "package:flutter_staggered_animations/flutter_staggered_animations.dart";
 import "package:share_plus/share_plus.dart";
 import "package:path_provider/path_provider.dart";
 
+import "../../../app/theme.dart";
+import "../../../core/services/analytics_service.dart";
+import "../../../core/services/font_service.dart";
 import "../../../core/widgets/custom_refresh.dart";
+import "../../../core/widgets/empty_state_view.dart";
 import "../data/lesson_times.dart";
 import "../data/preferences_manager.dart";
 import "../domain/models.dart";
@@ -15,8 +19,13 @@ import "schedule_controller.dart";
 import "sub_schedule_sheet.dart";
 
 class SchedulePage extends StatelessWidget {
-  const SchedulePage({super.key, required this.controller});
+  const SchedulePage({
+    super.key,
+    required this.controller,
+    required this.fontService,
+  });
   final ScheduleController controller;
+  final FontService fontService;
 
   @override
   Widget build(BuildContext context) {
@@ -31,88 +40,50 @@ class SchedulePage extends StatelessWidget {
         final prefs = controller.prefs;
 
         Widget body;
-        if (schedule.isEmpty && !isLoading && error == null) {
+        if (schedule.isEmpty && isLoading) {
           body = Center(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 32),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Container(
-                    width: 80,
-                    height: 80,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: theme.colorScheme.primary.withAlpha(18),
-                      border: Border.all(
-                        color: theme.colorScheme.primary.withAlpha(35),
-                        width: 1,
-                      ),
-                    ),
-                    child: Icon(Icons.event_note_outlined,
-                        size: 40,
-                        color: theme.colorScheme.primary.withAlpha(180)),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                CircularProgressIndicator(color: theme.colorScheme.primary),
+                const SizedBox(height: 16),
+                Text(
+                  "Загрузка расписания…",
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
                   ),
-                  const SizedBox(height: 24),
-                  Text(
-                    prefs.isGroupSelected
-                        ? "Потяните вниз для загрузки"
-                        : (prefs.isTeacherMode
-                            ? "Выберите преподавателя в настройках"
-                            : "Выберите группу в настройках"),
-                    textAlign: TextAlign.center,
-                    style: theme.textTheme.bodyLarge,
-                  ),
-                  if (!prefs.isGroupSelected) ...[
-                    const SizedBox(height: 6),
-                    Text(
-                      "Перейдите на вкладку Настройки",
-                      textAlign: TextAlign.center,
-                      style: theme.textTheme.bodySmall,
-                    ),
-                  ],
-                ],
-              ),
+                ),
+              ],
             ),
           );
+        } else if (schedule.isEmpty && !isLoading && error == null) {
+          body = EmptyStateView(
+            icon: Icons.event_note_outlined,
+            message: prefs.isGroupSelected
+                ? "Потяните вниз для загрузки"
+                : (prefs.isTeacherMode
+                    ? "Выберите преподавателя в настройках"
+                    : "Выберите группу в настройках"),
+            subtitle: prefs.isGroupSelected ? null : "Перейдите на вкладку Настройки",
+          );
         } else if (error != null && schedule.isEmpty) {
-          body = Center(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 32),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Container(
-                    width: 80,
-                    height: 80,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: theme.colorScheme.error.withAlpha(18),
-                      border: Border.all(
-                        color: theme.colorScheme.error.withAlpha(50),
-                        width: 1,
-                      ),
-                    ),
-                    child: Icon(Icons.cloud_off_outlined,
-                        size: 40, color: theme.colorScheme.error),
-                  ),
-                  const SizedBox(height: 20),
-                  Text(error,
-                      textAlign: TextAlign.center,
-                      style: TextStyle(color: theme.colorScheme.error)),
-                  const SizedBox(height: 8),
-                  Text("Потяните вниз для обновления",
-                      style: theme.textTheme.bodySmall),
-                ],
-              ),
-            ),
+          body = EmptyStateView(
+            icon: Icons.cloud_off_outlined,
+            message: error,
+            subtitle: "Потяните вниз для обновления",
+            isError: true,
           );
         } else {
           final useAnimations = schedule.length <= 14;
           final listView = ListView.builder(
             physics: const AlwaysScrollableScrollPhysics(
                 parent: BouncingScrollPhysics()),
-            padding: const EdgeInsets.fromLTRB(12, 8, 12, 100),
+            padding: EdgeInsets.fromLTRB(
+              12,
+              contentTopUnderAppBar(context),
+              12,
+              116,
+            ),
             itemCount: schedule.length,
             itemBuilder: (context, index) {
               final card = _DayCard(
@@ -120,6 +91,7 @@ class SchedulePage extends StatelessWidget {
                 college: college,
                 prefs: prefs,
                 controller: controller,
+                fontService: fontService,
               );
               if (!useAnimations) return card;
               return AnimationConfiguration.staggeredList(
@@ -136,8 +108,17 @@ class SchedulePage extends StatelessWidget {
         }
 
         return CustomRefreshWrapper(
-          onRefresh: controller.refreshSchedule,
+          onRefresh: () async {
+            final group = controller.selectedGroup;
+            AnalyticsService.instance.logEvent("schedule_refresh", {
+              "college": controller.college,
+              "group": group?.name,
+              "is_teacher_mode": prefs.isTeacherMode,
+            });
+            await controller.refreshSchedule();
+          },
           color: theme.colorScheme.primary,
+          indicatorTopPadding: contentTopUnderAppBar(context),
           child: body,
         );
       },
@@ -151,12 +132,14 @@ class _DayCard extends StatelessWidget {
     required this.college,
     required this.prefs,
     required this.controller,
+    required this.fontService,
   });
 
   final DaySchedule day;
   final String college;
   final PreferencesManager prefs;
   final ScheduleController controller;
+  final FontService fontService;
 
   @override
   Widget build(BuildContext context) {
@@ -178,9 +161,9 @@ class _DayCard extends StatelessWidget {
               end: Alignment(0.8, 1.0),
               stops: const [0.0, 0.4, 0.75, 1.0],
               colors: [
-                Color.alphaBlend(primary.withAlpha(32), cardColor),
-                Color.alphaBlend(primary.withAlpha(18), cardColor),
-                Color.alphaBlend(primary.withAlpha(10), cardColor),
+                Color.alphaBlend(primary.withAlpha(22), cardColor),
+                Color.alphaBlend(primary.withAlpha(12), cardColor),
+                Color.alphaBlend(primary.withAlpha(6), cardColor),
                 cardColor,
               ],
             ),
@@ -296,7 +279,7 @@ class _DayCard extends StatelessWidget {
               title: const Text("Поделиться изображением"),
               onTap: () async {
                 Navigator.pop(ctx);
-                await _shareDayAsImage(context, items);
+                await _shareDayAsImage(context, items, fontService);
               },
             ),
             const SizedBox(height: 8),
@@ -309,10 +292,11 @@ class _DayCard extends StatelessWidget {
   Future<void> _shareDayAsImage(
     BuildContext context,
     List<ScheduleItem> items,
+    FontService fontService,
   ) async {
     ui.Image? image;
     try {
-      image = await _renderDayImage(context, items);
+      image = await _renderDayImage(context, items, fontService);
       final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
       image.dispose();
       image = null;
@@ -347,7 +331,9 @@ class _DayCard extends StatelessWidget {
   Future<ui.Image> _renderDayImage(
     BuildContext context,
     List<ScheduleItem> items,
+    FontService fontService,
   ) async {
+    final tf = fontService.textForCanvas;
     const width = 800.0;
     const horizontalPadding = 28.0;
     const topPadding = 24.0;
@@ -388,36 +374,16 @@ class _DayCard extends StatelessWidget {
     final fgMuted =
         isDark ? Colors.white.withAlpha(180) : const Color(0xFF475569);
 
-    final headerStyle = TextStyle(
-      color: fgPrimary,
-      fontSize: 28,
-      fontWeight: FontWeight.w700,
-      height: 1.1,
-    );
-    final subStyle = TextStyle(
-      color: fgSecondary,
-      fontSize: 16,
-      fontWeight: FontWeight.w500,
-      height: 1.2,
-    );
-    final titleStyle = TextStyle(
-      color: fgPrimary,
-      fontSize: 17,
-      fontWeight: FontWeight.w700,
-      height: 1.15,
-    );
-    final detailsStyle = TextStyle(
-      color: fgMuted,
-      fontSize: 13,
-      fontWeight: FontWeight.w500,
-      height: 1.2,
-    );
-    final subgroupChipStyle = TextStyle(
-      color: theme.colorScheme.primary,
-      fontSize: 12,
-      fontWeight: FontWeight.w700,
-      height: 1.2,
-    );
+    final headerStyle = tf(fgPrimary,
+        fontSize: 28, fontWeight: FontWeight.w700, height: 1.1);
+    final subStyle = tf(fgSecondary,
+        fontSize: 16, fontWeight: FontWeight.w500, height: 1.2);
+    final titleStyle = tf(fgPrimary,
+        fontSize: 17, fontWeight: FontWeight.w700, height: 1.15);
+    final detailsStyle =
+        tf(fgMuted, fontSize: 13, fontWeight: FontWeight.w500, height: 1.2);
+    final subgroupChipStyle = tf(theme.colorScheme.primary,
+        fontSize: 12, fontWeight: FontWeight.w700, height: 1.2);
 
     TextPainter tp(
       String text,
@@ -493,8 +459,17 @@ class _DayCard extends StatelessWidget {
     final headerHeight = titlePainter.height + 4 + datePainter.height + 2 + groupPainter.height;
     final height = topPadding + headerHeight + headerGap + contentHeight + footerHeight + 16;
 
+    final dpr = MediaQuery.devicePixelRatioOf(context);
+    final exportScale = (dpr * 1.35).clamp(2.5, 3.75);
+    final outW = (width * exportScale).round();
+    final outH = (height * exportScale).round();
+
     final recorder = ui.PictureRecorder();
-    final canvas = Canvas(recorder, Rect.fromLTWH(0, 0, width, height));
+    final canvas = Canvas(
+      recorder,
+      Rect.fromLTWH(0, 0, outW.toDouble(), outH.toDouble()),
+    );
+    canvas.scale(exportScale);
     final primary = theme.colorScheme.primary;
 
     canvas.drawRect(
@@ -549,11 +524,8 @@ class _DayCard extends StatelessWidget {
     final rowBgPaint = Paint()
       ..color = (isDark ? Colors.white : Colors.black).withAlpha(isDark ? 24 : 12);
     final badgePaint = Paint()..color = primary.withAlpha(220);
-    final badgeTextStyle = TextStyle(
-      color: theme.colorScheme.onPrimary,
-      fontSize: 14,
-      fontWeight: FontWeight.w700,
-    );
+    final badgeTextStyle = tf(theme.colorScheme.onPrimary,
+        fontSize: 14, fontWeight: FontWeight.w700);
 
     if (lessonNumbers.isEmpty) {
       final rect = RRect.fromRectAndRadius(
@@ -645,16 +617,12 @@ class _DayCard extends StatelessWidget {
 
     final footerPainter = tp(
       "Raspisanie",
-      TextStyle(
-        color: fgMuted.withAlpha(190),
-        fontSize: 12,
-        fontWeight: FontWeight.w500,
-      ),
+      tf(fgMuted.withAlpha(190), fontSize: 12, fontWeight: FontWeight.w500),
       width - horizontalPadding * 2,
     );
     footerPainter.paint(canvas, Offset(horizontalPadding, height - footerHeight - 8));
 
-    return recorder.endRecording().toImage(width.toInt(), height.toInt());
+    return recorder.endRecording().toImage(outW, outH);
   }
 
   String _formatDayAsText(List<ScheduleItem> items) {

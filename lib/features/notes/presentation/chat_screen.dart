@@ -1,8 +1,8 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'dart:math' show max, min, sin, sqrt;
 import 'dart:typed_data';
-import 'dart:ui' show FontFeature;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -13,11 +13,9 @@ import 'package:flyer_chat_image_message/flyer_chat_image_message.dart';
 import 'package:flyer_chat_file_message/flyer_chat_file_message.dart';
 import 'package:flyer_chat_text_message/flyer_chat_text_message.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:cross_file/cross_file.dart';
 import 'package:record/record.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:uuid/uuid.dart';
-import 'package:intl/intl.dart';
 import 'package:photo_view/photo_view.dart';
 import 'package:photo_view/photo_view_gallery.dart';
 import 'package:http/http.dart' as http;
@@ -43,9 +41,32 @@ Future<LinkPreviewData?> _fetchOgPreview(String pageUrl) async {
   try {
     final uri = Uri.parse(pageUrl);
     if (!uri.hasScheme || (!uri.scheme.startsWith('http'))) return null;
-    final response = await http.get(uri).timeout(const Duration(seconds: 8));
-    if (response.statusCode != 200) return null;
-    final html = response.body;
+    final client = http.Client();
+    String html;
+    try {
+      final request = http.Request('GET', uri);
+      request.headers.addAll(const {
+        'User-Agent':
+            'Mozilla/5.0 (compatible; RaspisanieNotes/1; +https://github.com/Everelsu/Raspisanie)',
+        'Accept': 'text/html,application/xhtml+xml',
+      });
+      final streamed =
+          await client.send(request).timeout(const Duration(seconds: 12));
+      if (streamed.statusCode != 200) {
+        await streamed.stream.drain();
+        return null;
+      }
+      const maxBytes = 98304;
+      final bb = BytesBuilder(copy: false);
+      await for (final chunk in streamed.stream
+          .timeout(const Duration(seconds: 10))) {
+        bb.add(chunk);
+        if (bb.length >= maxBytes) break;
+      }
+      html = utf8.decode(bb.takeBytes(), allowMalformed: true);
+    } finally {
+      client.close();
+    }
     String? title = _ogContent(html, 'og:title');
     String? description = _ogContent(html, 'og:description');
     String? imageUrl = _ogContent(html, 'og:image');
@@ -338,6 +359,7 @@ class _ChatScreenState extends State<ChatScreen> {
     final colorScheme = theme.colorScheme;
 
     return Scaffold(
+      resizeToAvoidBottomInset: true,
       backgroundColor: theme.brightness == Brightness.dark
           ? colorScheme.surface
           : colorScheme.surface.withValues(alpha: 0.98),
@@ -405,6 +427,8 @@ class _ChatScreenState extends State<ChatScreen> {
                   if (_pinnedIndex >= state.pinnedMessages.length) _pinnedIndex = 0;
                 });
               }
+              // Перестроить UI после обновления списка (редактирование и т.д.).
+              if (mounted) setState(() {});
             },
             buildWhen: (prev, curr) => curr is ChatLoaded,
             builder: (context, state) {
@@ -471,6 +495,7 @@ class _ChatScreenState extends State<ChatScreen> {
                     children: [
                       Expanded(
                         child: Chat(
+                          key: ValueKey(identityHashCode(state)),
                           chatController: _chatController,
                           currentUserId: currentUserId,
                           resolveUser: (id) => Future.value(User(id: id, name: 'Вы')),
@@ -497,29 +522,25 @@ class _ChatScreenState extends State<ChatScreen> {
                         return FlyerChatTextMessage(message: message, index: index);
                       },
                       imageMessageBuilder: (context, message, index, {required isSentByMe, groupStatus}) {
-                        final source = message.source;
+                        final caption = message.text?.trim() ?? '';
+                        final hasCaption = caption.isNotEmpty;
+                        if (hasCaption) {
+                          return _SinglePhotoBubble(
+                            message: message,
+                            messageWidth: MediaQuery.sizeOf(context).width * 0.8,
+                            isMine: isSentByMe,
+                            theme: theme,
+                            onImageTap: () => _openPhotoGallery(context, [message.source], 0),
+                          );
+                        }
                         return GestureDetector(
-                          onTap: () => _openPhotoGallery(context, [source], 0),
-                          child: Stack(
-                            clipBehavior: Clip.none,
-                            alignment: Alignment.bottomRight,
-                            children: [
-                              FlyerChatImageMessage(
-                                message: message,
-                                index: index,
-                                customImageProvider: isLocalFileSource(message.source)
-                                    ? FileImage(File(message.source))
-                                    : null,
-                              ),
-                              Positioned(
-                                bottom: 4,
-                                right: 8,
-                                child: _MessageTime(
-                                  createdAt: message.createdAt ?? DateTime.now(),
-                                  inline: true,
-                                ),
-                              ),
-                            ],
+                          onTap: () => _openPhotoGallery(context, [message.source], 0),
+                          child: FlyerChatImageMessage(
+                            message: message,
+                            index: index,
+                            customImageProvider: isLocalFileSource(message.source)
+                                ? FileImage(File(message.source))
+                                : null,
                           ),
                         );
                       },
@@ -565,13 +586,12 @@ class _ChatScreenState extends State<ChatScreen> {
                             child: child,
                           ),
                       emptyChatListBuilder: (context) => _EmptyChatPlaceholder(theme: theme, colorScheme: colorScheme),
-                      composerBuilder: (context) => const SizedBox.shrink(),
+                      composerBuilder: (context) => SafeArea(
+                        top: false,
+                        child: _buildFullComposer(context, theme, colorScheme),
+                      ),
                     ),
                   ),
-                ),
-                SafeArea(
-                  top: false,
-                  child: _buildFullComposer(context, theme, colorScheme),
                 ),
               ],
             );
@@ -639,7 +659,7 @@ class _ChatScreenState extends State<ChatScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Text('✏ Редактирование', style: theme.textTheme.labelSmall?.copyWith(color: colorScheme.tertiary, fontWeight: FontWeight.w600, fontSize: 11)),
+                    Text('Редактирование', style: theme.textTheme.labelSmall?.copyWith(color: colorScheme.tertiary, fontWeight: FontWeight.w600, fontSize: 11)),
                     const SizedBox(height: 2),
                     Text(snippet, style: theme.textTheme.bodySmall?.copyWith(color: colorScheme.onSurface.withValues(alpha: 0.85)), maxLines: 1, overflow: TextOverflow.ellipsis),
                   ],
@@ -673,7 +693,7 @@ class _ChatScreenState extends State<ChatScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text('↩ В ответ на', style: theme.textTheme.labelSmall?.copyWith(color: colorScheme.primary, fontWeight: FontWeight.w600, fontSize: 11)),
+                  Text('В ответ на', style: theme.textTheme.labelSmall?.copyWith(color: colorScheme.primary, fontWeight: FontWeight.w600, fontSize: 11)),
                   const SizedBox(height: 2),
                   Text(snippet, style: theme.textTheme.bodySmall?.copyWith(color: colorScheme.onSurface.withValues(alpha: 0.85)), maxLines: 1, overflow: TextOverflow.ellipsis),
                 ],
@@ -889,6 +909,7 @@ class _ChatScreenState extends State<ChatScreen> {
       metadata: {'ourMessageId': messageId},
     );
     await _chatController.insertMessage(flyerMsg);
+    if (!mounted) return;
     context.read<ChatBloc>().add(ChatSendMessage(
           chatId: widget.chatId,
           content: t.isEmpty ? null : t,
@@ -1058,6 +1079,22 @@ class _ChatScreenState extends State<ChatScreen> {
         ));
   }
 
+  /// Текст/подпись, которые можно редактировать: текст сообщения, подпись к фото или альбому.
+  String _editableTextForMessage(Message message) {
+    if (message is TextMessage) return message.text;
+    if (message is ImageMessage) return message.text ?? '';
+    if (message.metadata?['type'] == 'album') return message.metadata?['caption'] as String? ?? '';
+    return '';
+  }
+
+  /// Сообщения, у которых можно редактировать текст/подпись: текст, одно фото, альбом.
+  bool _canEditMessage(Message message) {
+    if (message is TextMessage) return true;
+    if (message is ImageMessage) return true;
+    if (message.metadata?['type'] == 'album') return true;
+    return false;
+  }
+
   void _onMessageLongPress(BuildContext context, Message message, {required int index, required LongPressStartDetails details}) async {
     final ourId = ourMessageIdFromFlyer(message);
     final screenSize = MediaQuery.sizeOf(context);
@@ -1085,12 +1122,13 @@ class _ChatScreenState extends State<ChatScreen> {
             ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Скопировано'), duration: Duration(seconds: 1)));
           }),
         _menuItem(context, Icons.share_outlined, 'Поделиться', () => _shareMessage(ourId)),
-        if (message is TextMessage)
+        if (_canEditMessage(message))
           _menuItem(context, Icons.edit_outlined, 'Редактировать', () {
+            final text = _editableTextForMessage(message);
             setState(() {
               _editingMessage = message;
-              _composerController.text = message.text;
-              _composerController.selection = TextSelection.collapsed(offset: message.text.length);
+              _composerController.text = text;
+              _composerController.selection = TextSelection.collapsed(offset: text.length);
             });
           }),
         if (isPinned)
@@ -1132,6 +1170,7 @@ class _ChatScreenState extends State<ChatScreen> {
     for (final m in toRemove) {
       await _chatController.removeMessage(m);
     }
+    if (!mounted) return;
     context.read<ChatBloc>().add(ChatDeleteMessage(messageId: ourId));
   }
 
@@ -1142,9 +1181,16 @@ class _ChatScreenState extends State<ChatScreen> {
     if (appMsg == null) return;
     final paths = appMsg.mediaFiles.map((e) => e.localPath).toList();
     if (paths.isNotEmpty) {
-      await Share.shareXFiles(paths.map((p) => XFile(p)).toList(), text: appMsg.content ?? '');
+      await SharePlus.instance.share(
+        ShareParams(
+          files: paths.map((p) => XFile(p)).toList(),
+          text: appMsg.content ?? '',
+        ),
+      );
     } else if (appMsg.content != null && appMsg.content!.isNotEmpty) {
-      await Share.share(appMsg.content!);
+      await SharePlus.instance.share(
+        ShareParams(text: appMsg.content!),
+      );
     }
   }
 
@@ -1933,6 +1979,90 @@ Widget _albumTile(
           : content,
     ),
   );
+}
+
+/// Одно фото с подписью — в том же стиле, что и альбом (пузырь, фото, подпись и время снизу).
+class _SinglePhotoBubble extends StatelessWidget {
+  const _SinglePhotoBubble({
+    required this.message,
+    required this.messageWidth,
+    required this.isMine,
+    required this.theme,
+    required this.onImageTap,
+  });
+
+  final ImageMessage message;
+  final double messageWidth;
+  final bool isMine;
+  final ThemeData theme;
+  final VoidCallback onImageTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final chatColors = _chatThemeFromAppTheme(theme).colors;
+    final bubbleColor = isMine ? chatColors.primary : chatColors.surfaceContainer;
+    final textColor = isMine ? chatColors.onPrimary : chatColors.onSurface;
+    final caption = message.text?.trim() ?? '';
+    final hasCaption = caption.isNotEmpty;
+
+    final timeWidget = _MessageTime(
+      createdAt: message.createdAt ?? DateTime.now(),
+      inline: true,
+      color: textColor.withValues(alpha: 0.7),
+    );
+
+    final source = message.source;
+    final imageWidget = ClipRRect(
+      borderRadius: BorderRadius.circular(_kAlbumRadius - _kAlbumSpacing),
+      child: GestureDetector(
+        onTap: onImageTap,
+        child: isLocalFileSource(source)
+            ? Image.file(File(source), fit: BoxFit.cover, width: double.infinity, height: 200)
+            : Image.network(source, fit: BoxFit.cover, width: double.infinity, height: 200),
+      ),
+    );
+
+    return Container(
+      constraints: BoxConstraints(maxWidth: messageWidth.clamp(0, _kAlbumMaxWidth)),
+      decoration: BoxDecoration(
+        color: bubbleColor,
+        borderRadius: BorderRadius.circular(_kBubbleRadius),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(_kAlbumSpacing),
+            child: SizedBox(width: double.infinity, height: 200, child: imageWidget),
+          ),
+          if (hasCaption)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
+              decoration: BoxDecoration(
+                border: Border(top: BorderSide(color: textColor.withValues(alpha: 0.12), width: 1)),
+                borderRadius: const BorderRadius.only(bottomLeft: Radius.circular(_kBubbleRadius), bottomRight: Radius.circular(_kBubbleRadius)),
+              ),
+              child: Text(
+                caption,
+                style: theme.textTheme.bodyMedium?.copyWith(color: textColor, height: 1.35),
+                maxLines: 5,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          if (hasCaption)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(10, 0, 10, 6),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [timeWidget],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
 }
 
 /// Альбом в стиле Telegram: 1 — во всю ширину; 2 — два в ряд; 3 — большое слева + два справа; 4 — 2×2; 5+ — строки по 2/3; >10 — оверлей "+N".

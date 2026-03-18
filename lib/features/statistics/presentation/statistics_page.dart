@@ -1,7 +1,9 @@
 import "package:flutter/material.dart";
 import "package:flutter_staggered_animations/flutter_staggered_animations.dart";
 
+import "../../../app/theme.dart";
 import "../../../core/widgets/custom_refresh.dart";
+import "../../../core/widgets/empty_state_view.dart";
 import "../../schedule/domain/models.dart";
 import "../../schedule/presentation/schedule_controller.dart";
 
@@ -43,29 +45,9 @@ class _StatisticsPageState extends State<StatisticsPage> {
           final hint = isTeacher
               ? "Выберите преподавателя в настройках"
               : "Выберите группу в настройках";
-          return Center(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: 80,
-                  height: 80,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: theme.colorScheme.primary.withAlpha(18),
-                    border: Border.all(
-                      color: theme.colorScheme.primary.withAlpha(35),
-                      width: 1,
-                    ),
-                  ),
-                  child: Icon(Icons.bar_chart_outlined,
-                      size: 40,
-                      color: theme.colorScheme.primary.withAlpha(160)),
-                ),
-                const SizedBox(height: 20),
-                Text(hint, style: theme.textTheme.bodyLarge),
-              ],
-            ),
+          return EmptyStateView(
+            icon: Icons.bar_chart_outlined,
+            message: hint,
           );
         }
 
@@ -81,32 +63,10 @@ class _StatisticsPageState extends State<StatisticsPage> {
               physics: const AlwaysScrollableScrollPhysics(),
               children: [
                 const SizedBox(height: 120),
-                Center(
-                  child: Column(
-                    children: [
-                      Container(
-                        width: 80,
-                        height: 80,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: theme.colorScheme.primary.withAlpha(18),
-                          border: Border.all(
-                            color: theme.colorScheme.primary.withAlpha(35),
-                            width: 1,
-                          ),
-                        ),
-                        child: Icon(Icons.bar_chart_outlined,
-                            size: 40,
-                            color: theme.colorScheme.primary.withAlpha(160)),
-                      ),
-                      const SizedBox(height: 20),
-                      Text("Нет данных для статистики",
-                          style: theme.textTheme.bodyLarge),
-                      const SizedBox(height: 10),
-                      Text("Потяните вниз для обновления",
-                          style: theme.textTheme.bodySmall),
-                    ],
-                  ),
+                EmptyStateView(
+                  icon: Icons.bar_chart_outlined,
+                  message: "Нет данных по дисциплинам",
+                  subtitle: "Потяните вниз для обновления",
                 ),
               ],
             ),
@@ -155,7 +115,12 @@ class _StatisticsPageState extends State<StatisticsPage> {
         final listView = ListView.builder(
           physics: const AlwaysScrollableScrollPhysics(
               parent: BouncingScrollPhysics()),
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 100),
+          padding: EdgeInsets.fromLTRB(
+            16,
+            contentTopUnderAppBar(context),
+            16,
+            116,
+          ),
           itemCount: totalItems,
           itemBuilder: itemBuilder,
         );
@@ -163,6 +128,7 @@ class _StatisticsPageState extends State<StatisticsPage> {
         return CustomRefreshWrapper(
           onRefresh: widget.controller.refreshStatistics,
           color: theme.colorScheme.primary,
+          indicatorTopPadding: contentTopUnderAppBar(context),
           child: useAnim ? AnimationLimiter(child: listView) : listView,
         );
       },
@@ -319,9 +285,9 @@ class _DisciplineCard extends StatelessWidget {
                       end: Alignment.centerRight,
                       stops: const [0.0, 0.5, 1.0],
                       colors: [
-                        theme.colorScheme.primary.withAlpha(38),
-                        theme.colorScheme.primary.withAlpha(18),
-                        theme.colorScheme.primary.withAlpha(8),
+                        theme.colorScheme.primary.withAlpha(26),
+                        theme.colorScheme.primary.withAlpha(12),
+                        theme.colorScheme.primary.withAlpha(5),
                       ],
                     ),
                   ),

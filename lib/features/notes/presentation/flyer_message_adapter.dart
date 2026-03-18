@@ -16,7 +16,11 @@ List<Message> appMessagesToFlyer(List<app.Message> appMessages) {
     /// First part of replied message is always _t in our convention.
     final replyToMessageId = m.replyToId != null ? '${m.replyToId}_t' : null;
 
-    if (m.content != null && m.content!.trim().isNotEmpty) {
+    final images = m.mediaFiles.where((e) => e.type == 'image').toList();
+    final isAlbum = images.length > 1;
+
+    // Текст добавляем отдельным пузырём только если это не альбом (подпись альбома показывается внутри _AlbumBubble).
+    if (m.content != null && m.content!.trim().isNotEmpty && !isAlbum) {
       list.add(TextMessage(
         id: '${m.id}_t',
         authorId: authorId,
@@ -28,8 +32,7 @@ List<Message> appMessagesToFlyer(List<app.Message> appMessages) {
       ));
     }
 
-    final images = m.mediaFiles.where((e) => e.type == 'image').toList();
-    if (images.length > 1) {
+    if (isAlbum) {
       // Альбом: до 10 фото в одном bubble; если больше 10 — следующие в следующее сообщение (chunk по 10)
       const maxPerAlbum = 10;
       for (var start = 0; start < images.length; start += maxPerAlbum) {

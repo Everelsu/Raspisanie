@@ -94,14 +94,36 @@ class AppThemes {
       navBar: Color(0xFF2B1A0C),
       brightness: Brightness.dark,
     ),
+    "red": AppThemeColors(
+      primary: Color(0xFFFF453A),
+      surface: Color(0xFF1A0A0A),
+      card: Color(0xFF2E1414),
+      onSurface: Color(0xFFFFE5E3),
+      onSurfaceSecondary: Color(0xFFE07A72),
+      navBar: Color(0xFF251010),
+      brightness: Brightness.dark,
+    ),
+    "teal": AppThemeColors(
+      primary: Color(0xFFE8E37A),
+      surface: Color(0xFF1A1807),
+      card: Color(0xFF2A260B),
+      onSurface: Color(0xFFF8F3D0),
+      onSurfaceSecondary: Color(0xFFC6C09A),
+      navBar: Color(0xFF211E09),
+      brightness: Brightness.dark,
+    ),
   };
 
   static ThemeData forKey(
     String key, {
     TextTheme Function(TextTheme base)? textThemeBuilder,
+    Color? accentColorOverride,
   }) {
     final c = _colors[key] ?? _colors["dark"]!;
+    final primary = accentColorOverride ?? c.primary;
     final isLight = c.brightness == Brightness.light;
+    // Текст на акценте: белый на тёмном, чёрный на светлом (по яркости акцента)
+    final onPrimary = primary.computeLuminance() > 0.5 ? Colors.black87 : Colors.white;
     final baseTextTheme = _buildTextTheme(c);
     final textTheme = textThemeBuilder == null
         ? baseTextTheme
@@ -109,10 +131,10 @@ class AppThemes {
 
     final scheme = ColorScheme(
       brightness: c.brightness,
-      primary: c.primary,
-      onPrimary: isLight ? Colors.white : Colors.black,
-      secondary: c.primary,
-      onSecondary: isLight ? Colors.white : Colors.black,
+      primary: primary,
+      onPrimary: onPrimary,
+      secondary: primary,
+      onSecondary: onPrimary,
       error: const Color(0xFFFF453A),
       onError: Colors.white,
       surface: c.surface,
@@ -153,19 +175,19 @@ class AppThemes {
         ),
       ),
       progressIndicatorTheme: ProgressIndicatorThemeData(
-        color: c.primary,
-        linearTrackColor: c.primary.withAlpha(40),
-        circularTrackColor: c.primary.withAlpha(40),
+        color: primary,
+        linearTrackColor: primary.withAlpha(40),
+        circularTrackColor: primary.withAlpha(40),
       ),
       navigationBarTheme: NavigationBarThemeData(
         backgroundColor: c.navBar,
         elevation: 0,
-        indicatorColor: c.primary.withAlpha(30),
+        indicatorColor: primary.withAlpha(30),
         surfaceTintColor: Colors.transparent,
         labelTextStyle: WidgetStateProperty.resolveWith((states) {
           if (states.contains(WidgetState.selected)) {
             return TextStyle(
-              color: c.primary,
+              color: primary,
               fontSize: 11,
               fontWeight: FontWeight.w600,
               letterSpacing: 0.15,
@@ -179,19 +201,19 @@ class AppThemes {
         }),
         iconTheme: WidgetStateProperty.resolveWith((states) {
           if (states.contains(WidgetState.selected)) {
-            return IconThemeData(color: c.primary, size: 24);
+            return IconThemeData(color: primary, size: 24);
           }
           return IconThemeData(color: c.onSurfaceSecondary, size: 24);
         }),
       ),
       switchTheme: SwitchThemeData(
         thumbColor: WidgetStateProperty.resolveWith((states) {
-          if (states.contains(WidgetState.selected)) return c.primary;
+          if (states.contains(WidgetState.selected)) return primary;
           return c.onSurfaceSecondary;
         }),
         trackColor: WidgetStateProperty.resolveWith((states) {
           if (states.contains(WidgetState.selected)) {
-            return c.primary.withAlpha(80);
+            return primary.withAlpha(80);
           }
           return c.card;
         }),
@@ -201,15 +223,15 @@ class AppThemes {
         }),
       ),
       sliderTheme: SliderThemeData(
-        activeTrackColor: c.primary,
-        inactiveTrackColor: c.primary.withAlpha(40),
-        thumbColor: c.primary,
-        overlayColor: c.primary.withAlpha(26),
+        activeTrackColor: primary,
+        inactiveTrackColor: primary.withAlpha(40),
+        thumbColor: primary,
+        overlayColor: primary.withAlpha(26),
         trackHeight: 4,
       ),
       chipTheme: ChipThemeData(
         backgroundColor: c.card,
-        selectedColor: c.primary.withAlpha(40),
+        selectedColor: primary.withAlpha(40),
         labelStyle: TextStyle(color: c.onSurface, fontSize: 13),
         side: BorderSide(color: c.onSurfaceSecondary.withAlpha(40)),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
@@ -230,7 +252,7 @@ class AppThemes {
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: c.primary, width: 2),
+          borderSide: BorderSide(color: primary, width: 2),
         ),
       ),
       dividerTheme: DividerThemeData(
@@ -245,8 +267,8 @@ class AppThemes {
         showDragHandle: false,
       ),
       floatingActionButtonTheme: FloatingActionButtonThemeData(
-        backgroundColor: c.primary,
-        foregroundColor: isLight ? Colors.white : Colors.black,
+        backgroundColor: primary,
+        foregroundColor: onPrimary,
         elevation: 4,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       ),
@@ -365,5 +387,46 @@ class AppThemes {
     "gray": "Серая",
     "purple": "Фиолетовая",
     "orange": "Оранжевая",
+    "red": "Красная",
+    "teal": "Жёлтая",
   };
+
+  /// Палитра цветов для выбора акцента (во всплывающем меню настроек).
+  static const accentPalette = <Color>[
+    Color(0xFF7CB8F7), // dark default
+    Color(0xFF7EB5D8), // light default
+    Color(0xFF34C759), // green
+    Color(0xFFFF6B9D), // pink
+    Color(0xFF5AC8FA), // blue
+    Color(0xFFA0A0A8), // gray
+    Color(0xFFB388FF), // purple
+    Color(0xFFFF9F1C), // orange
+    Color(0xFFFF453A), // red
+    Color(0xFFE8E37A), // soft yellow
+    Color.fromARGB(255, 255, 255, 255), // cyan
+    Color.fromARGB(255, 0, 0, 0), // violet
+    Color.fromARGB(255, 0, 82, 20), // mint
+  ];
+}
+
+/// Отступ сверху для списков под [AnimatedAppBar] ([extendBodyBehindAppBar]).
+///
+/// На части Android у `body` [viewPadding.top] бывает 0, а реальный inset — в
+/// [padding.top] (уже «под шапку»). Тогда `viewPadding + toolbar` даёт мало — контент
+/// уезжает вверх. Если же складывать `padding.top + toolbar` всегда — огромная щель.
+double contentTopUnderAppBar(BuildContext context) {
+  final v = MediaQuery.viewPaddingOf(context).top;
+  final p = MediaQuery.paddingOf(context).top;
+  final barBottom = v + kToolbarHeight;
+  const tuck = 12.0;
+  /// Зазор под шапкой; +5 ≈ опустить контент на ~5 px.
+  const gapBelowBar = 26.0;
+
+  if (p >= barBottom - 16) {
+    return p - tuck + gapBelowBar;
+  }
+  if (v < 20 && p > 52) {
+    return p - tuck + gapBelowBar;
+  }
+  return v + kToolbarHeight - tuck + gapBelowBar;
 }

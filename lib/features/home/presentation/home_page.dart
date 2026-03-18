@@ -1,13 +1,18 @@
 import "dart:io";
 
+import "package:animations/animations.dart";
 import "package:flutter/material.dart";
 import "package:flutter/services.dart";
 import "package:package_info_plus/package_info_plus.dart";
 
 import "../../../core/notifications/notification_service.dart";
+import "../../../core/services/analytics_service.dart";
 import "../../../core/services/font_service.dart";
 import "../../../core/update/app_update_service.dart";
+import "../../../core/update/github_update_service.dart";
 import "../../../core/update/update_dialog.dart";
+import "../../../core/update/version_utils.dart";
+import "../../../core/widgets/animated_app_bar.dart";
 import "../../../core/widgets/bottom_bar_sheet.dart";
 import "../../notes/presentation/notes_page.dart";
 import "../../schedule/presentation/history_calendar_sheet.dart";
@@ -31,21 +36,26 @@ class HomePage extends StatefulWidget {
   State<HomePage> createState() => _HomePageState();
 }
 
-class _HomePageState extends State<HomePage> {
+class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   int _currentIndex = 0;
-  int? _previousIndex;
   bool _sheetOpen = false;
+  bool _appUpdateDialogOpen = false;
 
   static const _titles = ["Расписание", "Итоги", "Заметки", "Настройки"];
+  static const _screenIds = ["schedule", "stats", "notes", "settings"];
 
   late final List<Widget> _pages;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     NotificationService.openScheduleOnTap.addListener(_onOpenScheduleRequested);
     _pages = [
-      SchedulePage(controller: widget.controller),
+      SchedulePage(
+        controller: widget.controller,
+        fontService: widget.fontService,
+      ),
       StatisticsPage(controller: widget.controller),
       const NotesPage(),
       SettingsPage(
@@ -54,22 +64,12 @@ class _HomePageState extends State<HomePage> {
         fontService: widget.fontService,
       ),
     ];
-    if (Platform.isAndroid) {
+    AnalyticsService.instance.logScreen(_screenIds[_currentIndex]);
+    if (Platform.isAndroid && widget.controller.prefs.autoCheckAppUpdate) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        Future.delayed(const Duration(seconds: 2), () async {
-          if (!mounted) return;
-          final release = await checkForUpdate();
-          if (!mounted || release == null) return;
-          final info = await PackageInfo.fromPlatform();
-          final theme = Theme.of(context);
-          showDialog(
-            context: context,
-            builder: (ctx) => UpdateDialog(
-              release: release,
-              currentVersion: info.version,
-              theme: theme,
-            ),
-          );
+        _tryShowPendingBackgroundUpdate();
+        Future.delayed(const Duration(seconds: 2), () {
+          _checkForegroundAppUpdate();
         });
       });
     }
@@ -77,8 +77,74 @@ class _HomePageState extends State<HomePage> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     NotificationService.openScheduleOnTap.removeListener(_onOpenScheduleRequested);
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    if (state != AppLifecycleState.resumed) return;
+    if (!Platform.isAndroid || !widget.controller.prefs.autoCheckAppUpdate) {
+      return;
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _tryShowPendingBackgroundUpdate();
+      final now = DateTime.now().millisecondsSinceEpoch;
+      final last = widget.controller.prefs.lastResumeAppUpdateCheckMs ?? 0;
+      if (now - last < const Duration(hours: 6).inMilliseconds) return;
+      widget.controller.prefs.lastResumeAppUpdateCheckMs = now;
+      _checkForegroundAppUpdate();
+    });
+  }
+
+  Future<void> _tryShowPendingBackgroundUpdate() async {
+    final p = widget.controller.prefs;
+    final ver = p.pendingAppUpdateVersion;
+    final apk = p.pendingAppUpdateApkUrl;
+    if (ver == null || apk == null || ver.isEmpty || apk.isEmpty) return;
+    if (!mounted || _appUpdateDialogOpen) return;
+    final info = await PackageInfo.fromPlatform();
+    if (!mounted) return;
+    if (compareVersions(info.version, ver) >= 0) {
+      p.clearPendingAppUpdate();
+      return;
+    }
+    final notes = p.pendingAppUpdateNotes;
+    p.clearPendingAppUpdate();
+    await _showUpdateDialog(GitHubReleaseInfo(
+      version: ver,
+      apkUrl: apk,
+      releaseNotes: notes,
+    ));
+  }
+
+  Future<void> _checkForegroundAppUpdate() async {
+    if (!mounted || _appUpdateDialogOpen) return;
+    final release = await checkForUpdate();
+    if (!mounted || release == null) return;
+    await _showUpdateDialog(release);
+  }
+
+  Future<void> _showUpdateDialog(GitHubReleaseInfo release) async {
+    if (!mounted || _appUpdateDialogOpen) return;
+    _appUpdateDialogOpen = true;
+    try {
+      final theme = Theme.of(context);
+      final info = await PackageInfo.fromPlatform();
+      if (!mounted) return;
+      await showDialog<void>(
+        context: context,
+        builder: (ctx) => UpdateDialog(
+          release: release,
+          currentVersion: info.version,
+          theme: theme,
+        ),
+      );
+    } finally {
+      _appUpdateDialogOpen = false;
+    }
   }
 
   void _onOpenScheduleRequested() {
@@ -95,82 +161,26 @@ class _HomePageState extends State<HomePage> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
     return Scaffold(
+      extendBody: true,
+      extendBodyBehindAppBar: true,
       appBar: _currentIndex == 2
           ? null
-          : AppBar(
-              title: ListenableBuilder(
-                listenable: widget.controller,
-                builder: (context, _) {
-                  final groupName = widget.controller.selectedGroup?.name;
-                  final title = _titles[_currentIndex];
-
-                  if (groupName != null && _currentIndex != 3) {
-                    return Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(title, overflow: TextOverflow.ellipsis, maxLines: 1),
-                        Text(
-                          groupName,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            fontSize: 13,
-                            color: theme.colorScheme.onSurface.withAlpha(200),
-                          ),
-                        ),
-                      ],
-                    );
-                  }
-                  return Text(title);
-                },
-              ),
-              actions: [
-                if (_currentIndex == 3)
-                  IconButton(
-                    onPressed: () => _showNotificationSheet(context),
-                    icon: Icon(
-                      Icons.notifications_outlined,
-                      color: theme.colorScheme.onSurface,
-                    ),
-                    tooltip: "Уведомления",
-                  ),
-              ],
+          : _HomeAnimatedAppBar(
+              controller: widget.controller,
+              title: _titles[_currentIndex],
+              tabIndex: _currentIndex,
+              showNotificationsAction: _currentIndex == 3,
+              onNotificationsTap: () => _showNotificationSheet(context),
             ),
-      body: AnimatedSwitcher(
-        duration: const Duration(milliseconds: 300),
-        switchInCurve: Curves.easeOutCubic,
-        switchOutCurve: Curves.easeInCubic,
-        layoutBuilder: (currentChild, previousChildren) {
-          return Stack(
-            alignment: Alignment.topCenter,
-            children: [
-              ...previousChildren,
-              if (currentChild != null) currentChild,
-            ],
-          );
-        },
-        transitionBuilder: (child, animation) {
-          final prev = _previousIndex ?? _currentIndex;
-          final fromRight = _currentIndex > prev;
-          return FadeTransition(
-            opacity: CurvedAnimation(
-              parent: animation,
-              curve: const Interval(0.0, 1.0, curve: Curves.easeOut),
-            ),
-            child: SlideTransition(
-              position: Tween<Offset>(
-                begin: Offset(fromRight ? 0.05 : -0.05, 0),
-                end: Offset.zero,
-              ).animate(CurvedAnimation(
-                parent: animation,
-                curve: Curves.easeOutCubic,
-              )),
-              child: RepaintBoundary(child: child),
-            ),
+      body: PageTransitionSwitcher(
+        duration: const Duration(milliseconds: 380),
+        transitionBuilder: (child, animation, secondaryAnimation) {
+          return SharedAxisTransition(
+            animation: animation,
+            secondaryAnimation: secondaryAnimation,
+            transitionType: SharedAxisTransitionType.horizontal,
+            child: child,
           );
         },
         child: KeyedSubtree(
@@ -185,9 +195,9 @@ class _HomePageState extends State<HomePage> {
           HapticFeedback.selectionClick();
           setState(() {
             _sheetOpen = false;
-            _previousIndex = _currentIndex;
             _currentIndex = index;
           });
+          AnalyticsService.instance.logScreen(_screenIds[index]);
           if (index == 1) {
             widget.controller.loadStatistics();
           }
@@ -377,6 +387,48 @@ class _HomePageState extends State<HomePage> {
           Switch(value: value, onChanged: onChanged),
         ],
       ),
+    );
+  }
+}
+
+class _HomeAnimatedAppBar extends StatelessWidget implements PreferredSizeWidget {
+  const _HomeAnimatedAppBar({
+    required this.controller,
+    required this.title,
+    required this.tabIndex,
+    required this.showNotificationsAction,
+    required this.onNotificationsTap,
+  });
+
+  final ScheduleController controller;
+  final String title;
+  final int tabIndex;
+  final bool showNotificationsAction;
+  final VoidCallback onNotificationsTap;
+
+  @override
+  Size get preferredSize => const Size.fromHeight(kToolbarHeight);
+
+  @override
+  Widget build(BuildContext context) {
+    return ListenableBuilder(
+      listenable: controller,
+      builder: (context, _) {
+        final groupName = controller.selectedGroup?.name;
+        return AnimatedAppBar(
+          title: title,
+          subtitle: (groupName != null && tabIndex != 3) ? groupName : null,
+          tabIndex: tabIndex,
+          actions: [
+            if (showNotificationsAction)
+              GlassActionButton(
+                icon: Icons.notifications_outlined,
+                tooltip: "Уведомления",
+                onTap: onNotificationsTap,
+              ),
+          ],
+        );
+      },
     );
   }
 }

@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'dart:ui' as ui;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 
@@ -54,8 +55,6 @@ class AppIconPainter extends CustomPainter {
     final dotR = size.width * 0.022;
     final padX = calW * 0.18;
     final padY = bodyH * 0.18;
-    final cellW = (calW - 2 * padX) / 3;
-    final cellH = (bodyH - 2 * padY) / 2;
     for (int row = 0; row < 3; row++) {
       for (int col = 0; col < 4; col++) {
         final cx = left + padX + (col + 0.5) * (calW - 2 * padX) / 4;
@@ -138,7 +137,9 @@ class _IconExporterAppState extends State<_IconExporterApp> {
     final file = File(path);
     await file.parent.create(recursive: true);
     await file.writeAsBytes(pngBytes);
-    debugPrint('Saved $path (${pngBytes.length} bytes, 1024x1024)');
+    if (kDebugMode) {
+      debugPrint('Saved $path (${pngBytes.length} bytes, 1024x1024)');
+    }
     if (mounted) {
       setState(() => _saved = true);
     }

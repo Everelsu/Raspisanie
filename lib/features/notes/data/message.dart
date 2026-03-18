@@ -88,7 +88,7 @@ class Message extends Equatable {
   final List<MediaFile> mediaFiles;
 
   @override
-  List<Object?> get props => [id, chatId, createdAt];
+  List<Object?> get props => [id, chatId, createdAt, content, isEdited, editedAt?.millisecondsSinceEpoch];
 
   bool get isOutgoing => true;
 

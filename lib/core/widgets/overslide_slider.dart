@@ -152,8 +152,8 @@ class _OverslideSliderState extends State<OverslideSlider>
 
             return Transform(
               transform: Matrix4.identity()
-                ..translate(translateX, 0)
-                ..scale(scaleX, scaleY, 1),
+                ..translateByDouble(translateX, 0, 0, 1)
+                ..scaleByDouble(scaleX, scaleY, 1, 1),
               alignment: transformOrigin,
               child: GestureDetector(
                 key: _sliderKey,

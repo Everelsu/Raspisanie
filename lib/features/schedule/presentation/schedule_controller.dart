@@ -1,31 +1,36 @@
 import "dart:async";
-import "dart:convert";
 
 import "package:flutter/foundation.dart";
 import "package:shared_preferences/shared_preferences.dart";
 
 import "../../../core/notifications/notification_service.dart" show Lesson, NotificationService;
+import "../../../core/update/github_urls.dart";
 import "../../../core/widgets/home_widget_service.dart";
 import "../data/express_schedule_repository.dart";
 import "../data/groups_cache.dart";
 import "../data/lesson_times.dart";
 import "../data/preferences_manager.dart";
-import "../data/remote_lesson_times_service.dart";
+import "../data/schedule_times_remote.dart";
 import "../data/schedule_cache.dart";
+import "../data/statistics_cache.dart";
+import "../data/sub_schedule_cache.dart";
 import "../domain/models.dart";
+import "../domain/schedule_hash.dart";
 
 class ScheduleController extends ChangeNotifier {
-  static const Duration _remoteLessonTimesInterval = Duration(hours: 12);
-
   ScheduleController({required SharedPreferences prefs})
       : _prefsManager = PreferencesManager(prefs) {
     final sCache = ScheduleCache(prefs);
     final gCache = GroupsCache(prefs);
+    final stCache = StatisticsCache(prefs);
+    final subCache = SubScheduleCache(prefs);
     _repository = ExpressScheduleRepository(
       scheduleCache: sCache,
       groupsCache: gCache,
+      statisticsCache: stCache,
+      subScheduleCache: subCache,
     );
-    _remoteLessonTimes = RemoteLessonTimesService();
+    _scheduleTimesRemote = ScheduleTimesRemoteService();
     _applyCustomBaseUrls();
     _applyCustomLessonTimes();
   }
@@ -37,7 +42,7 @@ class ScheduleController extends ChangeNotifier {
 
   final PreferencesManager _prefsManager;
   late final ExpressScheduleRepository _repository;
-  late final RemoteLessonTimesService _remoteLessonTimes;
+  late final ScheduleTimesRemoteService _scheduleTimesRemote;
 
   PreferencesManager get prefs => _prefsManager;
   ExpressScheduleRepository get repository => _repository;
@@ -64,6 +69,14 @@ class ScheduleController extends ChangeNotifier {
         fileName: _prefsManager.selectedGroupFile,
         pageUrl: "",
       );
+      try {
+        final firstDay =
+            _repository.scheduleCache?.loadFirstDay(selectedGroup!.fileName, college);
+        if (firstDay != null) {
+          schedule = [firstDay];
+          notifyListeners();
+        }
+      } catch (_) {}
       // Load cached schedule immediately for faster first paint,
       // then refresh group/teacher list in background.
       await loadSchedule(useCache: true);
@@ -192,7 +205,7 @@ class ScheduleController extends ChangeNotifier {
   }
 
   void _checkScheduleHashAndNotify() {
-    final newHash = _computeScheduleHash(schedule);
+    final newHash = computeScheduleHash(schedule);
     final old = _prefsManager.lastScheduleHash;
     if (old.isNotEmpty && old != newHash && _prefsManager.notifyScheduleChanges) {
       try {
@@ -202,15 +215,6 @@ class ScheduleController extends ChangeNotifier {
       } catch (_) {}
     }
     _prefsManager.lastScheduleHash = newHash;
-  }
-
-  static String _computeScheduleHash(List<DaySchedule> schedule) {
-    try {
-      final json = jsonEncode(schedule.map((d) => d.toJson()).toList());
-      return "${json.length}:${json.hashCode}";
-    } catch (_) {
-      return "";
-    }
   }
 
   /// Перепланировать напоминания на сегодня. Возвращает сообщение для пользователя.
@@ -297,8 +301,9 @@ class ScheduleController extends ChangeNotifier {
 
   void _startRemoteLessonTimesAutoSync() {
     _remoteLessonTimesTimer?.cancel();
+    final h = _prefsManager.lessonTimesMinIntervalHours.clamp(1, 168);
     _remoteLessonTimesTimer = Timer.periodic(
-      _remoteLessonTimesInterval,
+      Duration(hours: h),
       (_) => _syncRemoteLessonTimesIfNeeded(silent: true),
     );
   }
@@ -370,11 +375,13 @@ class ScheduleController extends ChangeNotifier {
   }
 
   void _updateHomeWidget() {
+    final widgetTheme = _prefsManager.effectiveWidgetTheme;
     HomeWidgetService.updateWidget(
       schedule: schedule,
       groupName: selectedGroup?.name ?? _prefsManager.selectedGroupName,
-      themeKey: _prefsManager.effectiveWidgetTheme,
+      themeKey: widgetTheme,
       fontScale: _prefsManager.widgetFontScale,
+      accentColorValue: _prefsManager.accentColorForTheme(widgetTheme),
     );
   }
 
@@ -383,9 +390,11 @@ class ScheduleController extends ChangeNotifier {
   }
 
   void refreshHomeWidgetTheme() {
+    final widgetTheme = _prefsManager.effectiveWidgetTheme;
     HomeWidgetService.updateWidgetTheme(
-      themeKey: _prefsManager.effectiveWidgetTheme,
+      themeKey: widgetTheme,
       fontScale: _prefsManager.widgetFontScale,
+      accentColorValue: _prefsManager.accentColorForTheme(widgetTheme),
     );
   }
 
@@ -450,17 +459,56 @@ class ScheduleController extends ChangeNotifier {
     }
     final nowMs = DateTime.now().millisecondsSinceEpoch;
     final lastCheckedAt = _prefsManager.lessonTimesRemoteCheckedAt;
+    final intervalMs =
+        Duration(hours: _prefsManager.lessonTimesMinIntervalHours).inMilliseconds;
     if (!force &&
         lastCheckedAt != null &&
-        nowMs - lastCheckedAt < _remoteLessonTimesInterval.inMilliseconds) {
+        nowMs - lastCheckedAt < intervalMs) {
       return true;
     }
-    _prefsManager.lessonTimesRemoteCheckedAt = nowMs;
+    final useEtag = _prefsManager.lessonTimesUseEtag;
+    final etag = _prefsManager.lessonTimesRemoteEtag;
     try {
-      final data = await _remoteLessonTimes.fetch(url);
+      ScheduleTimesFetchOutcome outcome;
+      try {
+        outcome = await _scheduleTimesRemote.fetch(
+          url,
+          ifNoneMatch: useEtag && etag.isNotEmpty ? etag : null,
+          sendConditional: useEtag && etag.isNotEmpty,
+        );
+      } catch (_) {
+        if (url.contains("schedule_times.json")) {
+          outcome = await _scheduleTimesRemote.fetch(
+            GitHubProjectUrls.lessonTimesLegacyRaw,
+            ifNoneMatch: null,
+            sendConditional: false,
+          );
+        } else {
+          rethrow;
+        }
+      }
+
+      _prefsManager.lessonTimesRemoteCheckedAt = nowMs;
+
+      if (outcome is ScheduleTimesFetchNotModified) {
+        _startRemoteLessonTimesAutoSync();
+        return true;
+      }
+      if (outcome is! ScheduleTimesFetchSuccess) {
+        return false;
+      }
+      final success = outcome;
+      _prefsManager.lessonTimesMinIntervalHours =
+          success.hints.minIntervalHours.clamp(1, 168);
+      _prefsManager.lessonTimesUseEtag = success.hints.useEtagIfPossible;
+      if (success.etag != null && success.etag!.trim().isNotEmpty) {
+        _prefsManager.lessonTimesRemoteEtag = success.etag!.trim();
+      }
+      final data = success.data;
       final previousFingerprint = _prefsManager.lessonTimesRemoteFingerprint;
       final isChanged = data.fingerprint != previousFingerprint;
       if (!isChanged && !force) {
+        _startRemoteLessonTimesAutoSync();
         return true;
       }
       for (final entry in data.byCollege.entries) {
@@ -482,6 +530,7 @@ class ScheduleController extends ChangeNotifier {
       _prefsManager.lessonTimesRemoteFingerprint = data.fingerprint;
       _prefsManager.lessonTimesRemoteSyncedAt =
           DateTime.now().millisecondsSinceEpoch;
+      _startRemoteLessonTimesAutoSync();
       if (selectedGroup != null) {
         await loadSchedule(useCache: true);
       } else {

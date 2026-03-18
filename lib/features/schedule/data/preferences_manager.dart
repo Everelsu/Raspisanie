@@ -2,6 +2,7 @@ import "dart:convert";
 
 import "package:shared_preferences/shared_preferences.dart";
 
+import "../../../core/update/github_urls.dart";
 import "lesson_times.dart";
 
 class CollegeSource {
@@ -49,17 +50,19 @@ class PreferencesManager {
   static const themeGray = "gray";
   static const themePurple = "purple";
   static const themeOrange = "orange";
+  static const themeRed = "red";
+  static const themeTeal = "teal";
 
   static const builtInCollegeSources = <String, CollegeSource>{
     collegeDefault: CollegeSource(
       id: collegeDefault,
-      name: "ЧТОТиБ",
+      name: "Челябинский техникум отраслевых технологий и бизнеса",
       baseUrl: "https://www.chtotib.ru/schedule_gl/",
       builtIn: true,
     ),
     collegeZabgc: CollegeSource(
       id: collegeZabgc,
-      name: "ЗабГК",
+      name: "Златоустовский базовый геологоразведочный колледж",
       baseUrl: "https://bbb.zabgc.ru/",
       builtIn: true,
     ),
@@ -69,8 +72,8 @@ class PreferencesManager {
   static const fontSizeNormal = "normal";
   static const fontSizeLarge = "large";
   static const fontSizeExtraLarge = "extra_large";
-  static const defaultLessonTimesRemoteUrl =
-      "https://raw.githubusercontent.com/Everelsu/Raspisanie/master/lesson_times.json";
+  static String get defaultLessonTimesRemoteUrl =>
+      GitHubProjectUrls.scheduleTimesRaw;
 
   // --- College ---
   String get college => _prefs.getString("college") ?? collegeDefault;
@@ -91,6 +94,17 @@ class PreferencesManager {
   // --- Theme ---
   String get theme => _prefs.getString("theme") ?? themeDark;
   set theme(String v) => _prefs.setString("theme", v);
+
+  /// Акцентный цвет для темы. У каждой темы свой; null — цвет по умолчанию из темы.
+  int? accentColorForTheme(String themeKey) =>
+      _prefs.containsKey("accent_$themeKey") ? _prefs.getInt("accent_$themeKey") : null;
+  void setAccentColorForTheme(String themeKey, int? value) {
+    if (value == null) {
+      _prefs.remove("accent_$themeKey");
+    } else {
+      _prefs.setInt("accent_$themeKey", value);
+    }
+  }
 
   // --- Widget ---
   bool get widgetUseAppTheme => _prefs.getBool("widget_use_app_theme") ?? true;
@@ -165,6 +179,10 @@ class PreferencesManager {
   set autoRefreshInterval(int v) =>
       _prefs.setInt("auto_refresh_interval", v);
 
+  // --- Analytics ---
+  bool get analyticsEnabled => _prefs.getBool("analytics_enabled") ?? true;
+  set analyticsEnabled(bool v) => _prefs.setBool("analytics_enabled", v);
+
   // --- Favorites ---
   Set<String> get favoriteGroups {
     final raw = _prefs.getString("favorite_groups") ?? "";
@@ -185,6 +203,40 @@ class PreferencesManager {
   }
 
   bool isFavoriteGroup(String name) => favoriteGroups.contains(name);
+
+  // --- App update (проверка новой версии при запуске) ---
+  bool get autoCheckAppUpdate =>
+      _prefs.getBool("auto_check_app_update") ?? true;
+  set autoCheckAppUpdate(bool v) =>
+      _prefs.setBool("auto_check_app_update", v);
+
+  /// Throttle проверки обновления при возврате приложения на передний план.
+  int? get lastResumeAppUpdateCheckMs {
+    final v = _prefs.getInt("last_resume_app_update_check_ms");
+    return v == null || v <= 0 ? null : v;
+  }
+
+  set lastResumeAppUpdateCheckMs(int? value) {
+    if (value == null || value <= 0) {
+      _prefs.remove("last_resume_app_update_check_ms");
+    } else {
+      _prefs.setInt("last_resume_app_update_check_ms", value);
+    }
+  }
+
+  String? get pendingAppUpdateVersion =>
+      _prefs.getString("pending_app_update_ver");
+  String? get pendingAppUpdateApkUrl =>
+      _prefs.getString("pending_app_update_apk");
+
+  String get pendingAppUpdateNotes =>
+      _prefs.getString("pending_app_update_notes") ?? "";
+
+  void clearPendingAppUpdate() {
+    _prefs.remove("pending_app_update_ver");
+    _prefs.remove("pending_app_update_apk");
+    _prefs.remove("pending_app_update_notes");
+  }
 
   // --- Notifications (включены по умолчанию, планируются автоматически) ---
   bool get notificationsEnabled =>
@@ -252,6 +304,28 @@ class PreferencesManager {
       _prefs.getString("lesson_times_remote_fingerprint") ?? "";
   set lessonTimesRemoteFingerprint(String value) =>
       _prefs.setString("lesson_times_remote_fingerprint", value);
+
+  String get lessonTimesRemoteEtag =>
+      _prefs.getString("lesson_times_remote_etag") ?? "";
+  set lessonTimesRemoteEtag(String value) {
+    if (value.trim().isEmpty) {
+      _prefs.remove("lesson_times_remote_etag");
+    } else {
+      _prefs.setString("lesson_times_remote_etag", value.trim());
+    }
+  }
+
+  int get lessonTimesMinIntervalHours {
+    final v = _prefs.getInt("lesson_times_min_interval_h");
+    if (v == null || v < 1) return 12;
+    return v.clamp(1, 168);
+  }
+
+  set lessonTimesMinIntervalHours(int v) =>
+      _prefs.setInt("lesson_times_min_interval_h", v.clamp(1, 168));
+
+  bool get lessonTimesUseEtag => _prefs.getBool("lesson_times_use_etag") ?? true;
+  set lessonTimesUseEtag(bool v) => _prefs.setBool("lesson_times_use_etag", v);
 
   String _normalizeLessonTimesRemoteUrl(String input) {
     final trimmed = input.trim();

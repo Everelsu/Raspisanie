@@ -86,6 +86,9 @@ class NotificationService {
   /// Поставить true при нажатии на уведомление — HomePage переключится на вкладку «Расписание».
   static final ValueNotifier<bool> openScheduleOnTap = ValueNotifier(false);
 
+  /// true, когда приложение на переднем плане. Не показываем «расписание изменилось», если пользователь уже в приложении.
+  static bool appInForeground = true;
+
   static const _channel = "lesson_reminders";
   static const _channelChanges = "schedule_changes";
 
@@ -231,13 +234,18 @@ class NotificationService {
     await prefs.setBool(_kEnabled, false);
   }
 
-  /// Уведомление «Расписание обновлено».
+  /// Уведомление о смене расписания. Не показывается, если приложение на переднем плане.
   Future<void> showScheduleChanged({required String groupName}) async {
+    if (appInForeground) return;
     await _ensureInit();
+    final title = "Расписание изменилось";
+    final body = groupName.trim().isEmpty
+        ? "Данные обновлены. Откройте приложение."
+        : "Группа «$groupName» — проверьте расписание.";
     await _plugin.show(
       id: 99989,
-      title: "Расписание обновлено",
-      body: groupName.isEmpty ? "Данные обновлены" : groupName,
+      title: title,
+      body: body,
       notificationDetails: _details(_channelChanges),
     );
   }

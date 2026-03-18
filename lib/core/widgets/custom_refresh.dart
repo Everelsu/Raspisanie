@@ -18,12 +18,14 @@ class CustomRefreshWrapper extends StatefulWidget {
   final Widget child;
   final Future<void> Function() onRefresh;
   final Color? color;
+  final double indicatorTopPadding;
 
   const CustomRefreshWrapper({
     super.key,
     required this.child,
     required this.onRefresh,
     this.color,
+    this.indicatorTopPadding = 0,
   });
 
   @override
@@ -33,18 +35,25 @@ class CustomRefreshWrapper extends StatefulWidget {
 class _CustomRefreshWrapperState extends State<CustomRefreshWrapper>
     with SingleTickerProviderStateMixin {
 
-  late final AnimationController _ctrl = AnimationController(
-    vsync: this,
-    duration: const Duration(milliseconds: 1000),
-  );
+  AnimationController? _ctrl;
 
   bool _wasArmed = false;
   /// Максимальный прогресс за текущую тягу — дуга только растёт, не откатывается
   double _maxPullProgress = 0;
 
   @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1000),
+    );
+  }
+
+  @override
   void dispose() {
-    _ctrl.dispose();
+    _ctrl?.dispose();
+    _ctrl = null;
     super.dispose();
   }
 
@@ -66,11 +75,11 @@ class _CustomRefreshWrapperState extends State<CustomRefreshWrapper>
         _wasArmed = isArmed;
 
         if (isLoading) {
-          _ctrl.repeat();
+          _ctrl?.repeat();
         } else if (isIdle) {
           _maxPullProgress = 0;
-          _ctrl.stop();
-          _ctrl.reset();
+          _ctrl?.stop();
+          _ctrl?.reset();
         }
       },
       builder: (context, child, controller) {
@@ -103,7 +112,7 @@ class _CustomRefreshWrapperState extends State<CustomRefreshWrapper>
             // Индикатор — только когда тянем или грузим; съезжает сверху
             if (showIndicator)
               Positioned(
-                top: 0,
+                top: widget.indicatorTopPadding,
                 left: 0,
                 right: 0,
                 height: zone,
@@ -115,7 +124,7 @@ class _CustomRefreshWrapperState extends State<CustomRefreshWrapper>
                       progress: displayProgress,
                       loading: loading,
                       armed: armed,
-                      ctrl: _ctrl,
+                      ctrl: _ctrl!,
                     ),
                   ),
                 ),
@@ -257,7 +266,7 @@ class _RingPainter extends CustomPainter {
       center,
       r + 2,
       Paint()
-        ..color = accent.withOpacity(0.06)
+        ..color = accent.withValues(alpha: 0.06)
         ..style = PaintingStyle.fill,
     );
 
@@ -267,7 +276,7 @@ class _RingPainter extends CustomPainter {
       math.pi * 2,
       false,
       Paint()
-        ..color = accent.withOpacity(0.12)
+        ..color = accent.withValues(alpha: 0.12)
         ..style = PaintingStyle.stroke
         ..strokeWidth = 3.0
         ..strokeCap = StrokeCap.round,
@@ -288,7 +297,7 @@ class _RingPainter extends CustomPainter {
         math.pi * 2,
         false,
         Paint()
-          ..color = accent.withOpacity(0.95)
+          ..color = accent.withValues(alpha: 0.95)
           ..style = PaintingStyle.stroke
           ..strokeWidth = 3.0
           ..strokeCap = StrokeCap.round,
@@ -304,10 +313,10 @@ class _RingPainter extends CustomPainter {
       endAngle: endRad,
       stops: const [0.0, 0.25, 0.6, 1.0],
       colors: [
-        accent.withOpacity(loading ? 0.5 : 0.3 + progress * 0.2),
-        accent.withOpacity(loading ? 0.75 : 0.55 + progress * 0.25),
-        accent.withOpacity(loading ? 0.95 : 0.85 + progress * 0.12),
-        accent.withOpacity(loading ? 1.0 : 0.92 + progress * 0.08),
+        accent.withValues(alpha: loading ? 0.5 : 0.3 + progress * 0.2),
+        accent.withValues(alpha: loading ? 0.75 : 0.55 + progress * 0.25),
+        accent.withValues(alpha: loading ? 0.95 : 0.85 + progress * 0.12),
+        accent.withValues(alpha: loading ? 1.0 : 0.92 + progress * 0.08),
       ],
     ).createShader(rect.inflate(4));
 
@@ -332,7 +341,7 @@ class _RingPainter extends CustomPainter {
       headCenter,
       3.5,
       Paint()
-        ..color = accent.withOpacity(loading ? 1.0 : 0.9 + progress * 0.1)
+        ..color = accent.withValues(alpha: loading ? 1.0 : 0.9 + progress * 0.1)
         ..style = PaintingStyle.fill,
     );
     if (rotationRad != 0) canvas.restore();

@@ -21,6 +21,7 @@ class HomeWidgetService {
     required String groupName,
     required String themeKey,
     required double fontScale,
+    int? accentColorValue,
   }) async {
     try {
       final now = DateTime.now();
@@ -82,6 +83,11 @@ class HomeWidgetService {
       await HomeWidget.saveWidgetData<String>("widget_footer", footer);
       await HomeWidget.saveWidgetData<String>("widget_day_items", dayItemsPayload);
       await HomeWidget.saveWidgetData<String>("widget_theme", themeKey);
+      if (accentColorValue != null) {
+        await HomeWidget.saveWidgetData<String>("widget_accent_color", accentColorValue.toString());
+      } else {
+        await HomeWidget.saveWidgetData<String>("widget_accent_color", "");
+      }
       await _saveWidgetFontScale(fontScale);
       await _bumpWidgetRefreshToken();
       await _forceRefreshWidget();
@@ -91,9 +97,15 @@ class HomeWidgetService {
   static Future<void> updateWidgetTheme({
     required String themeKey,
     required double fontScale,
+    int? accentColorValue,
   }) async {
     try {
       await HomeWidget.saveWidgetData<String>("widget_theme", themeKey);
+      if (accentColorValue != null) {
+        await HomeWidget.saveWidgetData<String>("widget_accent_color", accentColorValue.toString());
+      } else {
+        await HomeWidget.saveWidgetData<String>("widget_accent_color", "");
+      }
     } catch (_) {}
     try {
       await _saveWidgetFontScale(fontScale);

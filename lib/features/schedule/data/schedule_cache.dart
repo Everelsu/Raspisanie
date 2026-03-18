@@ -13,6 +13,9 @@ class ScheduleCache {
   String _scheduleKey(String college, String groupFile) =>
       "schedule_${college}_$groupFile";
 
+  String _firstDayKey(String college, String groupFile) =>
+      "schedule_first_${college}_$groupFile";
+
   String _timestampKey(String college, String groupFile) =>
       "timestamp_${college}_$groupFile";
 
@@ -20,8 +23,31 @@ class ScheduleCache {
     if (groupFile.isEmpty || college.isEmpty || schedules.isEmpty) return;
     final json = jsonEncode(schedules.map((e) => e.toJson()).toList());
     _prefs.setString(_scheduleKey(college, groupFile), json);
+    try {
+      final first = _pickFirstDayForFastPreview(schedules);
+      _prefs.setString(_firstDayKey(college, groupFile), jsonEncode(first.toJson()));
+    } catch (_) {}
     _prefs.setInt(
         _timestampKey(college, groupFile), DateTime.now().millisecondsSinceEpoch);
+  }
+
+  DaySchedule? loadFirstDay(String groupFile, String college) {
+    if (groupFile.isEmpty || college.isEmpty) return null;
+    final ts = _prefs.getInt(_timestampKey(college, groupFile)) ?? 0;
+    if (ts <= 0) return null;
+    final ageHours =
+        (DateTime.now().millisecondsSinceEpoch - ts) / (1000 * 60 * 60);
+    if (ageHours > _expiryHours) {
+      clear(groupFile, college);
+      return null;
+    }
+    final raw = _prefs.getString(_firstDayKey(college, groupFile));
+    if (raw == null || raw.isEmpty) return null;
+    try {
+      return DaySchedule.fromJson(jsonDecode(raw) as Map<String, dynamic>);
+    } catch (_) {
+      return null;
+    }
   }
 
   List<DaySchedule>? load(String groupFile, String college) {
@@ -53,6 +79,7 @@ class ScheduleCache {
 
   void clear(String groupFile, String college) {
     _prefs.remove(_scheduleKey(college, groupFile));
+    _prefs.remove(_firstDayKey(college, groupFile));
     _prefs.remove(_timestampKey(college, groupFile));
     _prefs.remove("history_${college}_$groupFile");
   }
@@ -124,5 +151,24 @@ class ScheduleCache {
       } catch (_) {}
     }
     return result;
+  }
+
+  static DaySchedule _pickFirstDayForFastPreview(List<DaySchedule> schedules) {
+    if (schedules.isEmpty) {
+      return const DaySchedule(
+        day: "",
+        date: "",
+        weekNumber: 0,
+        items: <ScheduleItem>[],
+      );
+    }
+    final now = DateTime.now();
+    final today =
+        "${now.day.toString().padLeft(2, "0")}.${now.month.toString().padLeft(2, "0")}.${now.year}";
+    final todayNonEmpty = schedules.where((d) => d.date == today && d.items.isNotEmpty);
+    if (todayNonEmpty.isNotEmpty) return todayNonEmpty.first;
+    final anyNonEmpty = schedules.where((d) => d.items.isNotEmpty);
+    if (anyNonEmpty.isNotEmpty) return anyNonEmpty.first;
+    return schedules.first;
   }
 }

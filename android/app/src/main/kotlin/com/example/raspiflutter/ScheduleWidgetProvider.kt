@@ -61,6 +61,8 @@ class ScheduleWidgetProvider : HomeWidgetProvider() {
             val themeKey = prefs.getString("widget_theme", "dark") ?: "dark"
             val fontScale = readFontScale(prefs)
             val refreshToken = prefs.getString("widget_refresh_token", "0") ?: "0"
+            val accentColorStr = prefs.getString("widget_accent_color", "")?.trim()
+            val accentColor = if (!accentColorStr.isNullOrEmpty()) accentColorStr.toIntOrNull() else null
             val bgRes = when (themeKey) {
                 "light" -> R.drawable.widget_background_light
                 "green" -> R.drawable.widget_background_green
@@ -69,37 +71,50 @@ class ScheduleWidgetProvider : HomeWidgetProvider() {
                 "gray" -> R.drawable.widget_background_gray
                 "purple" -> R.drawable.widget_background_purple
                 "orange" -> R.drawable.widget_background_orange
+                "red" -> R.drawable.widget_background_red
+                "teal" -> R.drawable.widget_background_teal
+                "dark" -> R.drawable.widget_background_dark
                 else -> R.drawable.widget_background_dark
             }
-            val titleColor = when (themeKey) {
+            val themeTitleColor = when (themeKey) {
                 "light" -> Color.parseColor("#0F172A")
                 "green" -> Color.parseColor("#E7FBEF")
                 "pink" -> Color.parseColor("#FCE7F3")
-                "blue" -> Color.parseColor("#E0F2FE")
+                "blue" -> Color.parseColor("#E0E7FF")
                 "gray" -> Color.parseColor("#F3F4F6")
                 "purple" -> Color.parseColor("#F3E8FF")
                 "orange" -> Color.parseColor("#FFF3E0")
+                "red" -> Color.parseColor("#FFE5E3")
+                "teal" -> Color.parseColor("#F8F3D0")
+                "dark" -> Color.parseColor("#F3F4F6")
                 else -> Color.parseColor("#F3F4F6")
             }
+            val titleColor = accentColor ?: themeTitleColor
             val subColor = when (themeKey) {
                 "light" -> Color.parseColor("#4B5563")
                 "green" -> Color.parseColor("#BBF7D0")
                 "pink" -> Color.parseColor("#F9A8D4")
-                "blue" -> Color.parseColor("#BAE6FD")
+                "blue" -> Color.parseColor("#93C5FD")
                 "gray" -> Color.parseColor("#D1D5DB")
                 "purple" -> Color.parseColor("#D8B4FE")
                 "orange" -> Color.parseColor("#FDBA74")
-                else -> Color.parseColor("#D1D5DB")
+                "red" -> Color.parseColor("#FECACA")
+                "teal" -> Color.parseColor("#C6C09A")
+                "dark" -> Color.parseColor("#9CA3AF")
+                else -> Color.parseColor("#9CA3AF")
             }
             val footerColor = when (themeKey) {
                 "light" -> Color.parseColor("#6B7280")
                 "green" -> Color.parseColor("#A7F3D0")
                 "pink" -> Color.parseColor("#FBCFE8")
-                "blue" -> Color.parseColor("#BFDBFE")
+                "blue" -> Color.parseColor("#93C5FD")
                 "gray" -> Color.parseColor("#D1D5DB")
                 "purple" -> Color.parseColor("#E9D5FF")
                 "orange" -> Color.parseColor("#FED7AA")
-                else -> Color.parseColor("#9CA3AF")
+                "red" -> Color.parseColor("#FDA4AF")
+                "teal" -> Color.parseColor("#E8E37A")
+                "dark" -> Color.parseColor("#6B7280")
+                else -> Color.parseColor("#6B7280")
             }
 
             val views = RemoteViews(context.packageName, R.layout.schedule_widget_layout)
@@ -144,8 +159,9 @@ class ScheduleWidgetProvider : HomeWidgetProvider() {
                 putExtra(EXTRA_APPWIDGET_ID, appWidgetId)
                 putExtra("widget_refresh_token", refreshToken)
                 putExtra("widget_theme", themeKey)
+                putExtra("widget_accent_color", accentColorStr ?: "")
                 data = android.net.Uri.parse(
-                    "widget://${context.packageName}/schedule/$appWidgetId?rev=$refreshToken&theme=$themeKey"
+                    "widget://${context.packageName}/schedule/$appWidgetId?rev=$refreshToken&theme=$themeKey&accent=${accentColorStr ?: ""}"
                 )
             }
             views.setRemoteAdapter(R.id.widget_list, listIntent)

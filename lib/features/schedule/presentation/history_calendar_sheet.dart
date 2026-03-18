@@ -1,9 +1,26 @@
-import "package:flutter/material.dart";
-import "package:table_calendar/table_calendar.dart";
+import 'dart:ui';
 
-import "../../../core/database/schedule_database.dart";
-import "../domain/models.dart";
-import "schedule_controller.dart";
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:table_calendar/table_calendar.dart';
+
+import '../../../core/database/schedule_database.dart';
+import '../domain/models.dart';
+import 'schedule_controller.dart';
+
+// ════════════════════════════════════════════════════════════════
+//  history_calendar_sheet.dart
+//
+//  Улучшения по сравнению с оригиналом:
+//  • Стиль вписан в bottom_bar_sheet (те же радиусы, blur, градиенты)
+//  • Навигация: calendar → week strip → day view — плавный slide
+//  • Мини-полоска недели под календарём — быстрый jump по дням
+//  • Состояние загрузки конкретного дня — inline skeleton
+//  • Пустое расписание показывается красиво, не просто «нет данных»
+//  • AnimatedSwitcher с направленным slide (вперёд/назад)
+//  • Swipe вниз в day view → назад к календарю
+//  • Счётчик записей + hint tooltip
+// ════════════════════════════════════════════════════════════════
 
 class HistoryCalendarSheet extends StatefulWidget {
   const HistoryCalendarSheet({super.key, required this.controller});
@@ -13,13 +30,18 @@ class HistoryCalendarSheet extends StatefulWidget {
   State<HistoryCalendarSheet> createState() => _HistoryCalendarSheetState();
 }
 
-class _HistoryCalendarSheetState extends State<HistoryCalendarSheet> {
+class _HistoryCalendarSheetState extends State<HistoryCalendarSheet>
+    with SingleTickerProviderStateMixin {
   DateTime _focusedDay = DateTime.now();
   DateTime? _selectedDay;
   Set<DateTime> _markedDays = {};
   DaySchedule? _selectedSchedule;
   bool _loading = true;
-  String _lastScopeKey = "";
+  bool _loadingDay = false;
+  String _lastScopeKey = '';
+
+  // true = переходим «вперёд» (calendar→day), false = «назад» (day→calendar)
+  bool _slideForward = true;
 
   @override
   void initState() {
@@ -47,26 +69,27 @@ class _HistoryCalendarSheetState extends State<HistoryCalendarSheet> {
         _selectedSchedule = null;
         _markedDays = {};
         _loading = true;
+        _loadingDay = false;
         _focusedDay = DateTime.now();
+        _slideForward = true;
       });
       _loadMarkedDays();
     });
   }
 
   String _scopeKey() =>
-      "${widget.controller.prefs.selectedGroupFile}|${widget.controller.college}";
+      '${widget.controller.prefs.selectedGroupFile}|${widget.controller.college}';
 
   Future<void> _loadMarkedDays() async {
     final groupFile = widget.controller.prefs.selectedGroupFile;
     final college = widget.controller.college;
     if (groupFile.isEmpty) {
-      setState(() => _loading = false);
+      if (mounted) setState(() => _loading = false);
       return;
     }
-
     try {
-      final days = await ScheduleDatabase.instance
-          .getMarkedDays(groupFile, college);
+      final days =
+          await ScheduleDatabase.instance.getMarkedDays(groupFile, college);
       if (mounted) {
         setState(() {
           _markedDays = days.toSet();
@@ -79,118 +102,379 @@ class _HistoryCalendarSheetState extends State<HistoryCalendarSheet> {
   }
 
   Future<void> _onDaySelected(DateTime day, DateTime focused) async {
+    // Если день не помечен — нечего показывать
+    final normalized = DateTime(day.year, day.month, day.day);
+    final hasData = _markedDays.contains(normalized);
+
+    HapticFeedback.selectionClick();
     setState(() {
       _focusedDay = focused;
       _selectedDay = day;
+      _slideForward = true;
+      if (hasData) {
+        _loadingDay = true;
+        _selectedSchedule = null;
+      }
     });
+
+    if (!hasData) return;
 
     final groupFile = widget.controller.prefs.selectedGroupFile;
     final college = widget.controller.college;
-
     final selected = await ScheduleDatabase.instance
         .getDayScheduleForDate(groupFile, college, day);
     if (!mounted) return;
-    if (selected != null) {
-      setState(() {
-        _selectedSchedule = selected;
-      });
-    }
+    setState(() {
+      _selectedSchedule = selected;
+      _loadingDay = false;
+    });
   }
 
   void _backToCalendar() {
+    HapticFeedback.lightImpact();
     setState(() {
+      _slideForward = false;
       _selectedSchedule = null;
+      _loadingDay = false;
     });
+  }
+
+  // Перейти к следующему помеченному дню
+  void _nextMarkedDay() {
+    if (_selectedDay == null || _markedDays.isEmpty) return;
+    final sorted = _markedDays.toList()..sort();
+    final next = sorted
+        .where((d) => d.isAfter(_selectedDay!))
+        .firstOrNull;
+    if (next == null) return;
+    _onDaySelected(next, next);
+  }
+
+  // Перейти к предыдущему помеченному дню
+  void _prevMarkedDay() {
+    if (_selectedDay == null || _markedDays.isEmpty) return;
+    final sorted = _markedDays.toList()..sort();
+    final prev = sorted
+        .where((d) => d.isBefore(_selectedDay!))
+        .lastOrNull;
+    if (prev == null) return;
+    setState(() => _slideForward = false);
+    _onDaySelected(prev, prev);
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final primary = theme.colorScheme.primary;
+    final isDark = theme.brightness == Brightness.dark;
 
-    if (_loading) {
-      return const Center(
-        child: Padding(
-          padding: EdgeInsets.all(32),
-          child: CircularProgressIndicator.adaptive(),
-        ),
-      );
-    }
+    return LayoutBuilder(
+      builder: (context, c) {
+        final h = c.maxHeight;
+        // Свёрнутый лист даёт ~20–40 px — тяжёлый Column даёт RenderFlex overflow
+        if (h.isFinite && h < 36) {
+          return const SizedBox.shrink();
+        }
 
-    return Column(
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(20, 4, 20, 0),
-          child: Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(6),
-                decoration: BoxDecoration(
-                  color: primary.withAlpha(20),
-                  borderRadius: BorderRadius.circular(8),
+        if (_loading) {
+          if (h.isFinite && h < 72) {
+            return Center(
+              child: SizedBox(
+                width: 22,
+                height: 22,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: primary,
                 ),
-                child: Icon(Icons.history_rounded, color: primary, size: 18),
               ),
-              const SizedBox(width: 10),
-              Text("История расписания",
-                  style: theme.textTheme.titleMedium),
-              const Spacer(),
-              FutureBuilder<int>(
-                future: ScheduleDatabase.instance.getSnapshotCount(),
-                builder: (_, snap) {
-                  if (!snap.hasData) return const SizedBox.shrink();
-                  return Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 8, vertical: 3),
-                    decoration: BoxDecoration(
-                      color: theme.colorScheme.onSurface.withAlpha(12),
-                      borderRadius: BorderRadius.circular(10),
+            );
+          }
+          return Center(
+            child: SingleChildScrollView(
+              child: Padding(
+                padding: EdgeInsets.all(h.isFinite && h < 140 ? 12 : 32),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    SizedBox(
+                      width: 28,
+                      height: 28,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2.5,
+                        color: primary,
+                      ),
                     ),
-                    child: Text("${snap.data} зап.",
-                        style: theme.textTheme.bodySmall
-                            ?.copyWith(fontSize: 10)),
+                    SizedBox(height: h.isFinite && h < 100 ? 8 : 12),
+                    Text(
+                      'Загрузка истории…',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurface.withAlpha(120),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        }
+
+        return Column(
+          children: [
+            _Header(
+              primary: primary,
+              isDark: isDark,
+              theme: theme,
+              showBack: _selectedSchedule != null || _loadingDay,
+              selectedDay: _selectedDay,
+              onBack: _backToCalendar,
+              onPrev: _selectedDay != null ? _prevMarkedDay : null,
+              onNext: _selectedDay != null ? _nextMarkedDay : null,
+              markedCount: _markedDays.length,
+            ),
+            Expanded(
+              child: AnimatedSwitcher(
+                duration: const Duration(milliseconds: 300),
+                switchInCurve: Curves.easeOutCubic,
+                switchOutCurve: Curves.easeInCubic,
+                transitionBuilder: (child, anim) {
+                  final offset = _slideForward
+                      ? const Offset(0.08, 0)
+                      : const Offset(-0.08, 0);
+                  return FadeTransition(
+                    opacity: anim,
+                    child: SlideTransition(
+                      position: Tween<Offset>(begin: offset, end: Offset.zero)
+                          .animate(anim),
+                      child: child,
+                    ),
                   );
                 },
+                child: _loadingDay
+                    ? _DayLoadingSkeleton(
+                        key: const ValueKey('skeleton'),
+                        theme: theme,
+                        primary: primary,
+                      )
+                    : _selectedSchedule != null
+                        ? _DayView(
+                            key: ValueKey('day_${_selectedDay}'),
+                            day: _selectedSchedule!,
+                            selectedDay: _selectedDay ?? DateTime.now(),
+                            onBack: _backToCalendar,
+                            primary: primary,
+                            theme: theme,
+                            isDark: isDark,
+                            onPrev: _prevMarkedDay,
+                            onNext: _nextMarkedDay,
+                            hasMarkedDays: _markedDays.length > 1,
+                          )
+                        : _CalendarView(
+                            key: const ValueKey('calendar'),
+                            markedDays: _markedDays,
+                            focusedDay: _focusedDay,
+                            selectedDay: _selectedDay,
+                            onDaySelected: _onDaySelected,
+                            onPageChanged: (d) =>
+                                setState(() => _focusedDay = d),
+                            primary: primary,
+                            theme: theme,
+                            isDark: isDark,
+                          ),
               ),
-            ],
-          ),
-        ),
-        Expanded(
-          child: AnimatedSwitcher(
-            duration: const Duration(milliseconds: 280),
-            switchInCurve: Curves.easeOutCubic,
-            switchOutCurve: Curves.easeInCubic,
-            transitionBuilder: (child, animation) {
-              final slide = Tween<Offset>(
-                begin: const Offset(0, 0.1),
-                end: Offset.zero,
-              ).animate(animation);
-              return FadeTransition(
-                opacity: animation,
-                child: SlideTransition(position: slide, child: child),
-              );
-            },
-            child: _selectedSchedule == null
-                ? _CalendarView(
-                    key: const ValueKey("calendar"),
-                    markedDays: _markedDays,
-                    focusedDay: _focusedDay,
-                    selectedDay: _selectedDay,
-                    onDaySelected: _onDaySelected,
-                    onPageChanged: (day) => setState(() => _focusedDay = day),
-                  )
-                : _DayOnlyView(
-                    key: const ValueKey("day"),
-                    day: _selectedSchedule!,
-                    onBack: _backToCalendar,
-                    selectedDay: _selectedDay ?? DateTime.now(),
-                  ),
-          ),
-        ),
-      ],
+            ),
+          ],
+        );
+      },
     );
   }
 }
+
+// ════════════════════════════════════════════════════════════════
+//  Шапка — адаптируется под режим (calendar / day)
+// ════════════════════════════════════════════════════════════════
+
+class _Header extends StatelessWidget {
+  const _Header({
+    required this.primary,
+    required this.isDark,
+    required this.theme,
+    required this.showBack,
+    required this.selectedDay,
+    required this.onBack,
+    required this.onPrev,
+    required this.onNext,
+    required this.markedCount,
+  });
+
+  final Color primary;
+  final bool isDark;
+  final ThemeData theme;
+  final bool showBack;
+  final DateTime? selectedDay;
+  final VoidCallback onBack;
+  final VoidCallback? onPrev;
+  final VoidCallback? onNext;
+  final int markedCount;
+
+  String _formatDate(DateTime d) {
+    const months = [
+      '', 'янв', 'фев', 'мар', 'апр', 'май', 'июн',
+      'июл', 'авг', 'сен', 'окт', 'ноя', 'дек',
+    ];
+    return '${d.day} ${months[d.month]}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedSize(
+      duration: const Duration(milliseconds: 220),
+      curve: Curves.easeOutCubic,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 2, 12, 0),
+        child: Row(
+          children: [
+            // Иконка / кнопка назад
+            AnimatedSwitcher(
+              duration: const Duration(milliseconds: 200),
+              child: showBack
+                  ? GestureDetector(
+                      key: const ValueKey('back'),
+                      onTap: onBack,
+                      child: Container(
+                        width: 32, height: 32,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: primary.withAlpha(isDark ? 34 : 22),
+                          border: Border.all(
+                              color: primary.withAlpha(isDark ? 50 : 34),
+                              width: 0.8),
+                        ),
+                        child: Icon(Icons.keyboard_arrow_down_rounded,
+                            color: primary, size: 20),
+                      ),
+                    )
+                  : Container(
+                      key: const ValueKey('icon'),
+                      width: 32, height: 32,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: primary.withAlpha(isDark ? 28 : 18),
+                      ),
+                      child: Icon(Icons.history_rounded,
+                          color: primary, size: 17),
+                    ),
+            ),
+            const SizedBox(width: 10),
+
+            // Заголовок
+            Expanded(
+              child: AnimatedSwitcher(
+                duration: const Duration(milliseconds: 180),
+                child: showBack && selectedDay != null
+                    ? Text(
+                        key: ValueKey('date_${selectedDay}'),
+                        _formatDate(selectedDay!),
+                        style: theme.textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w600,
+                        ),
+                      )
+                    : Text(
+                        key: const ValueKey('title'),
+                        'История',
+                        style: theme.textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+              ),
+            ),
+
+            // Навигация prev/next (только в day view)
+            if (showBack) ...[
+              _NavBtn(
+                icon: Icons.chevron_left,
+                onTap: onPrev,
+                primary: primary,
+                isDark: isDark,
+              ),
+              const SizedBox(width: 4),
+              _NavBtn(
+                icon: Icons.chevron_right,
+                onTap: onNext,
+                primary: primary,
+                isDark: isDark,
+              ),
+            ] else ...[
+              // Счётчик записей
+              if (markedCount > 0)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: primary.withAlpha(isDark ? 28 : 18),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                        color: primary.withAlpha(isDark ? 40 : 26), width: 0.7),
+                  ),
+                  child: Text(
+                    '$markedCount дн.',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w600,
+                      color: primary,
+                    ),
+                  ),
+                ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _NavBtn extends StatelessWidget {
+  const _NavBtn({
+    required this.icon,
+    required this.onTap,
+    required this.primary,
+    required this.isDark,
+  });
+  final IconData icon;
+  final VoidCallback? onTap;
+  final Color primary;
+  final bool isDark;
+
+  @override
+  Widget build(BuildContext context) {
+    final active = onTap != null;
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 30, height: 30,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: active
+              ? primary.withAlpha(isDark ? 30 : 18)
+              : primary.withAlpha(isDark ? 10 : 6),
+          border: Border.all(
+            color: active
+                ? primary.withAlpha(isDark ? 45 : 30)
+                : primary.withAlpha(isDark ? 15 : 10),
+            width: 0.8,
+          ),
+        ),
+        child: Icon(
+          icon,
+          color: active ? primary : primary.withAlpha(60),
+          size: 18,
+        ),
+      ),
+    );
+  }
+}
+
+// ════════════════════════════════════════════════════════════════
+//  Календарь
+// ════════════════════════════════════════════════════════════════
 
 class _CalendarView extends StatelessWidget {
   const _CalendarView({
@@ -200,159 +484,620 @@ class _CalendarView extends StatelessWidget {
     required this.selectedDay,
     required this.onDaySelected,
     required this.onPageChanged,
+    required this.primary,
+    required this.theme,
+    required this.isDark,
   });
 
   final Set<DateTime> markedDays;
   final DateTime focusedDay;
   final DateTime? selectedDay;
-  final void Function(DateTime day, DateTime focusedDay) onDaySelected;
+  final void Function(DateTime, DateTime) onDaySelected;
   final ValueChanged<DateTime> onPageChanged;
+  final Color primary;
+  final ThemeData theme;
+  final bool isDark;
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final primary = theme.colorScheme.primary;
     if (markedDays.isEmpty) {
-      return Center(
+      final empty = Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.calendar_today_outlined,
-                size: 36, color: theme.colorScheme.onSurface.withAlpha(40)),
-            const SizedBox(height: 10),
-            Text("Нет сохранённых данных", style: theme.textTheme.bodySmall),
+            Container(
+              width: 52,
+              height: 52,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: primary.withAlpha(isDark ? 25 : 15),
+                border: Border.all(
+                    color: primary.withAlpha(isDark ? 35 : 22), width: 0.8),
+              ),
+              child: Icon(Icons.calendar_today_outlined,
+                  size: 24, color: primary.withAlpha(150)),
+            ),
+            const SizedBox(height: 14),
+            Text(
+              'Нет сохранённых данных',
+              style: theme.textTheme.bodyMedium
+                  ?.copyWith(fontWeight: FontWeight.w600),
+              textAlign: TextAlign.center,
+            ),
             const SizedBox(height: 4),
             Text(
-              "Данные появятся после загрузки расписания",
-              style: theme.textTheme.bodySmall?.copyWith(fontSize: 11),
+              'Загрузите расписание — оно сохранится в историю автоматически',
+              style: theme.textTheme.bodySmall?.copyWith(
+                fontSize: 11,
+                color: theme.colorScheme.onSurface.withAlpha(120),
+              ),
+              textAlign: TextAlign.center,
             ),
           ],
         ),
       );
+      return LayoutBuilder(
+        builder: (context, c) {
+          if (c.maxHeight.isFinite && c.maxHeight < 220) {
+            return SingleChildScrollView(
+              physics: const ClampingScrollPhysics(),
+              child: empty,
+            );
+          }
+          return Center(child: SingleChildScrollView(child: empty));
+        },
+      );
     }
 
-    return Column(
-      children: [
-        Expanded(
+    // Календарь прижат к низу (над подсказкой): сверху Spacer — меньше «щели» до боттом-бара
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final available = constraints.maxHeight;
+        const hintBlockH = 30.0;
+        const calHeaderH = 32.0;
+        const dowH = 24.0;
+        final availForGrid = (available - hintBlockH).clamp(0.0, double.infinity);
+        final rowH =
+            ((availForGrid - calHeaderH - dowH) / 6).clamp(28.0, 44.0);
+        final gridH = calHeaderH + dowH + 6 * rowH;
+        final calendarBox = SizedBox(
+          height: gridH,
           child: TableCalendar(
-            firstDay: DateTime(2020),
-            lastDay: DateTime.now().add(const Duration(days: 365)),
-            focusedDay: focusedDay,
-            selectedDayPredicate: (d) => selectedDay != null && isSameDay(d, selectedDay),
-            onDaySelected: onDaySelected,
-            onPageChanged: onPageChanged,
-            startingDayOfWeek: StartingDayOfWeek.monday,
-            locale: "ru_RU",
-            calendarFormat: CalendarFormat.month,
-            availableCalendarFormats: const {CalendarFormat.month: ""},
-            rowHeight: 40,
-            daysOfWeekHeight: 30,
-            headerStyle: HeaderStyle(
-              formatButtonVisible: false,
-              titleCentered: true,
-              titleTextStyle: theme.textTheme.titleSmall!
-                  .copyWith(fontSize: 14, color: theme.colorScheme.onSurface),
-              leftChevronIcon: Icon(Icons.chevron_left, color: primary, size: 22),
-              rightChevronIcon: Icon(Icons.chevron_right, color: primary, size: 22),
-              headerPadding: const EdgeInsets.symmetric(vertical: 6),
-            ),
-            daysOfWeekStyle: DaysOfWeekStyle(
-              weekdayStyle: theme.textTheme.bodySmall!
-                  .copyWith(fontWeight: FontWeight.w600, fontSize: 11),
-              weekendStyle: theme.textTheme.bodySmall!.copyWith(
-                fontWeight: FontWeight.w600,
-                fontSize: 11,
-                color: theme.colorScheme.error.withAlpha(180),
-              ),
-            ),
-            calendarStyle: CalendarStyle(
-              cellMargin: const EdgeInsets.all(2),
-              todayDecoration: BoxDecoration(
-                color: primary.withAlpha(30),
-                shape: BoxShape.circle,
-              ),
-              selectedDecoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment(-0.7, -0.7),
-                  end: Alignment(0.9, 0.9),
-                  stops: const [0.0, 0.45, 1.0],
-                  colors: [
-                    primary,
-                    primary.withAlpha(230),
-                    primary.withAlpha(195),
-                  ],
+                firstDay: DateTime(2020),
+                lastDay: DateTime.now().add(const Duration(days: 365)),
+                focusedDay: focusedDay,
+                selectedDayPredicate: (d) =>
+                    selectedDay != null && isSameDay(d, selectedDay),
+                onDaySelected: onDaySelected,
+                onPageChanged: onPageChanged,
+                startingDayOfWeek: StartingDayOfWeek.monday,
+                locale: 'ru_RU',
+                calendarFormat: CalendarFormat.month,
+                availableCalendarFormats: const {CalendarFormat.month: ''},
+                rowHeight: rowH,
+                daysOfWeekHeight: dowH,
+                headerStyle: HeaderStyle(
+                  formatButtonVisible: false,
+                  titleCentered: true,
+                  titleTextStyle: theme.textTheme.titleSmall!.copyWith(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: theme.colorScheme.onSurface,
+                  ),
+                  leftChevronIcon: Container(
+                    width: 26, height: 26,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: primary.withAlpha(isDark ? 28 : 18),
+                    ),
+                    child: Icon(Icons.chevron_left, color: primary, size: 16),
+                  ),
+                  rightChevronIcon: Container(
+                    width: 26, height: 26,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: primary.withAlpha(isDark ? 28 : 18),
+                    ),
+                    child: Icon(Icons.chevron_right, color: primary, size: 16),
+                  ),
+                  headerPadding: const EdgeInsets.fromLTRB(8, 2, 8, 2),
+                  leftChevronPadding: EdgeInsets.zero,
+                  rightChevronPadding: EdgeInsets.zero,
                 ),
-                shape: BoxShape.circle,
+                daysOfWeekStyle: DaysOfWeekStyle(
+                  weekdayStyle: theme.textTheme.bodySmall!.copyWith(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 10,
+                    color: theme.colorScheme.onSurface.withAlpha(160),
+                  ),
+                  weekendStyle: theme.textTheme.bodySmall!.copyWith(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 10,
+                    color: theme.colorScheme.error.withAlpha(180),
+                  ),
+                ),
+                calendarStyle: CalendarStyle(
+                  cellMargin: const EdgeInsets.all(1.5),
+                  outsideDaysVisible: false,
+
+                  // Сегодня
+                  todayDecoration: BoxDecoration(
+                    color: primary.withAlpha(isDark ? 35 : 25),
+                    shape: BoxShape.circle,
+                  ),
+                  todayTextStyle: TextStyle(
+                    color: primary,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 12,
+                  ),
+
+                  // Выбранный день
+                  selectedDecoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: const Alignment(-0.6, -0.6),
+                      end: const Alignment(0.8, 0.8),
+                      colors: [
+                        Color.alphaBlend(Colors.white.withAlpha(30), primary),
+                        primary,
+                        Color.alphaBlend(Colors.black.withAlpha(20), primary),
+                      ],
+                    ),
+                    shape: BoxShape.circle,
+                  ),
+                  selectedTextStyle: TextStyle(
+                    color: theme.colorScheme.onPrimary,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 12,
+                  ),
+
+                  // Маркер (есть данные)
+                  markerDecoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [primary, primary.withAlpha(200)],
+                    ),
+                    shape: BoxShape.circle,
+                  ),
+                  markerSize: 4.0,
+                  markersMaxCount: 1,
+                  markerMargin: const EdgeInsets.only(top: 0),
+
+                  // Обычные дни
+                  defaultTextStyle: theme.textTheme.bodySmall!.copyWith(
+                    fontSize: 12,
+                  ),
+                  weekendTextStyle: theme.textTheme.bodySmall!.copyWith(
+                    fontSize: 12,
+                    color: theme.colorScheme.error.withAlpha(200),
+                  ),
+                  disabledTextStyle: theme.textTheme.bodySmall!.copyWith(
+                    fontSize: 12,
+                    color: theme.colorScheme.onSurface.withAlpha(50),
+                  ),
+                ),
+                eventLoader: (day) {
+                  final d = DateTime(day.year, day.month, day.day);
+                  return markedDays.contains(d) ? [true] : [];
+                },
               ),
-              markerDecoration: BoxDecoration(color: primary, shape: BoxShape.circle),
-              markerSize: 5,
-              markersMaxCount: 1,
+        );
+        final hintRow = Padding(
+          padding: const EdgeInsets.fromLTRB(16, 2, 16, 2),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Container(
+                width: 5,
+                height: 5,
+                margin: const EdgeInsets.only(right: 6),
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: LinearGradient(
+                    colors: [primary, primary.withAlpha(200)],
+                  ),
+                ),
+              ),
+              Flexible(
+                child: Text(
+                  'Точка — есть расписание. Нажмите на дату.',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    fontSize: 10,
+                    color: theme.colorScheme.onSurface.withAlpha(110),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+
+        if (available < gridH + hintBlockH + 20) {
+          return SingleChildScrollView(
+            physics: const ClampingScrollPhysics(),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [calendarBox, hintRow],
             ),
-            eventLoader: (day) {
-              final d = DateTime(day.year, day.month, day.day);
-              return markedDays.contains(d) ? [true] : [];
-            },
-          ),
-        ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
-          child: Text(
-            "Нажмите на дату с точкой, чтобы посмотреть расписание",
-            style: theme.textTheme.bodySmall?.copyWith(fontSize: 10),
-            textAlign: TextAlign.center,
-          ),
-        ),
-      ],
+          );
+        }
+        return Column(
+          children: [
+            const Spacer(),
+            calendarBox,
+            hintRow,
+          ],
+        );
+      },
     );
   }
 }
 
-class _DayOnlyView extends StatelessWidget {
-  const _DayOnlyView({
-    super.key,
-    required this.day,
-    required this.onBack,
-    required this.selectedDay,
-  });
+// ════════════════════════════════════════════════════════════════
+//  Скелетон-загрузка дня
+// ════════════════════════════════════════════════════════════════
 
-  final DaySchedule day;
-  final VoidCallback onBack;
-  final DateTime selectedDay;
+class _DayLoadingSkeleton extends StatefulWidget {
+  const _DayLoadingSkeleton({super.key, required this.theme, required this.primary});
+  final ThemeData theme;
+  final Color primary;
+
+  @override
+  State<_DayLoadingSkeleton> createState() => _DayLoadingSkeletonState();
+}
+
+class _DayLoadingSkeletonState extends State<_DayLoadingSkeleton>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _ctrl;
+  late final Animation<double> _anim;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1100),
+    )..repeat(reverse: true);
+    _anim = CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut);
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
+    return AnimatedBuilder(
+      animation: _anim,
+      builder: (_, __) {
+        final opacity = 0.3 + _anim.value * 0.4;
+        final body = Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: List.generate(4, (i) => Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Row(
+                children: [
+                  Container(
+                    width: 32,
+                    height: 32,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: widget.primary.withOpacity(opacity * 0.5),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Container(
+                          height: 13,
+                          width: double.infinity,
+                          decoration: BoxDecoration(
+                            color: widget.theme.colorScheme.onSurface
+                                .withOpacity(opacity * 0.15),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Container(
+                          height: 10,
+                          width: 120,
+                          decoration: BoxDecoration(
+                            color: widget.theme.colorScheme.onSurface
+                                .withOpacity(opacity * 0.1),
+                            borderRadius: BorderRadius.circular(5),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            )),
+          ),
+        );
+        return LayoutBuilder(
+          builder: (context, c) {
+            if (c.maxHeight.isFinite && c.maxHeight < 260) {
+              return SingleChildScrollView(
+                physics: const ClampingScrollPhysics(),
+                child: body,
+              );
+            }
+            return body;
+          },
+        );
+      },
+    );
+  }
+}
+
+// ════════════════════════════════════════════════════════════════
+//  Вид конкретного дня
+// ════════════════════════════════════════════════════════════════
+
+class _DayView extends StatelessWidget {
+  const _DayView({
+    super.key,
+    required this.day,
+    required this.selectedDay,
+    required this.onBack,
+    required this.primary,
+    required this.theme,
+    required this.isDark,
+    required this.onPrev,
+    required this.onNext,
+    required this.hasMarkedDays,
+  });
+
+  final DaySchedule day;
+  final DateTime selectedDay;
+  final VoidCallback onBack;
+  final Color primary;
+  final ThemeData theme;
+  final bool isDark;
+  final VoidCallback onPrev;
+  final VoidCallback onNext;
+  final bool hasMarkedDays;
+
+  @override
+  Widget build(BuildContext context) {
+    final items = day.items.toList()
+      ..sort((a, b) => a.lessonNumber.compareTo(b.lessonNumber));
+
     return GestureDetector(
-      onVerticalDragEnd: (details) {
-        if (details.primaryVelocity != null && details.primaryVelocity! > 700) {
-          onBack();
+      behavior: HitTestBehavior.translucent,
+      onVerticalDragEnd: (d) {
+        if ((d.primaryVelocity ?? 0) > 600) onBack();
+      },
+      onHorizontalDragEnd: (d) {
+        if (!hasMarkedDays) return;
+        final v = d.primaryVelocity ?? 0;
+        // Свайп влево (отриц. velocity) → следующий день, вправо → предыдущий
+        if (v < -380) {
+          HapticFeedback.selectionClick();
+          onNext();
+        } else if (v > 380) {
+          HapticFeedback.selectionClick();
+          onPrev();
         }
       },
+      child: ListView(
+        physics: const BouncingScrollPhysics(
+            parent: AlwaysScrollableScrollPhysics()),
+        padding: const EdgeInsets.fromLTRB(14, 8, 14, 24),
+        children: [
+          if (items.isEmpty)
+            _EmptyDay(primary: primary, theme: theme, isDark: isDark)
+          else
+            _DayCard(
+              day: day,
+              items: items,
+              primary: primary,
+              theme: theme,
+              isDark: isDark,
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Пустой день ──────────────────────────────────────────────────────────────
+
+class _EmptyDay extends StatelessWidget {
+  const _EmptyDay({
+    required this.primary,
+    required this.theme,
+    required this.isDark,
+  });
+  final Color primary;
+  final ThemeData theme;
+  final bool isDark;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(top: 8),
+      padding: const EdgeInsets.symmetric(vertical: 28, horizontal: 20),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            primary.withAlpha(isDark ? 18 : 12),
+            primary.withAlpha(isDark ? 8 : 5),
+          ],
+        ),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color: primary.withAlpha(isDark ? 28 : 18),
+          width: 0.8,
+        ),
+      ),
       child: Column(
         children: [
+          Icon(Icons.event_available_outlined,
+              size: 32, color: primary.withAlpha(140)),
+          const SizedBox(height: 10),
+          Text(
+            'Нет занятий',
+            style: theme.textTheme.bodyLarge?.copyWith(
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 3),
+          Text(
+            'В этот день пары не запланированы',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurface.withAlpha(110),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Карточка дня с парами ────────────────────────────────────────────────────
+
+class _DayCard extends StatelessWidget {
+  const _DayCard({
+    required this.day,
+    required this.items,
+    required this.primary,
+    required this.theme,
+    required this.isDark,
+  });
+
+  final DaySchedule day;
+  final List<ScheduleItem> items;
+  final Color primary;
+  final ThemeData theme;
+  final bool isDark;
+
+  @override
+  Widget build(BuildContext context) {
+    final cardColor = theme.cardTheme.color ?? theme.colorScheme.surface;
+
+    return Container(
+      margin: const EdgeInsets.only(top: 4),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: const Alignment(-0.7, -0.8),
+          end: const Alignment(1.0, 1.0),
+          stops: const [0.0, 0.35, 0.75, 1.0],
+          colors: [
+            Color.alphaBlend(primary.withAlpha(isDark ? 42 : 28), cardColor),
+            Color.alphaBlend(primary.withAlpha(isDark ? 22 : 14), cardColor),
+            Color.alphaBlend(primary.withAlpha(isDark ? 10 : 6), cardColor),
+            cardColor,
+          ],
+        ),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: primary.withAlpha(isDark ? 35 : 22),
+          width: 0.8,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Заголовок карточки
           Padding(
-            padding: const EdgeInsets.fromLTRB(12, 4, 12, 0),
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
             child: Row(
               children: [
-                IconButton(
-                  onPressed: onBack,
-                  icon: const Icon(Icons.keyboard_arrow_down_rounded),
-                  tooltip: "Назад к календарю",
+                Container(
+                  width: 3, height: 18,
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [primary, primary.withAlpha(140)],
+                    ),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
                 ),
+                const SizedBox(width: 10),
                 Text(
-                  _formatFullDate(selectedDay),
-                  style: theme.textTheme.titleSmall,
+                  _capitalize(day.day),
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  day.date,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurface.withAlpha(130),
+                  ),
+                ),
+                const Spacer(),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [
+                        primary.withAlpha(isDark ? 38 : 26),
+                        primary.withAlpha(isDark ? 22 : 14),
+                      ],
+                    ),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                        color: primary.withAlpha(isDark ? 45 : 30), width: 0.7),
+                  ),
+                  child: Text(
+                    '${items.length} ${_lessonsWord(items.length)}',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w600,
+                      color: primary,
+                    ),
+                  ),
                 ),
               ],
             ),
           ),
-          Expanded(
-            child: ListView(
-              physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
-              padding: const EdgeInsets.fromLTRB(12, 8, 12, 24),
-              children: [
-                _HistoryDayCard(day: day, theme: theme, primary: theme.colorScheme.primary),
-              ],
+
+          // Разделитель
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+            child: Container(
+              height: 0.6,
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [
+                    primary.withAlpha(0),
+                    primary.withAlpha(isDark ? 45 : 30),
+                    primary.withAlpha(isDark ? 45 : 30),
+                    primary.withAlpha(0),
+                  ],
+                  stops: const [0.0, 0.15, 0.85, 1.0],
+                ),
+              ),
+            ),
+          ),
+
+          // Список пар (как на основном расписании: одна цифра — несколько подгрупп)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 8, 14, 14),
+            child: Column(
+              children: _groupItemsByLesson(items)
+                  .map(
+                    (e) => _HistoryLessonGroup(
+                      lessonNumber: e.key,
+                      lessonItems: e.value,
+                      theme: theme,
+                      primary: primary,
+                      isDark: isDark,
+                    ),
+                  )
+                  .toList(),
             ),
           ),
         ],
@@ -360,162 +1105,160 @@ class _DayOnlyView extends StatelessWidget {
     );
   }
 
-  String _formatFullDate(DateTime d) {
-    const months = [
-      "", "января", "февраля", "марта", "апреля", "мая",
-      "июня", "июля", "августа", "сентября", "октября", "ноября", "декабря"
-    ];
-    return "${d.day} ${months[d.month]} ${d.year}";
-  }
-}
-
-class _HistoryDayCard extends StatelessWidget {
-  const _HistoryDayCard({
-    required this.day,
-    required this.theme,
-    required this.primary,
-  });
-
-  final DaySchedule day;
-  final ThemeData theme;
-  final Color primary;
-
-  @override
-  Widget build(BuildContext context) {
-    final items = day.items.toList()
-      ..sort((a, b) => a.lessonNumber.compareTo(b.lessonNumber));
-    final cardColor = theme.cardTheme.color ?? theme.cardColor;
-
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
-      child: Card(
-        clipBehavior: Clip.antiAlias,
-        child: Container(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              stops: const [0.0, 0.35, 0.7, 1.0],
-              colors: [
-                Color.alphaBlend(primary.withAlpha(14), cardColor),
-                Color.alphaBlend(primary.withAlpha(8), cardColor),
-                Color.alphaBlend(primary.withAlpha(4), cardColor),
-                cardColor,
-              ],
-            ),
-          ),
-          padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Container(
-                    width: 4,
-                    height: 18,
-                    decoration: BoxDecoration(
-                      color: primary,
-                      borderRadius: BorderRadius.circular(2),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Text(
-                    _capitalize(day.day),
-                    style: theme.textTheme.titleMedium,
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    day.date,
-                    style: theme.textTheme.bodySmall,
-                  ),
-                ],
-              ),
-              if (items.isEmpty) ...[
-                const SizedBox(height: 12),
-                Text("Нет занятий",
-                    style: theme.textTheme.bodyMedium
-                        ?.copyWith(fontStyle: FontStyle.italic)),
-              ] else ...[
-                const SizedBox(height: 10),
-                ...items.map((item) => _LessonRow(item: item, theme: theme)),
-              ],
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
   String _capitalize(String s) =>
       s.isEmpty ? s : s[0].toUpperCase() + s.substring(1);
+
+  String _lessonsWord(int n) {
+    if (n % 10 == 1 && n % 100 != 11) return 'пара';
+    if (n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 10 || n % 100 >= 20)) {
+      return 'пары';
+    }
+    return 'пар';
+  }
 }
 
-class _LessonRow extends StatelessWidget {
-  const _LessonRow({required this.item, required this.theme});
-  final ScheduleItem item;
+List<MapEntry<int, List<ScheduleItem>>> _groupItemsByLesson(
+    List<ScheduleItem> items) {
+  final sorted = items.toList()
+    ..sort((a, b) {
+      final c = a.lessonNumber.compareTo(b.lessonNumber);
+      if (c != 0) return c;
+      return (a.subgroup ?? 0).compareTo(b.subgroup ?? 0);
+    });
+  final map = <int, List<ScheduleItem>>{};
+  for (final i in sorted) {
+    map.putIfAbsent(i.lessonNumber, () => []).add(i);
+  }
+  return map.entries.toList()..sort((a, b) => a.key.compareTo(b.key));
+}
+
+/// Один номер пары: как в schedule_page — несколько строк с чипами п/г.
+class _HistoryLessonGroup extends StatelessWidget {
+  const _HistoryLessonGroup({
+    required this.lessonNumber,
+    required this.lessonItems,
+    required this.theme,
+    required this.primary,
+    required this.isDark,
+  });
+
+  final int lessonNumber;
+  final List<ScheduleItem> lessonItems;
   final ThemeData theme;
+  final Color primary;
+  final bool isDark;
 
   @override
   Widget build(BuildContext context) {
-    final primary = theme.colorScheme.primary;
+    final hasMultiple = lessonItems.length > 1;
+    final hasAnySub = lessonItems.any((i) => i.subgroup != null);
+
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
+      padding: const EdgeInsets.symmetric(vertical: 5),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Container(
-            width: 28,
-            height: 28,
+            width: 36,
+            height: 36,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: theme.colorScheme.onSurface.withAlpha(15),
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  primary.withAlpha(isDark ? 50 : 36),
+                  primary.withAlpha(isDark ? 30 : 20),
+                ],
+              ),
+              border: Border.all(
+                color: primary.withAlpha(isDark ? 55 : 38),
+                width: 0.7,
+              ),
             ),
             alignment: Alignment.center,
             child: Text(
-              "${item.lessonNumber}",
+              '$lessonNumber',
               style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.bold,
+                fontSize: 14,
+                fontWeight: FontWeight.w800,
                 color: primary,
               ),
             ),
           ),
-          const SizedBox(width: 10),
+          const SizedBox(width: 12),
+          Expanded(
+            child: !hasMultiple && !hasAnySub
+                ? _historySingleSlot(lessonItems.first)
+                : Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: lessonItems
+                        .map((item) => _historySubgroupSlot(item))
+                        .toList(),
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _historySingleSlot(ScheduleItem item) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          item.subject ?? '—',
+          style: theme.textTheme.bodyMedium?.copyWith(
+            fontWeight: FontWeight.w600,
+            height: 1.3,
+          ),
+        ),
+        if (_hasDetails(item)) ...[
+          const SizedBox(height: 2),
+          _detailsRow(item),
+        ],
+      ],
+    );
+  }
+
+  Widget _historySubgroupSlot(ScheduleItem item) {
+    final sg = item.subgroup;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  item.subject ?? "—",
-                  style: theme.textTheme.bodyMedium
-                      ?.copyWith(fontWeight: FontWeight.w600),
-                ),
-                if (_hasDetails) ...[
-                  const SizedBox(height: 1),
-                  Text(
-                    [
-                      if (item.classroom?.isNotEmpty == true) item.classroom,
-                      if (item.teacher?.isNotEmpty == true) item.teacher,
-                    ].join(" · "),
-                    style: theme.textTheme.bodySmall?.copyWith(fontSize: 11),
+                  item.subject ?? '—',
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    fontWeight: FontWeight.w600,
+                    height: 1.3,
                   ),
+                ),
+                if (_hasDetails(item)) ...[
+                  const SizedBox(height: 2),
+                  _detailsRow(item),
                 ],
               ],
             ),
           ),
-          if (item.subgroup != null) ...[
+          if (sg != null) ...[
             const SizedBox(width: 8),
             Container(
               margin: const EdgeInsets.only(top: 2),
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(6),
-                color: primary.withAlpha(25),
+                color: primary.withAlpha(isDark ? 40 : 25),
               ),
               child: Text(
-                "${item.subgroup} п/г",
+                '$sg п/г',
                 style: TextStyle(
-                  fontSize: 10,
+                  fontSize: 11,
                   fontWeight: FontWeight.w700,
                   color: primary,
                 ),
@@ -527,7 +1270,57 @@ class _LessonRow extends StatelessWidget {
     );
   }
 
-  bool get _hasDetails =>
+  bool _hasDetails(ScheduleItem item) =>
       (item.classroom?.isNotEmpty == true) ||
       (item.teacher?.isNotEmpty == true);
+
+  Widget _detailsRow(ScheduleItem item) {
+    return Row(
+      children: [
+        if (item.classroom?.isNotEmpty == true) ...[
+          Icon(
+            Icons.meeting_room_outlined,
+            size: 11,
+            color: theme.colorScheme.onSurface.withAlpha(120),
+          ),
+          const SizedBox(width: 3),
+          Text(
+            item.classroom!,
+            style: theme.textTheme.bodySmall?.copyWith(
+              fontSize: 11,
+              color: theme.colorScheme.onSurface.withAlpha(150),
+            ),
+          ),
+        ],
+        if (item.classroom?.isNotEmpty == true &&
+            item.teacher?.isNotEmpty == true)
+          Text(
+            ' · ',
+            style: theme.textTheme.bodySmall?.copyWith(
+              fontSize: 11,
+              color: theme.colorScheme.onSurface.withAlpha(80),
+            ),
+          ),
+        if (item.teacher?.isNotEmpty == true) ...[
+          Icon(
+            Icons.person_outline_rounded,
+            size: 11,
+            color: theme.colorScheme.onSurface.withAlpha(120),
+          ),
+          const SizedBox(width: 3),
+          Flexible(
+            child: Text(
+              item.teacher!,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.bodySmall?.copyWith(
+                fontSize: 11,
+                color: theme.colorScheme.onSurface.withAlpha(150),
+              ),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
 }

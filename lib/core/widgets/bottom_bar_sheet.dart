@@ -1,4 +1,5 @@
 import 'dart:math' as math;
+import 'dart:ui';
 
 import 'package:flutter/material.dart';
 
@@ -24,13 +25,23 @@ class BottomBarWithSheet extends StatefulWidget {
 
 class _BottomBarWithSheetState extends State<BottomBarWithSheet>
     with TickerProviderStateMixin {
+  // ─── Константы ──────────────────────────────────────────────────────────────
   static const _sheetMax = 420.0;
-  static const _barH = 62.0;
-  static const _dur = Duration(milliseconds: 280);
+  static const _barH = 64.0;
+  static const _dur = Duration(milliseconds: 320);
   static const _curve = Curves.easeOutCubic;
   static const _sheetMinContentH = 250.0;
   static const _sheetHandleBlockH = 20.0;
   static const _closeSnapThreshold = 0.55;
+
+  // Горизонтальный отступ — одинаковый для бара и шторки
+  static const _hPad = 12.0;
+  // Нижний отступ бара
+  static const _bPad = 10.0;
+  // Верхний отступ бара
+  static const _tPad = 8.0;
+  // Радиус — одинаковый для бара и шторки
+  static const _radius = 26.0;
 
   static const _items = <(IconData, IconData, String)>[
     (Icons.calendar_today_outlined, Icons.calendar_today, 'Расписание'),
@@ -45,15 +56,14 @@ class _BottomBarWithSheetState extends State<BottomBarWithSheet>
   late final CurvedAnimation _btnAnim;
   late final AnimationController _leadCtrl;
   late final AnimationController _followCtrl;
+  late final List<AnimationController> _itemScaleCtrl;
+  late final List<Animation<double>> _itemScaleAnim;
   bool _closingByDrag = false;
 
   final GlobalKey _barKey = GlobalKey();
   final List<GlobalKey> _navKeys = List.generate(4, (_) => GlobalKey());
   List<(double x, double w)>? _itemSlots;
-  Rect? _leadFrom;
-  Rect? _leadTo;
-  Rect? _followFrom;
-  Rect? _followTo;
+  Rect? _leadFrom, _leadTo, _followFrom, _followTo;
 
   void _measureSlots() {
     final barBox = _barKey.currentContext?.findRenderObject() as RenderBox?;
@@ -61,29 +71,24 @@ class _BottomBarWithSheetState extends State<BottomBarWithSheet>
     final list = <(double, double)>[];
     for (var i = 0; i < 4; i++) {
       final box = _navKeys[i].currentContext?.findRenderObject() as RenderBox?;
-      if (box == null) {
-        list.add((0, 0));
-        continue;
-      }
+      if (box == null) { list.add((0, 0)); continue; }
       final pos = barBox.globalToLocal(box.localToGlobal(Offset.zero));
       list.add((pos.dx, box.size.width));
     }
     if (!mounted) return;
-    final slotsChanged = _itemSlots == null ||
+    final changed = _itemSlots == null ||
         _itemSlots!.length != list.length ||
         list.asMap().entries.any((e) =>
-            _itemSlots![e.key].$1 != e.value.$1 || _itemSlots![e.key].$2 != e.value.$2);
-    if (!slotsChanged && _itemSlots != null && _itemSlots!.length == 4 && _leadTo != null) return;
+            _itemSlots![e.key].$1 != e.value.$1 ||
+            _itemSlots![e.key].$2 != e.value.$2);
+    if (!changed && _itemSlots != null && _leadTo != null) return;
     setState(() {
       _itemSlots = list;
       if (list.length == 4 && _leadTo == null) {
-        final barH = _effectiveBarHeight(context);
+        final bH = _effectiveBarHeight(context);
         final idx = widget.selectedIndex.clamp(0, 3);
-        final r = Rect.fromLTWH(list[idx].$1, 0, list[idx].$2, barH);
-        _leadFrom = r;
-        _leadTo = r;
-        _followFrom = r;
-        _followTo = r;
+        final r = Rect.fromLTWH(list[idx].$1, 0, list[idx].$2, bH);
+        _leadFrom = _leadTo = _followFrom = _followTo = r;
       }
     });
   }
@@ -92,27 +97,36 @@ class _BottomBarWithSheetState extends State<BottomBarWithSheet>
   void initState() {
     super.initState();
     _sheetCtrl = AnimationController(
-      vsync: this,
-      duration: _dur,
-      value: widget.sheetOpen ? 1.0 : 0.0,
-    );
+        vsync: this, duration: _dur, value: widget.sheetOpen ? 1.0 : 0.0);
     _sheetAnim = CurvedAnimation(parent: _sheetCtrl, curve: _curve);
-
     _btnCtrl = AnimationController(
-      vsync: this,
-      duration: _dur,
-      value: widget.sheetOpen ? 1.0 : 0.0,
-    );
+        vsync: this, duration: _dur, value: widget.sheetOpen ? 1.0 : 0.0);
     _btnAnim = CurvedAnimation(parent: _btnCtrl, curve: _curve);
-
     _leadCtrl = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 160),
-    );
+        vsync: this, duration: const Duration(milliseconds: 180));
     _followCtrl = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 300),
+        vsync: this, duration: const Duration(milliseconds: 340));
+    _itemScaleCtrl = List.generate(
+      4,
+      (_) => AnimationController(
+          vsync: this, duration: const Duration(milliseconds: 220)),
     );
+    _itemScaleAnim = _itemScaleCtrl.map((c) {
+      return TweenSequence<double>([
+        TweenSequenceItem(
+            tween: Tween(begin: 1.0, end: 0.78)
+                .chain(CurveTween(curve: Curves.easeIn)),
+            weight: 35),
+        TweenSequenceItem(
+            tween: Tween(begin: 0.78, end: 1.12)
+                .chain(CurveTween(curve: Curves.easeOut)),
+            weight: 40),
+        TweenSequenceItem(
+            tween: Tween(begin: 1.12, end: 1.0)
+                .chain(CurveTween(curve: Curves.easeInOut)),
+            weight: 25),
+      ]).animate(c);
+    }).toList();
   }
 
   @override
@@ -128,12 +142,10 @@ class _BottomBarWithSheetState extends State<BottomBarWithSheet>
       }
     }
     if (widget.selectedIndex != old.selectedIndex && _itemSlots != null) {
-      final barH = _effectiveBarHeight(context);
+      final bH = _effectiveBarHeight(context);
       final target = Rect.fromLTWH(
-        _itemSlots![widget.selectedIndex].$1,
-        0,
-        _itemSlots![widget.selectedIndex].$2,
-        barH,
+        _itemSlots![widget.selectedIndex].$1, 0,
+        _itemSlots![widget.selectedIndex].$2, bH,
       );
       _leadFrom = _leadTo ?? target;
       _leadTo = target;
@@ -141,6 +153,7 @@ class _BottomBarWithSheetState extends State<BottomBarWithSheet>
       _followTo = target;
       _leadCtrl.forward(from: 0);
       _followCtrl.forward(from: 0);
+      _itemScaleCtrl[widget.selectedIndex].forward(from: 0);
     }
   }
 
@@ -152,85 +165,131 @@ class _BottomBarWithSheetState extends State<BottomBarWithSheet>
     _followCtrl.dispose();
     _sheetCtrl.dispose();
     _btnCtrl.dispose();
+    for (final c in _itemScaleCtrl) { c.dispose(); }
     super.dispose();
   }
+
+  double _effectiveBarHeight(BuildContext context) {
+    final scale = MediaQuery.textScalerOf(context).scale(1);
+    if (scale <= 1.15) return _barH;
+    return (_barH + 8).clamp(_barH, _barH + 14).toDouble();
+  }
+
+  // ─── Build ──────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final cs = theme.colorScheme;
+    final isDark = theme.brightness == Brightness.dark;
     final navBg = theme.navigationBarTheme.backgroundColor ?? cs.surface;
-    final cardBg = theme.cardTheme.color ?? cs.surface;
-    final divider = theme.dividerTheme.color ?? cs.outlineVariant;
     final unselected = theme.navigationBarTheme.iconTheme?.resolve({})?.color ??
         cs.onSurfaceVariant;
-
     final barH = _effectiveBarHeight(context);
 
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Flexible(child: _sheet(cardBg, cs, barH)),
-        ColoredBox(
-            color: divider.withAlpha(80),
-            child: const SizedBox(height: 0.5, width: double.infinity)),
-        _bar(navBg, cs.primary, cs.onPrimary, unselected, theme, barH),
-      ],
+    // Единый цвет фона для бара и шторки
+    final sharedBg = Color.alphaBlend(
+      cs.primary.withAlpha(isDark ? 16 : 10),
+      navBg.withAlpha(isDark ? 210 : 220),
+    );
+
+    return SafeArea(
+      top: false,
+      child: Padding(
+        // Единый горизонтальный отступ для всего блока
+        padding: const EdgeInsets.fromLTRB(_hPad, 0, _hPad, _bPad),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Шторка — та же ширина, те же скруглённые края сверху
+            Flexible(
+              child: _sheet(sharedBg, cs, barH, isDark),
+            ),
+            const SizedBox(height: _tPad),
+            // Бар
+            _bar(sharedBg, cs.primary, cs.onPrimary, unselected, theme, barH, isDark),
+          ],
+        ),
+      ),
     );
   }
 
-  Widget _sheet(Color bg, ColorScheme cs, double barH) {
+  // ─── Sheet ──────────────────────────────────────────────────────────────────
+
+  Widget _sheet(Color bg, ColorScheme cs, double barH, bool isDark) {
     return AnimatedBuilder(
       animation: _sheetAnim,
       builder: (context, child) {
         final media = MediaQuery.of(context);
         final screenH = media.size.height;
+        // safeBottom уже снят SafeArea выше, но считаем для правильного maxSheet
         final safeBottom = media.padding.bottom;
-        final availableH = math.max(0.0, screenH - barH - safeBottom);
+        final availableH =
+            math.max(0.0, screenH - barH - safeBottom - _tPad - _bPad);
         final maxSheet = math.min(_sheetMax, availableH * 0.78);
         final h = _sheetAnim.value * maxSheet;
         if (h < 1) return const SizedBox.shrink();
+
         final revealAt = math.min(_sheetMinContentH, maxSheet * 0.42);
         final contentOpacity =
             ((h - _sheetHandleBlockH) / (revealAt - _sheetHandleBlockH))
                 .clamp(0.0, 1.0);
         final showHandle = h >= _sheetHandleBlockH;
-        return LayoutBuilder(
-          builder: (context, parentConstraints) {
-            final actualH = math.min(h, parentConstraints.maxHeight);
-            if (actualH < 1) return const SizedBox.shrink();
-            return ClipRRect(
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-              child: SizedBox(
+
+        return LayoutBuilder(builder: (context, pc) {
+          final actualH = math.min(h, pc.maxHeight);
+          if (actualH < 1) return const SizedBox.shrink();
+
+          return ClipRRect(
+            // Верхние углы совпадают с радиусом бара
+            borderRadius: const BorderRadius.all(Radius.circular(_radius)),
+            child: BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+              child: Container(
                 height: actualH,
-            width: double.infinity,
-            child: ColoredBox(
-              color: bg,
-              child: GestureDetector(
-                behavior: HitTestBehavior.translucent,
-                onVerticalDragStart: (_) {},
-                onVerticalDragUpdate: (details) {
-                  if (!widget.sheetOpen) return;
-                  final next = (_sheetCtrl.value - (details.delta.dy / maxSheet))
-                      .clamp(0.0, 1.0);
-                  _sheetCtrl.value = next;
-                  _btnCtrl.value = next;
-                },
-                onVerticalDragEnd: (details) {
-                  final v = details.primaryVelocity ?? 0;
-                  final shouldClose = _sheetCtrl.value < _closeSnapThreshold ||
-                      v > 700;
-                  if (shouldClose && widget.sheetOpen && !_closingByDrag) {
-                    _triggerDragClose();
-                    return;
-                  }
-                  if (widget.sheetOpen) {
-                    _sheetCtrl.forward();
-                    _btnCtrl.forward();
-                  }
-                },
-                child: LayoutBuilder(
-                  builder: (context, constraints) {
+                width: double.infinity,
+                decoration: BoxDecoration(
+                  color: bg,
+                  // Тонкий бордер — тот же стиль что у бара
+                  border: Border.all(
+                    color: cs.primary.withAlpha(isDark ? 28 : 18),
+                    width: 0.8,
+                  ),
+                  borderRadius: const BorderRadius.all(Radius.circular(_radius)),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withAlpha(isDark ? 50 : 28),
+                      blurRadius: 28,
+                      spreadRadius: -4,
+                      offset: const Offset(0, 8),
+                    ),
+                  ],
+                ),
+                child: GestureDetector(
+                  behavior: HitTestBehavior.translucent,
+                  onVerticalDragStart: (_) {},
+                  onVerticalDragUpdate: (d) {
+                    if (!widget.sheetOpen) return;
+                    final next =
+                        (_sheetCtrl.value - (d.delta.dy / maxSheet))
+                            .clamp(0.0, 1.0);
+                    _sheetCtrl.value = next;
+                    _btnCtrl.value = next;
+                  },
+                  onVerticalDragEnd: (d) {
+                    final v = d.primaryVelocity ?? 0;
+                    final shouldClose =
+                        _sheetCtrl.value < _closeSnapThreshold || v > 700;
+                    if (shouldClose && widget.sheetOpen && !_closingByDrag) {
+                      _triggerDragClose();
+                      return;
+                    }
+                    if (widget.sheetOpen) {
+                      _sheetCtrl.forward();
+                      _btnCtrl.forward();
+                    }
+                  },
+                  child: LayoutBuilder(builder: (context, constraints) {
                     if (constraints.maxHeight < _sheetHandleBlockH) {
                       return const SizedBox.expand();
                     }
@@ -238,13 +297,13 @@ class _BottomBarWithSheetState extends State<BottomBarWithSheet>
                       children: [
                         if (showHandle)
                           Padding(
-                            padding: const EdgeInsets.only(top: 12, bottom: 8),
-                            child: DecoratedBox(
+                            padding: const EdgeInsets.only(top: 10, bottom: 6),
+                            child: Container(
+                              width: 36, height: 4,
                               decoration: BoxDecoration(
-                                color: cs.onSurface.withAlpha(56),
-                                borderRadius: BorderRadius.circular(3),
+                                color: cs.onSurface.withAlpha(45),
+                                borderRadius: BorderRadius.circular(2),
                               ),
-                              child: const SizedBox(width: 44, height: 5),
                             ),
                           ),
                         Expanded(
@@ -258,14 +317,12 @@ class _BottomBarWithSheetState extends State<BottomBarWithSheet>
                         ),
                       ],
                     );
-                  },
+                  }),
                 ),
               ),
             ),
-          ),
-        );
-          },
-        );
+          );
+        });
       },
       child: widget.sheetChild,
     );
@@ -275,85 +332,122 @@ class _BottomBarWithSheetState extends State<BottomBarWithSheet>
     _closingByDrag = true;
     widget.onSheetToggle?.call();
     Future<void>.delayed(
-      const Duration(milliseconds: 250),
-      () => _closingByDrag = false,
-    );
+        const Duration(milliseconds: 250), () => _closingByDrag = false);
   }
 
-  Widget _bar(
-    Color bg,
-    Color primary,
-    Color onPrimary,
-    Color unselected,
-    ThemeData theme,
-    double barH,
-  ) {
+  // ─── Bar ────────────────────────────────────────────────────────────────────
+
+  Widget _bar(Color bg, Color primary, Color onPrimary, Color unselected,
+      ThemeData theme, double barH, bool isDark) {
     WidgetsBinding.instance.addPostFrameCallback((_) => _measureSlots());
-    return Material(
-      color: bg,
-      elevation: 10,
-      shadowColor: Colors.black.withAlpha(26),
-      child: SafeArea(
-        top: false,
-        child: SizedBox(
-          key: _barKey,
-          height: barH,
-          child: Stack(
-            children: [
-              Row(
+
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(_radius),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+        child: Container(
+          decoration: BoxDecoration(
+            color: bg,
+            borderRadius: BorderRadius.circular(_radius),
+            border: Border.all(
+              color: primary.withAlpha(isDark ? 28 : 18),
+              width: 0.8,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withAlpha(isDark ? 50 : 28),
+                blurRadius: 28,
+                spreadRadius: -4,
+                offset: const Offset(0, 8),
+              ),
+              BoxShadow(
+                color: primary.withAlpha(isDark ? 18 : 10),
+                blurRadius: 0,
+                spreadRadius: 0,
+                offset: const Offset(0, -1),
+              ),
+            ],
+          ),
+          child: Material(
+            color: Colors.transparent,
+            child: SizedBox(
+              key: _barKey,
+              height: barH,
+              child: Stack(
                 children: [
-                  _navItem(0, primary, unselected, barH),
-                  _navItem(1, primary, unselected, barH),
-                  _centerBtn(primary, onPrimary),
-                  _navItem(2, primary, unselected, barH),
-                  _navItem(3, primary, unselected, barH),
+                  Row(
+                    children: [
+                      _navItem(0, primary, unselected, barH, theme),
+                      _navItem(1, primary, unselected, barH, theme),
+                      _centerBtn(primary, onPrimary, isDark),
+                      _navItem(2, primary, unselected, barH, theme),
+                      _navItem(3, primary, unselected, barH, theme),
+                    ],
+                  ),
+                  if (_itemSlots != null &&
+                      _leadFrom != null && _leadTo != null &&
+                      _followFrom != null && _followTo != null)
+                    IgnorePointer(child: _jellyLayer(primary, barH, isDark)),
                 ],
               ),
-              if (_itemSlots != null &&
-                  _leadFrom != null &&
-                  _leadTo != null &&
-                  _followFrom != null &&
-                  _followTo != null)
-                IgnorePointer(child: _jellyLayer(primary, barH)),
-            ],
+            ),
           ),
         ),
       ),
     );
   }
 
-  Widget _jellyLayer(Color primary, double barH) {
-    final leadCurve = CurvedAnimation(parent: _leadCtrl, curve: Curves.easeOutCubic);
-    final followCurve = CurvedAnimation(parent: _followCtrl, curve: Curves.easeOutBack);
+  // ─── Jelly ──────────────────────────────────────────────────────────────────
+
+  Widget _jellyLayer(Color primary, double barH, bool isDark) {
+    final leadCurve =
+        CurvedAnimation(parent: _leadCtrl, curve: Curves.easeOutCubic);
+    final followCurve =
+        CurvedAnimation(parent: _followCtrl, curve: Curves.easeOutBack);
     return RepaintBoundary(
       child: ListenableBuilder(
         listenable: Listenable.merge([leadCurve, followCurve]),
         builder: (context, _) {
           final leadR = Rect.lerp(_leadFrom!, _leadTo!, leadCurve.value)!;
-          final followR = Rect.lerp(_followFrom!, _followTo!, followCurve.value)!;
+          final followR =
+              Rect.lerp(_followFrom!, _followTo!, followCurve.value)!;
+          const pad = 4.0;
+          const r = 18.0;
           return Stack(
             children: [
               Positioned(
-                left: followR.left + 2,
-                top: followR.top + 2,
-                width: followR.width - 4,
-                height: followR.height - 4,
-                child: Container(
+                left: followR.left + pad, top: followR.top + pad,
+                width: followR.width - pad * 2,
+                height: followR.height - pad * 2,
+                child: DecoratedBox(
                   decoration: BoxDecoration(
-                    color: primary.withAlpha(36),
-                    borderRadius: BorderRadius.circular(16),
+                    gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [
+                        primary.withAlpha(isDark ? 30 : 22),
+                        primary.withAlpha(isDark ? 18 : 12),
+                      ],
+                    ),
+                    borderRadius: BorderRadius.circular(r),
                   ),
                 ),
               ),
               Positioned(
-                left: leadR.left + 2,
-                top: leadR.top + 2,
-                width: leadR.width - 4,
-                height: leadR.height - 4,
-                child: Container(
+                left: leadR.left + pad, top: leadR.top + pad,
+                width: leadR.width - pad * 2,
+                height: leadR.height - pad * 2,
+                child: DecoratedBox(
                   decoration: BoxDecoration(
-                    color: primary.withAlpha(55),
-                    borderRadius: BorderRadius.circular(16),
+                    gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [
+                        primary.withAlpha(isDark ? 60 : 44),
+                        primary.withAlpha(isDark ? 40 : 28),
+                      ],
+                    ),
+                    borderRadius: BorderRadius.circular(r),
                   ),
                 ),
               ),
@@ -364,64 +458,74 @@ class _BottomBarWithSheetState extends State<BottomBarWithSheet>
     );
   }
 
-  Widget _navItem(int i, Color primary, Color unselected, double barH) {
+  // ─── Nav item ───────────────────────────────────────────────────────────────
+
+  Widget _navItem(int i, Color primary, Color unselected, double barH,
+      ThemeData theme) {
     final sel = widget.selectedIndex == i;
     final item = _items[i];
     final color = sel ? primary : unselected;
-
     return Expanded(
       key: _navKeys[i],
-      child: Material(
-        color: Colors.transparent,
-        clipBehavior: Clip.antiAlias,
-        borderRadius: BorderRadius.circular(16),
-        child: InkWell(
-          onTap: () => widget.onIndexChanged(i),
-          splashFactory: InkRipple.splashFactory,
-          splashColor: primary.withAlpha(40),
-          highlightColor: primary.withAlpha(20),
-          borderRadius: BorderRadius.circular(16),
-          child: SizedBox(
-            height: barH,
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-              AnimatedContainer(
-                duration: const Duration(milliseconds: 150),
-                curve: Curves.easeOutCubic,
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(
-                  color: sel && _itemSlots == null
-                      ? primary.withAlpha(26)
-                      : Colors.transparent,
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: AnimatedScale(
-                  scale: sel ? 1.1 : 1.0,
-                  duration: const Duration(milliseconds: 150),
-                  curve: Curves.easeOutCubic,
-                  child: Icon(sel ? item.$2 : item.$1, color: color, size: 24),
-                ),
+      child: Semantics(
+        label: sel ? '${item.$3}, выбран' : item.$3,
+        selected: sel,
+        button: true,
+        child: Material(
+          color: Colors.transparent,
+          clipBehavior: Clip.antiAlias,
+          borderRadius: BorderRadius.circular(20),
+          child: InkWell(
+            onTap: () => widget.onIndexChanged(i),
+            splashFactory: InkRipple.splashFactory,
+            splashColor: primary.withAlpha(35),
+            highlightColor: primary.withAlpha(18),
+            borderRadius: BorderRadius.circular(20),
+            child: SizedBox(
+              height: barH,
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  AnimatedBuilder(
+                    animation: _itemScaleAnim[i],
+                    builder: (_, child) => Transform.scale(
+                      scale: sel ? _itemScaleAnim[i].value : 1.0,
+                      child: child,
+                    ),
+                    child: AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 200),
+                      transitionBuilder: (child, anim) => ScaleTransition(
+                        scale: anim,
+                        child: FadeTransition(opacity: anim, child: child),
+                      ),
+                      child: Icon(
+                        sel ? item.$2 : item.$1,
+                        key: ValueKey('${i}_$sel'),
+                        color: color, size: 23,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 3),
+                  AnimatedSize(
+                    duration: const Duration(milliseconds: 180),
+                    curve: Curves.easeOutCubic,
+                    child: sel
+                        ? Text(
+                            item.$3,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: color,
+                              fontSize: 10,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: 0.2,
+                            ),
+                          )
+                        : const SizedBox.shrink(),
+                  ),
+                ],
               ),
-              const SizedBox(height: 2),
-              AnimatedSize(
-                duration: const Duration(milliseconds: 150),
-                curve: Curves.easeOutCubic,
-                child: sel
-                    ? Text(
-                        item.$3,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: color,
-                          fontSize: 10,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      )
-                    : const SizedBox.shrink(),
-              ),
-              ],
             ),
           ),
         ),
@@ -429,64 +533,80 @@ class _BottomBarWithSheetState extends State<BottomBarWithSheet>
     );
   }
 
-  double _effectiveBarHeight(BuildContext context) {
-    final scale = MediaQuery.textScalerOf(context).scale(1);
-    if (scale <= 1.15) return _barH;
-    return (_barH + 8).clamp(_barH, _barH + 14).toDouble();
-  }
+  // ─── Centre FAB ─────────────────────────────────────────────────────────────
 
-  Widget _centerBtn(Color primary, Color onPrimary) {
+  Widget _centerBtn(Color primary, Color onPrimary, bool isDark) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 6),
-      child: AnimatedBuilder(
-        animation: _btnAnim,
-        builder: (context, _) {
-          final scale = 1 + (_btnAnim.value * 0.06);
-          return GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: () => widget.onSheetToggle?.call(),
-            child: SizedBox(
-              width: 48,
-              height: 48,
+      child: Semantics(
+        label: widget.sheetOpen ? 'Закрыть календарь' : 'Открыть календарь',
+        button: true,
+        child: AnimatedBuilder(
+          animation: _btnAnim,
+          builder: (context, _) {
+            final t = _btnAnim.value;
+            return GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () => widget.onSheetToggle?.call(),
               child: Transform.scale(
-                scale: scale,
-                child: Transform.rotate(
-                  angle: _btnAnim.value * math.pi,
-                    child: DecoratedBox(
+                scale: 1.0 + t * 0.06,
+                child: SizedBox(
+                  width: 50, height: 50,
+                  child: Transform.rotate(
+                    angle: t * math.pi,
+                    child: Container(
                       decoration: BoxDecoration(
+                        shape: BoxShape.circle,
                         gradient: LinearGradient(
-                          begin: Alignment(-0.8, -0.8),
-                          end: Alignment(1.0, 1.0),
-                          stops: const [0.0, 0.4, 0.85, 1.0],
+                          begin: const Alignment(-0.7, -0.7),
+                          end: const Alignment(0.9, 0.9),
+                          stops: const [0.0, 0.5, 1.0],
                           colors: [
+                            Color.alphaBlend(
+                                Colors.white.withAlpha(isDark ? 20 : 30),
+                                primary),
                             primary,
-                            primary.withAlpha(250),
-                            primary.withAlpha(218),
-                            primary.withAlpha(188),
+                            Color.alphaBlend(
+                                Colors.black.withAlpha(isDark ? 30 : 20),
+                                primary),
                           ],
                         ),
-                      shape: BoxShape.circle,
-                      boxShadow: [
-                        BoxShadow(
-                          color: primary.withAlpha(widget.sheetOpen ? 85 : 60),
-                          blurRadius: widget.sheetOpen ? 14 : 10,
-                          offset: const Offset(0, 3),
+                        boxShadow: [
+                          BoxShadow(
+                            color: primary.withAlpha(
+                                widget.sheetOpen ? 100 : 70),
+                            blurRadius: widget.sheetOpen ? 18 : 12,
+                            spreadRadius: widget.sheetOpen ? -2 : -4,
+                            offset: const Offset(0, 4),
+                          ),
+                          BoxShadow(
+                            color: Colors.white.withAlpha(isDark ? 20 : 35),
+                            blurRadius: 0,
+                            offset: const Offset(0, -1),
+                          ),
+                        ],
+                      ),
+                      child: AnimatedSwitcher(
+                        duration: const Duration(milliseconds: 200),
+                        transitionBuilder: (child, anim) => ScaleTransition(
+                          scale: anim,
+                          child: FadeTransition(opacity: anim, child: child),
                         ),
-                      ],
-                    ),
-                    child: Icon(
-                      _btnAnim.value < 0.5
-                          ? Icons.calendar_month_rounded
-                          : Icons.close_rounded,
-                      color: onPrimary,
-                      size: 22,
+                        child: Icon(
+                          t < 0.5
+                              ? Icons.calendar_month_rounded
+                              : Icons.close_rounded,
+                          key: ValueKey(t < 0.5),
+                          color: onPrimary, size: 22,
+                        ),
+                      ),
                     ),
                   ),
                 ),
               ),
-            ),
-          );
-        },
+            );
+          },
+        ),
       ),
     );
   }
