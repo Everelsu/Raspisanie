@@ -14,23 +14,18 @@
     },
     "colleges": {
       "chtotib": {
-        "name": "",
-        "shortName": "ЧТОТиБ",
+        "name": "Челябинский техникум отраслевых технологий и бизнеса",
         "baseUrl": "https://www.chtotib.ru/schedule_gl/",
         "groupsPage": "cg.htm",
         "teachersPage": "cp.htm",
-        "description": "Официальный сайт расписания групп и преподавателей.",
         "reserveBaseUrl": "https://chtotib-it.github.io/",
-        "reserveDayGroupsUrl": "https://chtotib-it.github.io/hg.htm",
-        "reserveDescription": "Резерв (GitHub Pages): расписание на день по группам, если основной сайт недоступен."
+        "reserveDayGroupsUrl": "https://chtotib-it.github.io/hg.htm"
       },
       "zabgc": {
-        "name": "",
-        "shortName": "ЗабГК",
+        "name": "Златоустовский базовый геологоразведочный колледж",
         "baseUrl": "https://bbb.zabgc.ru/",
         "groupsPage": "cg.htm",
-        "teachersPage": "cp.htm",
-        "description": "Официальный сайт расписания групп и преподавателей."
+        "teachersPage": "cp.htm"
       }
     }
   },
