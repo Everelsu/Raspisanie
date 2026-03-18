@@ -15,11 +15,9 @@
     "colleges": {
       "chtotib": {
         "name": "ЧТОТиБ",
-        "baseUrl": "https://www.chtotib.ru/schedule_gl/",
+        "baseUrl": "https://chtotib-it.github.io/",
         "groupsPage": "cg.htm",
-        "teachersPage": "cp.htm",
-        "reserveBaseUrl": "https://chtotib-it.github.io/",
-        "reserveDayGroupsUrl": "https://chtotib-it.github.io/hg.htm"
+        "teachersPage": "cp.htm"
       },
       "zabgc": {
         "name": "ЗабГК",
