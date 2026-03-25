@@ -95,7 +95,7 @@ private class ScheduleWidgetFactory(
         accentColor = if (!accentStr.isNullOrEmpty()) accentStr.toIntOrNull() else null
         when (themeKey) {
             "light" -> {
-                textColor = Color.parseColor("#0F172A")
+                textColor = Color.parseColor("#111111")
                 numTextColor = Color.WHITE
                 itemBgRes = R.drawable.widget_list_item_bg_light
                 numBgRes = R.drawable.widget_num_badge_light
@@ -149,14 +149,14 @@ private class ScheduleWidgetFactory(
                 numBgRes = R.drawable.widget_num_badge_teal
             }
             "dark" -> {
-                textColor = Color.parseColor("#E5E7EB")
-                numTextColor = Color.WHITE
+                textColor = Color.parseColor("#F5F5F5")
+                numTextColor = Color.BLACK
                 itemBgRes = R.drawable.widget_list_item_bg_dark
                 numBgRes = R.drawable.widget_num_badge_dark
             }
             else -> {
-                textColor = Color.parseColor("#E5E7EB")
-                numTextColor = Color.WHITE
+                textColor = Color.parseColor("#F5F5F5")
+                numTextColor = Color.BLACK
                 itemBgRes = R.drawable.widget_list_item_bg_dark
                 numBgRes = R.drawable.widget_num_badge_dark
             }

@@ -3,6 +3,34 @@ import "package:html/parser.dart" as html_parser;
 
 import "../../features/schedule/domain/models.dart";
 
+/// Имя файла расписания из href (`j…htm`, `../j…htm`, полный URL).
+String _scheduleLinkFileName(String href) {
+  final t = href.trim().split("?").first.trim();
+  if (t.isEmpty) return "";
+  final slash = t.lastIndexOf("/");
+  return slash >= 0 ? t.substring(slash + 1) : t;
+}
+
+bool _isSubjectScheduleHref(String href) {
+  final f = _scheduleLinkFileName(href).toLowerCase();
+  return f.startsWith("j");
+}
+
+bool _isClassroomScheduleHref(String href) {
+  return _scheduleLinkFileName(href).toLowerCase().startsWith("ca");
+}
+
+bool _isTeacherScheduleHref(String href) {
+  return _scheduleLinkFileName(href).toLowerCase().startsWith("cp");
+}
+
+/// В кэш и в запрос подрасписания — только имя файла (как в старых ссылках без пути).
+String? _normalizeScheduleHrefForStorage(String? raw) {
+  if (raw == null || raw.isEmpty) return null;
+  final name = _scheduleLinkFileName(raw);
+  return name.isEmpty ? null : name;
+}
+
 class ExpressScheduleParser {
   static final _groupHref = RegExp(
     r"^[bch]g(\d+)\.htm",
@@ -212,21 +240,19 @@ class ExpressScheduleParser {
     final subjectLink = cell.querySelector("a.z1") ??
         cell.querySelectorAll("a").where((a) {
           final href = a.attributes["href"] ?? "";
-          return href.startsWith("j") &&
-              !href.startsWith("cp") &&
-              !href.startsWith("ca");
+          return _isSubjectScheduleHref(href);
         }).firstOrNull;
 
     final classroomLink = cell.querySelector("a.z2") ??
         cell.querySelectorAll("a").where((a) {
           final href = a.attributes["href"] ?? "";
-          return href.startsWith("ca");
+          return _isClassroomScheduleHref(href);
         }).firstOrNull;
 
     final teacherLink = cell.querySelector("a.z3") ??
         cell.querySelectorAll("a").where((a) {
           final href = a.attributes["href"] ?? "";
-          return href.startsWith("cp");
+          return _isTeacherScheduleHref(href);
         }).firstOrNull;
 
     final rawText = cell.text
@@ -248,12 +274,13 @@ class ExpressScheduleParser {
       if (m != null) classroom = m.group(1);
     }
     final teacher = teacherLink?.text.trim();
-    final subjectHref = subjectLink?.attributes["href"]?.trim().split("?").first;
+    final subjectHref = _normalizeScheduleHrefForStorage(
+        subjectLink?.attributes["href"]?.trim().split("?").first);
 
-    final classroomHref =
-        classroomLink?.attributes["href"]?.trim().split("?").first;
-    final teacherHref =
-        teacherLink?.attributes["href"]?.trim().split("?").first;
+    final classroomHref = _normalizeScheduleHrefForStorage(
+        classroomLink?.attributes["href"]?.trim().split("?").first);
+    final teacherHref = _normalizeScheduleHrefForStorage(
+        teacherLink?.attributes["href"]?.trim().split("?").first);
 
     return (
       subject: subject,
@@ -329,8 +356,10 @@ class ExpressScheduleParser {
     }
 
     for (final a in allLinks) {
-      final href = (a.attributes["href"] ?? "").toLowerCase();
-      if (href.startsWith("cp") || href.startsWith("ca")) continue;
+      final href = a.attributes["href"] ?? "";
+      if (_isTeacherScheduleHref(href) || _isClassroomScheduleHref(href)) {
+        continue;
+      }
       final text = a.text.trim();
       if (text.isNotEmpty) return text;
     }

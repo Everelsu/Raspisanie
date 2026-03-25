@@ -38,6 +38,7 @@ class ScheduleController extends ChangeNotifier {
   Timer? _autoRefreshTimer;
   Timer? _remoteLessonTimesTimer;
   DateTime? _lastScheduleRefreshAt;
+  bool _silentRefreshInFlight = false;
   static const Duration _staleThreshold = Duration(minutes: 25);
 
   final PreferencesManager _prefsManager;
@@ -146,6 +147,8 @@ class ScheduleController extends ChangeNotifier {
         useCache: useCache,
       );
       _lastScheduleRefreshAt = DateTime.now();
+      _prefsManager.lastScheduleNetworkOkMs =
+          DateTime.now().millisecondsSinceEpoch;
       if (schedule.isEmpty) {
         error = "Расписание не найдено.";
       }
@@ -163,6 +166,8 @@ class ScheduleController extends ChangeNotifier {
           error = "Показаны сохранённые данные. $error";
           _updateHomeWidget();
         }
+      } else {
+        error = "Не удалось обновить. $error";
       }
     } finally {
       isLoading = false;
@@ -187,6 +192,8 @@ class ScheduleController extends ChangeNotifier {
   Future<void> _refreshScheduleSilent() async {
     final group = selectedGroup;
     if (group == null) return;
+    if (_silentRefreshInFlight) return;
+    _silentRefreshInFlight = true;
     try {
       final result = await _repository.fetchSchedule(
         groupFile: group.fileName,
@@ -196,12 +203,17 @@ class ScheduleController extends ChangeNotifier {
       if (result.isEmpty) return;
       schedule = result;
       _lastScheduleRefreshAt = DateTime.now();
+      _prefsManager.lastScheduleNetworkOkMs =
+          DateTime.now().millisecondsSinceEpoch;
       if (_repository.scheduleChanged) _repository.clearChangedFlag();
       _checkScheduleHashAndNotify();
       await _syncLessonNotifications();
       _updateHomeWidget();
       notifyListeners();
-    } catch (_) {}
+    } catch (_) {
+    } finally {
+      _silentRefreshInFlight = false;
+    }
   }
 
   void _checkScheduleHashAndNotify() {
@@ -283,15 +295,13 @@ class ScheduleController extends ChangeNotifier {
   void startAutoRefresh() {
     stopAutoRefresh();
     if (!_prefsManager.autoRefreshEnabled) return;
-    final interval = _prefsManager.autoRefreshInterval;
-    _autoRefreshTimer = Timer.periodic(
-      Duration(minutes: interval),
-      (_) {
-        if (selectedGroup != null) {
-          _refreshScheduleSilent();
-        }
-      },
-    );
+    final minutes = _prefsManager.autoRefreshInterval;
+    final interval = Duration(minutes: minutes);
+    _autoRefreshTimer = Timer.periodic(interval, (_) {
+      if (selectedGroup != null) {
+        unawaited(_refreshScheduleSilent());
+      }
+    });
   }
 
   void stopAutoRefresh() {

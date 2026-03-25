@@ -46,7 +46,7 @@ class _BottomBarWithSheetState extends State<BottomBarWithSheet>
   static const _items = <(IconData, IconData, String)>[
     (Icons.calendar_today_outlined, Icons.calendar_today, 'Расписание'),
     (Icons.bar_chart_outlined, Icons.bar_chart, 'Итоги'),
-    (Icons.note_alt_outlined, Icons.note_alt, 'Заметки'),
+    (Icons.language_outlined, Icons.language, 'Сеть'),
     (Icons.settings_outlined, Icons.settings, 'Настройки'),
   ];
 
@@ -59,6 +59,7 @@ class _BottomBarWithSheetState extends State<BottomBarWithSheet>
   late final List<AnimationController> _itemScaleCtrl;
   late final List<Animation<double>> _itemScaleAnim;
   bool _closingByDrag = false;
+  bool _measureQueued = false;
 
   final GlobalKey _barKey = GlobalKey();
   final List<GlobalKey> _navKeys = List.generate(4, (_) => GlobalKey());
@@ -66,6 +67,7 @@ class _BottomBarWithSheetState extends State<BottomBarWithSheet>
   Rect? _leadFrom, _leadTo, _followFrom, _followTo;
 
   void _measureSlots() {
+    _measureQueued = false;
     final barBox = _barKey.currentContext?.findRenderObject() as RenderBox?;
     if (barBox == null) return;
     final list = <(double, double)>[];
@@ -244,7 +246,7 @@ class _BottomBarWithSheetState extends State<BottomBarWithSheet>
             // Верхние углы совпадают с радиусом бара
             borderRadius: const BorderRadius.all(Radius.circular(_radius)),
             child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+              filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
               child: Container(
                 height: actualH,
                 width: double.infinity,
@@ -258,10 +260,10 @@ class _BottomBarWithSheetState extends State<BottomBarWithSheet>
                   borderRadius: const BorderRadius.all(Radius.circular(_radius)),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withAlpha(isDark ? 50 : 28),
-                      blurRadius: 28,
+                      color: Colors.black.withAlpha(isDark ? 42 : 22),
+                      blurRadius: 20,
                       spreadRadius: -4,
-                      offset: const Offset(0, 8),
+                      offset: const Offset(0, 6),
                     ),
                   ],
                 ),
@@ -339,12 +341,15 @@ class _BottomBarWithSheetState extends State<BottomBarWithSheet>
 
   Widget _bar(Color bg, Color primary, Color onPrimary, Color unselected,
       ThemeData theme, double barH, bool isDark) {
-    WidgetsBinding.instance.addPostFrameCallback((_) => _measureSlots());
+    if (!_measureQueued) {
+      _measureQueued = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) => _measureSlots());
+    }
 
     return ClipRRect(
       borderRadius: BorderRadius.circular(_radius),
       child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+        filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
         child: Container(
           decoration: BoxDecoration(
             color: bg,
@@ -354,12 +359,12 @@ class _BottomBarWithSheetState extends State<BottomBarWithSheet>
               width: 0.8,
             ),
             boxShadow: [
-              BoxShadow(
-                color: Colors.black.withAlpha(isDark ? 50 : 28),
-                blurRadius: 28,
-                spreadRadius: -4,
-                offset: const Offset(0, 8),
-              ),
+                    BoxShadow(
+                      color: Colors.black.withAlpha(isDark ? 42 : 22),
+                      blurRadius: 20,
+                      spreadRadius: -4,
+                      offset: const Offset(0, 6),
+                    ),
               BoxShadow(
                 color: primary.withAlpha(isDark ? 18 : 10),
                 blurRadius: 0,

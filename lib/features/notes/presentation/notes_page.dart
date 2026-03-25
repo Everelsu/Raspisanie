@@ -59,11 +59,13 @@ class _NotesPageState extends State<NotesPage> with TickerProviderStateMixin {
       child: AnimatedBuilder(
         animation: _entranceAnim,
         builder: (context, child) {
-          return Opacity(
-            opacity: _entranceAnim.value,
-            child: Transform.scale(
-              scale: 0.96 + 0.04 * _entranceAnim.value,
-              alignment: Alignment.center,
+          return FadeTransition(
+            opacity: _entranceAnim,
+            child: SlideTransition(
+              position: Tween<Offset>(
+                begin: const Offset(0, 0.03),
+                end: Offset.zero,
+              ).animate(_entranceAnim),
               child: child,
             ),
           );
@@ -79,3 +81,4 @@ class _NotesPageState extends State<NotesPage> with TickerProviderStateMixin {
     );
   }
 }
+

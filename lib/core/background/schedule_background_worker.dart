@@ -71,6 +71,7 @@ void callbackDispatcher() {
       statisticsCache: StatisticsCache(sp),
       subScheduleCache: SubScheduleCache(sp),
     );
+    repository.setCustomBaseUrls(prefs.effectiveCollegeBaseUrls);
 
     try {
       final days = await repository.fetchSchedule(
@@ -91,6 +92,7 @@ void callbackDispatcher() {
         await NotificationService.instance.init();
         await NotificationService.instance.showScheduleChanged(
           groupName: prefs.selectedGroupName,
+          fromBackgroundWorker: true,
         );
       }
 

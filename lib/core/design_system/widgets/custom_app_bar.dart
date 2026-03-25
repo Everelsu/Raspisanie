@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../colors.dart';
-import 'custom_text.dart';
 
 class CustomAppBar extends StatelessWidget implements PreferredSizeWidget {
   CustomAppBar({
@@ -52,11 +51,18 @@ class CustomAppBar extends StatelessWidget implements PreferredSizeWidget {
       );
     }
     final Widget? appBarTitle = title != null
-        ? CustomText(
-            color: titleColor,
-            fontSize: titleFontSize,
-            text: title!,
-            fontWeight: titleFontWeight,
+        ? Text(
+            title!,
+            style: theme.textTheme.titleLarge?.copyWith(
+                  color: titleColor,
+                  fontSize: titleFontSize,
+                  fontWeight: titleFontWeight,
+                ) ??
+                TextStyle(
+                  color: titleColor,
+                  fontSize: titleFontSize,
+                  fontWeight: titleFontWeight,
+                ),
           )
         : null;
     final effectiveSystemOverlayStyle = systemOverlayStyle ??
@@ -85,7 +91,10 @@ class CustomAppBar extends StatelessWidget implements PreferredSizeWidget {
   }
 
   bool _isLightColor(Color color) {
-    final brightness = (0.299 * color.r + 0.587 * color.g + 0.114 * color.b) / 255;
+    final r = color.r;
+    final g = color.g;
+    final b = color.b;
+    final brightness = 0.299 * r + 0.587 * g + 0.114 * b;
     return brightness > 0.5;
   }
 }

@@ -1,4 +1,3 @@
-import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -7,20 +6,6 @@ import 'package:table_calendar/table_calendar.dart';
 import '../../../core/database/schedule_database.dart';
 import '../domain/models.dart';
 import 'schedule_controller.dart';
-
-// ════════════════════════════════════════════════════════════════
-//  history_calendar_sheet.dart
-//
-//  Улучшения по сравнению с оригиналом:
-//  • Стиль вписан в bottom_bar_sheet (те же радиусы, blur, градиенты)
-//  • Навигация: calendar → week strip → day view — плавный slide
-//  • Мини-полоска недели под календарём — быстрый jump по дням
-//  • Состояние загрузки конкретного дня — inline skeleton
-//  • Пустое расписание показывается красиво, не просто «нет данных»
-//  • AnimatedSwitcher с направленным slide (вперёд/назад)
-//  • Swipe вниз в day view → назад к календарю
-//  • Счётчик записей + hint tooltip
-// ════════════════════════════════════════════════════════════════
 
 class HistoryCalendarSheet extends StatefulWidget {
   const HistoryCalendarSheet({super.key, required this.controller});
@@ -236,6 +221,17 @@ class _HistoryCalendarSheetState extends State<HistoryCalendarSheet>
                 duration: const Duration(milliseconds: 300),
                 switchInCurve: Curves.easeOutCubic,
                 switchOutCurve: Curves.easeInCubic,
+                layoutBuilder: (currentChild, previousChildren) {
+                  return ClipRect(
+                    child: Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        ...previousChildren,
+                        if (currentChild != null) currentChild,
+                      ],
+                    ),
+                  );
+                },
                 transitionBuilder: (child, anim) {
                   final offset = _slideForward
                       ? const Offset(0.08, 0)
@@ -245,7 +241,12 @@ class _HistoryCalendarSheetState extends State<HistoryCalendarSheet>
                     child: SlideTransition(
                       position: Tween<Offset>(begin: offset, end: Offset.zero)
                           .animate(anim),
-                      child: child,
+                      child: AnimatedScale(
+                        duration: const Duration(milliseconds: 300),
+                        curve: Curves.easeOutCubic,
+                        scale: 0.985 + (anim.value * 0.015),
+                        child: child,
+                      ),
                     ),
                   );
                 },
@@ -257,7 +258,7 @@ class _HistoryCalendarSheetState extends State<HistoryCalendarSheet>
                       )
                     : _selectedSchedule != null
                         ? _DayView(
-                            key: ValueKey('day_${_selectedDay}'),
+                            key: ValueKey('day_$_selectedDay'),
                             day: _selectedSchedule!,
                             selectedDay: _selectedDay ?? DateTime.now(),
                             onBack: _backToCalendar,
@@ -330,101 +331,139 @@ class _Header extends StatelessWidget {
       duration: const Duration(milliseconds: 220),
       curve: Curves.easeOutCubic,
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 2, 12, 0),
-        child: Row(
-          children: [
-            // Иконка / кнопка назад
-            AnimatedSwitcher(
-              duration: const Duration(milliseconds: 200),
-              child: showBack
-                  ? GestureDetector(
-                      key: const ValueKey('back'),
-                      onTap: onBack,
-                      child: Container(
-                        width: 32, height: 32,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: primary.withAlpha(isDark ? 34 : 22),
-                          border: Border.all(
-                              color: primary.withAlpha(isDark ? 50 : 34),
-                              width: 0.8),
-                        ),
-                        child: Icon(Icons.keyboard_arrow_down_rounded,
-                            color: primary, size: 20),
-                      ),
-                    )
-                  : Container(
-                      key: const ValueKey('icon'),
-                      width: 32, height: 32,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: primary.withAlpha(isDark ? 28 : 18),
-                      ),
-                      child: Icon(Icons.history_rounded,
-                          color: primary, size: 17),
-                    ),
+        padding: const EdgeInsets.fromLTRB(14, 4, 14, 8),
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(14, 12, 12, 12),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(20),
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                primary.withAlpha(isDark ? 24 : 16),
+                primary.withAlpha(isDark ? 10 : 6),
+              ],
             ),
-            const SizedBox(width: 10),
-
-            // Заголовок
-            Expanded(
-              child: AnimatedSwitcher(
-                duration: const Duration(milliseconds: 180),
-                child: showBack && selectedDay != null
-                    ? Text(
-                        key: ValueKey('date_${selectedDay}'),
-                        _formatDate(selectedDay!),
-                        style: theme.textTheme.titleSmall?.copyWith(
-                          fontWeight: FontWeight.w600,
+            border: Border.all(
+              color: primary.withAlpha(isDark ? 34 : 22),
+              width: 0.8,
+            ),
+          ),
+          child: Row(
+            children: [
+              AnimatedSwitcher(
+                duration: const Duration(milliseconds: 200),
+                child: showBack
+                    ? GestureDetector(
+                        key: const ValueKey('back'),
+                        onTap: onBack,
+                        child: Container(
+                          width: 36,
+                          height: 36,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: primary.withAlpha(isDark ? 34 : 22),
+                            border: Border.all(
+                              color: primary.withAlpha(isDark ? 50 : 34),
+                              width: 0.8,
+                            ),
+                          ),
+                          child: Icon(
+                            Icons.keyboard_arrow_down_rounded,
+                            color: primary,
+                            size: 20,
+                          ),
                         ),
                       )
-                    : Text(
-                        key: const ValueKey('title'),
-                        'История',
-                        style: theme.textTheme.titleSmall?.copyWith(
-                          fontWeight: FontWeight.w600,
+                    : Container(
+                        key: const ValueKey('icon'),
+                        width: 36,
+                        height: 36,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: primary.withAlpha(isDark ? 28 : 18),
+                        ),
+                        child: Icon(
+                          Icons.history_rounded,
+                          color: primary,
+                          size: 18,
                         ),
                       ),
               ),
-            ),
-
-            // Навигация prev/next (только в day view)
-            if (showBack) ...[
-              _NavBtn(
-                icon: Icons.chevron_left,
-                onTap: onPrev,
-                primary: primary,
-                isDark: isDark,
+              const SizedBox(width: 12),
+              Expanded(
+                child: AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 180),
+                  child: showBack && selectedDay != null
+                      ? Column(
+                          key: ValueKey('date_$selectedDay'),
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              _formatDate(selectedDay!),
+                              style: theme.textTheme.titleSmall?.copyWith(
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              'Сохранённый день',
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: theme.colorScheme.onSurface.withAlpha(120),
+                              ),
+                            ),
+                          ],
+                        )
+                      : Column(
+                          key: const ValueKey('title'),
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'История',
+                              style: theme.textTheme.titleSmall?.copyWith(
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ],
+                        ),
+                ),
               ),
-              const SizedBox(width: 4),
-              _NavBtn(
-                icon: Icons.chevron_right,
-                onTap: onNext,
-                primary: primary,
-                isDark: isDark,
-              ),
-            ] else ...[
-              // Счётчик записей
-              if (markedCount > 0)
+              if (showBack) ...[
+                _NavBtn(
+                  icon: Icons.chevron_left,
+                  onTap: onPrev,
+                  primary: primary,
+                  isDark: isDark,
+                ),
+                const SizedBox(width: 4),
+                _NavBtn(
+                  icon: Icons.chevron_right,
+                  onTap: onNext,
+                  primary: primary,
+                  isDark: isDark,
+                ),
+              ] else if (markedCount > 0)
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                   decoration: BoxDecoration(
                     color: primary.withAlpha(isDark ? 28 : 18),
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(
-                        color: primary.withAlpha(isDark ? 40 : 26), width: 0.7),
+                      color: primary.withAlpha(isDark ? 40 : 26),
+                      width: 0.7,
+                    ),
                   ),
                   child: Text(
                     '$markedCount дн.',
                     style: theme.textTheme.bodySmall?.copyWith(
                       fontSize: 10,
-                      fontWeight: FontWeight.w600,
+                      fontWeight: FontWeight.w700,
                       color: primary,
                     ),
                   ),
                 ),
             ],
-          ],
+          ),
         ),
       ),
     );
@@ -501,36 +540,59 @@ class _CalendarView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (markedDays.isEmpty) {
-      final empty = Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+      final empty = Container(
+        margin: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(24),
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              primary.withAlpha(isDark ? 18 : 10),
+              primary.withAlpha(isDark ? 8 : 4),
+            ],
+          ),
+          border: Border.all(
+            color: primary.withAlpha(isDark ? 30 : 18),
+            width: 0.8,
+          ),
+        ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             Container(
-              width: 52,
-              height: 52,
+              width: 54,
+              height: 54,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 color: primary.withAlpha(isDark ? 25 : 15),
                 border: Border.all(
-                    color: primary.withAlpha(isDark ? 35 : 22), width: 0.8),
+                  color: primary.withAlpha(isDark ? 35 : 22),
+                  width: 0.8,
+                ),
               ),
-              child: Icon(Icons.calendar_today_outlined,
-                  size: 24, color: primary.withAlpha(150)),
+              child: Icon(
+                Icons.history_toggle_off_rounded,
+                size: 24,
+                color: primary.withAlpha(150),
+              ),
             ),
             const SizedBox(height: 14),
             Text(
-              'Нет сохранённых данных',
-              style: theme.textTheme.bodyMedium
-                  ?.copyWith(fontWeight: FontWeight.w600),
+              'История пока пуста',
+              style: theme.textTheme.bodyMedium?.copyWith(
+                fontWeight: FontWeight.w700,
+              ),
               textAlign: TextAlign.center,
             ),
-            const SizedBox(height: 4),
+            const SizedBox(height: 6),
             Text(
-              'Загрузите расписание — оно сохранится в историю автоматически',
+              'После первой загрузки расписания сохранённые дни появятся здесь автоматически.',
               style: theme.textTheme.bodySmall?.copyWith(
                 fontSize: 11,
                 color: theme.colorScheme.onSurface.withAlpha(120),
+                height: 1.35,
               ),
               textAlign: TextAlign.center,
             ),
@@ -550,16 +612,16 @@ class _CalendarView extends StatelessWidget {
       );
     }
 
-    // Календарь прижат к низу (над подсказкой): сверху Spacer — меньше «щели» до боттом-бара
     return LayoutBuilder(
       builder: (context, constraints) {
         final available = constraints.maxHeight;
-        const hintBlockH = 30.0;
+        const hintBlockH = 56.0;
         const calHeaderH = 32.0;
         const dowH = 24.0;
-        final availForGrid = (available - hintBlockH).clamp(0.0, double.infinity);
+        final availForGrid =
+            (available - hintBlockH - 28).clamp(0.0, double.infinity);
         final rowH =
-            ((availForGrid - calHeaderH - dowH) / 6).clamp(28.0, 44.0);
+            ((availForGrid - calHeaderH - dowH) / 6).clamp(32.0, 44.0);
         final gridH = calHeaderH + dowH + 6 * rowH;
         final calendarBox = SizedBox(
           height: gridH,
@@ -681,50 +743,77 @@ class _CalendarView extends StatelessWidget {
                 },
               ),
         );
-        final hintRow = Padding(
-          padding: const EdgeInsets.fromLTRB(16, 2, 16, 2),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
+        final body = Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
             children: [
               Container(
-                width: 5,
-                height: 5,
-                margin: const EdgeInsets.only(right: 6),
+                padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
                 decoration: BoxDecoration(
-                  shape: BoxShape.circle,
+                  borderRadius: BorderRadius.circular(22),
                   gradient: LinearGradient(
-                    colors: [primary, primary.withAlpha(200)],
+                    begin: const Alignment(-0.8, -1.0),
+                    end: const Alignment(0.9, 1.0),
+                    colors: [
+                      primary.withAlpha(isDark ? 20 : 12),
+                      primary.withAlpha(isDark ? 8 : 4),
+                    ],
+                  ),
+                  border: Border.all(
+                    color: primary.withAlpha(isDark ? 28 : 18),
+                    width: 0.8,
                   ),
                 ),
+                child: calendarBox,
               ),
-              Flexible(
-                child: Text(
-                  'Точка — есть расписание. Нажмите на дату.',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    fontSize: 10,
-                    color: theme.colorScheme.onSurface.withAlpha(110),
-                  ),
+              const SizedBox(height: 10),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(16),
+                  color: theme.colorScheme.onSurface.withAlpha(isDark ? 12 : 6),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Container(
+                      width: 6,
+                      height: 6,
+                      margin: const EdgeInsets.only(right: 8),
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        gradient: LinearGradient(
+                          colors: [primary, primary.withAlpha(200)],
+                        ),
+                      ),
+                    ),
+                    Flexible(
+                      child: Text(
+                        'Точка означает сохранённый день. Нажмите на дату.',
+                        textAlign: TextAlign.center,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          fontSize: 10,
+                          color: theme.colorScheme.onSurface.withAlpha(115),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ],
           ),
         );
 
-        if (available < gridH + hintBlockH + 20) {
+        if (available < gridH + hintBlockH + 28) {
           return SingleChildScrollView(
             physics: const ClampingScrollPhysics(),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [calendarBox, hintRow],
-            ),
+            child: body,
           );
         }
-        return Column(
-          children: [
-            const Spacer(),
-            calendarBox,
-            hintRow,
-          ],
+        return Align(
+          alignment: Alignment.topCenter,
+          child: body,
         );
       },
     );
@@ -785,7 +874,8 @@ class _DayLoadingSkeletonState extends State<_DayLoadingSkeleton>
                     height: 32,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      color: widget.primary.withOpacity(opacity * 0.5),
+                      color: widget.primary
+                          .withValues(alpha: widget.primary.a * opacity * 0.5),
                     ),
                   ),
                   const SizedBox(width: 12),
@@ -798,7 +888,11 @@ class _DayLoadingSkeletonState extends State<_DayLoadingSkeleton>
                           width: double.infinity,
                           decoration: BoxDecoration(
                             color: widget.theme.colorScheme.onSurface
-                                .withOpacity(opacity * 0.15),
+                                .withValues(
+                              alpha: widget.theme.colorScheme.onSurface.a *
+                                  opacity *
+                                  0.15,
+                            ),
                             borderRadius: BorderRadius.circular(6),
                           ),
                         ),
@@ -808,7 +902,11 @@ class _DayLoadingSkeletonState extends State<_DayLoadingSkeleton>
                           width: 120,
                           decoration: BoxDecoration(
                             color: widget.theme.colorScheme.onSurface
-                                .withOpacity(opacity * 0.1),
+                                .withValues(
+                              alpha: widget.theme.colorScheme.onSurface.a *
+                                  opacity *
+                                  0.1,
+                            ),
                             borderRadius: BorderRadius.circular(5),
                           ),
                         ),
@@ -1250,18 +1348,29 @@ class _HistoryLessonGroup extends StatelessWidget {
             const SizedBox(width: 8),
             Container(
               margin: const EdgeInsets.only(top: 2),
-              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(6),
                 color: primary.withAlpha(isDark ? 40 : 25),
               ),
-              child: Text(
-                '$sg п/г',
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w700,
-                  color: primary,
-                ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.groups_outlined,
+                    size: 13,
+                    color: primary,
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    '$sg п/г',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      color: primary,
+                    ),
+                  ),
+                ],
               ),
             ),
           ],

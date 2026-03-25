@@ -137,6 +137,30 @@ class PreferencesManager {
   bool get showPastDays => _prefs.getBool("show_past_days") ?? false;
   set showPastDays(bool v) => _prefs.setBool("show_past_days", v);
 
+  // --- Network (in-app browser) ---
+  /// Стартовый URL вкладки «Сеть». Пусто — встроенная ссылка по умолчанию.
+  String get networkStartUrl {
+    final n = _prefs.getString("network_start_url");
+    if (n != null) return n;
+    final legacy = _prefs.getString("network_city_start_url") ?? "";
+    if (legacy.isNotEmpty) {
+      _prefs.setString("network_start_url", legacy);
+      _prefs.remove("network_city_start_url");
+    }
+    return legacy;
+  }
+
+  set networkStartUrl(String v) {
+    final t = v.trim();
+    if (t.isEmpty) {
+      _prefs.remove("network_start_url");
+      _prefs.remove("network_city_start_url");
+    } else {
+      _prefs.setString("network_start_url", t);
+      _prefs.remove("network_city_start_url");
+    }
+  }
+
   // --- Font ---
   String get fontSize => _prefs.getString("font_size") ?? fontSizeNormal;
   set fontSize(String v) => _prefs.setString("font_size", v);
@@ -174,10 +198,13 @@ class PreferencesManager {
   set autoRefreshEnabled(bool v) =>
       _prefs.setBool("auto_refresh_enabled", v);
 
-  int get autoRefreshInterval =>
-      _prefs.getInt("auto_refresh_interval") ?? 60;
+  int get autoRefreshInterval {
+    final v = _prefs.getInt("auto_refresh_interval") ?? 60;
+    return v.clamp(1, 24 * 60);
+  }
+
   set autoRefreshInterval(int v) =>
-      _prefs.setInt("auto_refresh_interval", v);
+      _prefs.setInt("auto_refresh_interval", v.clamp(1, 24 * 60));
 
   // --- Analytics ---
   bool get analyticsEnabled => _prefs.getBool("analytics_enabled") ?? true;
@@ -256,6 +283,20 @@ class PreferencesManager {
 
   String get lastScheduleHash => _prefs.getString("last_schedule_hash") ?? "";
   set lastScheduleHash(String v) => _prefs.setString("last_schedule_hash", v);
+
+  /// Метка последнего успешного ответа сервера по расписанию (для баннера офлайн).
+  int? get lastScheduleNetworkOkMs {
+    final v = _prefs.getInt("last_schedule_network_ok_ms");
+    return v == null || v <= 0 ? null : v;
+  }
+
+  set lastScheduleNetworkOkMs(int? v) {
+    if (v == null || v <= 0) {
+      _prefs.remove("last_schedule_network_ok_ms");
+    } else {
+      _prefs.setInt("last_schedule_network_ok_ms", v);
+    }
+  }
 
   // --- Notes ---
   String get notesText => _prefs.getString("notes_text") ?? "";

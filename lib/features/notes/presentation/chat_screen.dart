@@ -21,6 +21,7 @@ import 'package:photo_view/photo_view_gallery.dart';
 import 'package:http/http.dart' as http;
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../../core/navigation/app_routes.dart';
 import '../data/message.dart' as app;
 import '../data/message_repository.dart';
 import 'bloc/chat_bloc.dart';
@@ -495,7 +496,6 @@ class _ChatScreenState extends State<ChatScreen> {
                     children: [
                       Expanded(
                         child: Chat(
-                          key: ValueKey(identityHashCode(state)),
                           chatController: _chatController,
                           currentUserId: currentUserId,
                           resolveUser: (id) => Future.value(User(id: id, name: 'Вы')),
@@ -783,10 +783,11 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Widget _buildFullComposer(BuildContext context, ThemeData theme, ColorScheme colorScheme) {
+    final top = _buildComposerTop(theme, colorScheme);
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        if (_buildComposerTop(theme, colorScheme) != null) _buildComposerTop(theme, colorScheme)!,
+        if (top != null) top,
         _buildComposerRow(context, theme, colorScheme),
       ],
     );
@@ -2306,8 +2307,8 @@ class _AlbumBubble extends StatelessWidget {
 
 void _openPhotoGallery(BuildContext context, List<String> sources, int initialIndex) {
   Navigator.of(context).push(
-    MaterialPageRoute<void>(
-      builder: (ctx) => Scaffold(
+    ScaleFadePageRoute<void>(
+      page: Scaffold(
         backgroundColor: Colors.black,
         body: Stack(
           children: [
@@ -2327,14 +2328,14 @@ void _openPhotoGallery(BuildContext context, List<String> sources, int initialIn
               },
             ),
             Positioned(
-              top: MediaQuery.paddingOf(ctx).top + 8,
+              top: MediaQuery.paddingOf(context).top + 8,
               left: 8,
               child: Material(
                 color: Colors.black54,
                 borderRadius: BorderRadius.circular(24),
                 child: IconButton(
                   icon: const Icon(Icons.arrow_back_ios_new, color: Colors.white, size: 22),
-                  onPressed: () => Navigator.of(ctx).pop(),
+                  onPressed: () => Navigator.of(context).pop(),
                 ),
               ),
             ),
@@ -2355,33 +2356,55 @@ class _EmptyChatPlaceholder extends StatelessWidget {
   Widget build(BuildContext context) {
     return Center(
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 32),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              width: 72,
-              height: 72,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: colorScheme.primary.withValues(alpha: 0.15),
+        padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 32),
+        child: Container(
+          constraints: const BoxConstraints(maxWidth: 320),
+          padding: const EdgeInsets.fromLTRB(22, 24, 22, 22),
+          decoration: BoxDecoration(
+            color: colorScheme.surfaceContainerHigh.withValues(alpha: 0.9),
+            borderRadius: BorderRadius.circular(28),
+            border: Border.all(color: colorScheme.outline.withValues(alpha: 0.08)),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 76,
+                height: 76,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      colorScheme.primary.withValues(alpha: 0.92),
+                      colorScheme.primary.withValues(alpha: 0.56),
+                    ],
+                  ),
+                ),
+                child: Icon(
+                  Icons.bookmark_added_rounded,
+                  size: 34,
+                  color: colorScheme.onPrimary,
+                ),
               ),
-              child: Icon(
-                Icons.chat_bubble_outline_rounded,
-                size: 36,
-                color: colorScheme.primary.withValues(alpha: 0.7),
+              const SizedBox(height: 18),
+              Text(
+                'Личное пространство для заметок',
+                style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
+                textAlign: TextAlign.center,
               ),
-            ),
-            const SizedBox(height: 20),
-            Text(
-              'Напишите сообщение или прикрепите фото',
-              style: theme.textTheme.bodyLarge?.copyWith(
-                color: colorScheme.onSurface.withValues(alpha: 0.8),
+              const SizedBox(height: 8),
+              Text(
+                'Сохраняй мысли, ссылки, фото и голосовые так же быстро, как в избранном чате.',
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: colorScheme.onSurface.withValues(alpha: 0.72),
+                  height: 1.35,
+                ),
+                textAlign: TextAlign.center,
               ),
-              textAlign: TextAlign.center,
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

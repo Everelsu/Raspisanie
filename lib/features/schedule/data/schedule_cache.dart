@@ -4,6 +4,11 @@ import "package:shared_preferences/shared_preferences.dart";
 
 import "../domain/models.dart";
 
+/// Кэш расписания в SharedPreferences.
+///
+/// Формат **v2** (`sched_v2_`): один ключ с JSON `{"t": мс, "d": [DaySchedule…]}` —
+/// меньше фрагментации и одно чтение вместо отдельной строки расписания.
+/// Старый формат (`schedule_` + `timestamp_`) поддерживается при загрузке.
 class ScheduleCache {
   ScheduleCache(this._prefs);
 
@@ -13,31 +18,46 @@ class ScheduleCache {
   String _scheduleKey(String college, String groupFile) =>
       "schedule_${college}_$groupFile";
 
+  String _bundleKey(String college, String groupFile) =>
+      "sched_v2_${college}_$groupFile";
+
   String _firstDayKey(String college, String groupFile) =>
       "schedule_first_${college}_$groupFile";
 
   String _timestampKey(String college, String groupFile) =>
       "timestamp_${college}_$groupFile";
 
+  bool _isExpired(int tsMs) {
+    if (tsMs <= 0) return true;
+    final ageHours =
+        (DateTime.now().millisecondsSinceEpoch - tsMs) / (1000 * 60 * 60);
+    return ageHours > _expiryHours;
+  }
+
   void save(List<DaySchedule> schedules, String groupFile, String college) {
     if (groupFile.isEmpty || college.isEmpty || schedules.isEmpty) return;
-    final json = jsonEncode(schedules.map((e) => e.toJson()).toList());
-    _prefs.setString(_scheduleKey(college, groupFile), json);
+    final t = DateTime.now().millisecondsSinceEpoch;
+    final daysJson = schedules.map((e) => e.toJson()).toList();
+    final payload = jsonEncode(<String, dynamic>{
+      "t": t,
+      "d": daysJson,
+    });
+    _prefs.setString(_bundleKey(college, groupFile), payload);
+    _prefs.remove(_scheduleKey(college, groupFile));
     try {
       final first = _pickFirstDayForFastPreview(schedules);
-      _prefs.setString(_firstDayKey(college, groupFile), jsonEncode(first.toJson()));
+      _prefs.setString(
+        _firstDayKey(college, groupFile),
+        jsonEncode(first.toJson()),
+      );
     } catch (_) {}
-    _prefs.setInt(
-        _timestampKey(college, groupFile), DateTime.now().millisecondsSinceEpoch);
+    _prefs.setInt(_timestampKey(college, groupFile), t);
   }
 
   DaySchedule? loadFirstDay(String groupFile, String college) {
     if (groupFile.isEmpty || college.isEmpty) return null;
     final ts = _prefs.getInt(_timestampKey(college, groupFile)) ?? 0;
-    if (ts <= 0) return null;
-    final ageHours =
-        (DateTime.now().millisecondsSinceEpoch - ts) / (1000 * 60 * 60);
-    if (ageHours > _expiryHours) {
+    if (_isExpired(ts)) {
       clear(groupFile, college);
       return null;
     }
@@ -54,30 +74,56 @@ class ScheduleCache {
     if (groupFile.isEmpty || college.isEmpty) return null;
     final ts = _prefs.getInt(_timestampKey(college, groupFile)) ?? 0;
     if (ts <= 0) return null;
-    final ageHours =
-        (DateTime.now().millisecondsSinceEpoch - ts) / (1000 * 60 * 60);
-    if (ageHours > _expiryHours) {
+    if (_isExpired(ts)) {
       clear(groupFile, college);
       return null;
     }
+
+    final bundled = _prefs.getString(_bundleKey(college, groupFile));
+    if (bundled != null && bundled.isNotEmpty) {
+      final days = _decodeBundleDays(bundled);
+      if (days != null && days.isNotEmpty) return days;
+    }
+
     final raw = _prefs.getString(_scheduleKey(college, groupFile));
     if (raw == null || raw.isEmpty) return null;
-    final list = (jsonDecode(raw) as List)
-        .map((e) => DaySchedule.fromJson(e as Map<String, dynamic>))
-        .toList();
+    final list = _decodeDaysList(raw);
     return list.isEmpty ? null : list;
+  }
+
+  List<DaySchedule> _decodeDaysList(String raw) {
+    try {
+      final list = jsonDecode(raw) as List;
+      return list
+          .map((e) => DaySchedule.fromJson(e as Map<String, dynamic>))
+          .toList();
+    } catch (_) {
+      return const <DaySchedule>[];
+    }
+  }
+
+  List<DaySchedule>? _decodeBundleDays(String raw) {
+    try {
+      final map = jsonDecode(raw) as Map<String, dynamic>;
+      final list = map["d"] as List?;
+      if (list == null) return null;
+      return list
+          .map((e) => DaySchedule.fromJson(e as Map<String, dynamic>))
+          .toList();
+    } catch (_) {
+      return null;
+    }
   }
 
   bool hasValid(String groupFile, String college) {
     if (groupFile.isEmpty || college.isEmpty) return false;
     final ts = _prefs.getInt(_timestampKey(college, groupFile)) ?? 0;
     if (ts <= 0) return false;
-    final ageHours =
-        (DateTime.now().millisecondsSinceEpoch - ts) / (1000 * 60 * 60);
-    return ageHours <= _expiryHours;
+    return !_isExpired(ts);
   }
 
   void clear(String groupFile, String college) {
+    _prefs.remove(_bundleKey(college, groupFile));
     _prefs.remove(_scheduleKey(college, groupFile));
     _prefs.remove(_firstDayKey(college, groupFile));
     _prefs.remove(_timestampKey(college, groupFile));
@@ -87,7 +133,10 @@ class ScheduleCache {
   void clearAll() {
     final keys = _prefs.getKeys();
     for (final key in keys) {
-      if (key.startsWith("schedule_") || key.startsWith("timestamp_")) {
+      if (key.startsWith("sched_v2_") ||
+          key.startsWith("schedule_") ||
+          key.startsWith("timestamp_") ||
+          key.startsWith("history_")) {
         _prefs.remove(key);
       }
     }
@@ -96,7 +145,10 @@ class ScheduleCache {
   static const _maxHistoryEntries = 15;
 
   void saveToHistory(
-      List<DaySchedule> schedules, String groupFile, String college) {
+    List<DaySchedule> schedules,
+    String groupFile,
+    String college,
+  ) {
     if (schedules.isEmpty) return;
     final histKey = "history_${college}_$groupFile";
     final existing = _prefs.getStringList(histKey) ?? [];
@@ -134,7 +186,9 @@ class ScheduleCache {
   }
 
   List<(DateTime date, List<DaySchedule> schedule)> loadHistory(
-      String groupFile, String college) {
+    String groupFile,
+    String college,
+  ) {
     final histKey = "history_${college}_$groupFile";
     final entries = _prefs.getStringList(histKey) ?? [];
     final result = <(DateTime, List<DaySchedule>)>[];
@@ -145,8 +199,9 @@ class ScheduleCache {
       if (ts == null) continue;
       try {
         final json = jsonDecode(entry.substring(sep + 1)) as List;
-        final days =
-            json.map((e) => DaySchedule.fromJson(e as Map<String, dynamic>)).toList();
+        final days = json
+            .map((e) => DaySchedule.fromJson(e as Map<String, dynamic>))
+            .toList();
         result.add((DateTime.fromMillisecondsSinceEpoch(ts), days));
       } catch (_) {}
     }
@@ -165,7 +220,8 @@ class ScheduleCache {
     final now = DateTime.now();
     final today =
         "${now.day.toString().padLeft(2, "0")}.${now.month.toString().padLeft(2, "0")}.${now.year}";
-    final todayNonEmpty = schedules.where((d) => d.date == today && d.items.isNotEmpty);
+    final todayNonEmpty =
+        schedules.where((d) => d.date == today && d.items.isNotEmpty);
     if (todayNonEmpty.isNotEmpty) return todayNonEmpty.first;
     final anyNonEmpty = schedules.where((d) => d.items.isNotEmpty);
     if (anyNonEmpty.isNotEmpty) return anyNonEmpty.first;

@@ -25,6 +25,7 @@ dependencies:
 
   # Уведомления и виджет
   firebase_core: ^3.8.1
+  firebase_crashlytics: ^4.2.0
   firebase_messaging: ^15.1.6
   flutter_local_notifications: ^20.1.0
   home_widget: ^0.9.0
@@ -57,6 +58,7 @@ dependencies:
   package_info_plus: ^8.1.2
   share_plus: ^12.0.1
   url_launcher: ^6.3.2
+  webview_flutter: ^4.10.0
   uuid: ^4.5.1
   firebase_analytics: ^11.6.0
   workmanager: ^0.9.0
@@ -66,6 +68,7 @@ dev_dependencies:
     sdk: flutter
   flutter_lints: ^6.0.0
   flutter_launcher_icons: ^0.14.4
+  flutter_native_splash: ^2.4.6
   image: ^4.5.4
 
 flutter:
@@ -85,11 +88,26 @@ flutter:
         - asset: assets/fonts/SpaceGrotesk-Bold.ttf
           weight: 700
 
+  assets:
+    - assets/icon/app_icon.png
+
 flutter_launcher_icons:
   android: true
   ios: true
   image_path: "assets/icon/app_icon.png"
-  adaptive_icon_background: "#7EB5D8"
+  # Matches in-app icon: dark circle behind the logo.
+  adaptive_icon_background: "#000000"
   adaptive_icon_foreground: "assets/icon/app_icon.png"
   min_sdk_android: 21
   remove_alpha_ios: true
+
+# Native splash — pure black (#000000) like the reference device screen.
+flutter_native_splash:
+  color: "#000000"
+  image: assets/icon/app_icon.png
+  # Edge-to-edge black until Flutter draws the first frame.
+  fullscreen: true
+  android_12:
+    color: "#000000"
+    image: assets/icon/app_icon.png
+  web: false

@@ -71,6 +71,8 @@ class _RaspiFlutterAppState extends State<RaspiFlutterApp>
         return MaterialApp(
           title: "RaspiFlutter",
           debugShowCheckedModeBanner: false,
+          themeAnimationDuration: const Duration(milliseconds: 280),
+          themeAnimationCurve: Curves.easeOutCubic,
           navigatorObservers: [
             if (AnalyticsService.instance.observer != null)
               AnalyticsService.instance.observer!,
@@ -91,8 +93,11 @@ class _RaspiFlutterAppState extends State<RaspiFlutterApp>
           ),
           builder: (context, child) {
             final media = MediaQuery.of(context);
+            // Учитываем системный масштаб шрифта и множитель из настроек.
+            final system = media.textScaler.scale(1.0);
+            final effective = (system * textScale).clamp(0.78, 1.85);
             return MediaQuery(
-              data: media.copyWith(textScaler: TextScaler.linear(textScale)),
+              data: media.copyWith(textScaler: TextScaler.linear(effective)),
               child: child ?? const SizedBox.shrink(),
             );
           },

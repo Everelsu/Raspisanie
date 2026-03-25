@@ -34,10 +34,12 @@ class CustomRefreshWrapper extends StatefulWidget {
 
 class _CustomRefreshWrapperState extends State<CustomRefreshWrapper>
     with SingleTickerProviderStateMixin {
+  static const _armOffset = 72.0;
 
   AnimationController? _ctrl;
 
   bool _wasArmed = false;
+  bool _wasLoading = false;
   /// Максимальный прогресс за текущую тягу — дуга только растёт, не откатывается
   double _maxPullProgress = 0;
 
@@ -63,7 +65,7 @@ class _CustomRefreshWrapperState extends State<CustomRefreshWrapper>
 
     return CustomRefreshIndicator(
       onRefresh: widget.onRefresh,
-      offsetToArmed: 72,
+      offsetToArmed: _armOffset,
       onStateChanged: (change) {
         final isArmed    = change.currentState == IndicatorState.armed;
         final isLoading  = change.currentState.isLoading;
@@ -73,6 +75,11 @@ class _CustomRefreshWrapperState extends State<CustomRefreshWrapper>
           HapticFeedback.lightImpact();
         }
         _wasArmed = isArmed;
+
+        if (_wasLoading && !isLoading) {
+          HapticFeedback.mediumImpact();
+        }
+        _wasLoading = isLoading;
 
         if (isLoading) {
           _ctrl?.repeat();
@@ -95,10 +102,10 @@ class _CustomRefreshWrapperState extends State<CustomRefreshWrapper>
         final displayProgress = loading ? 1.0 : _maxPullProgress;
 
         // Rubber-band смещение контента
-        const zone = 72.0;
-        final offset = t <= 1.0 ? t * zone : zone + (t - 1.0) * zone * 0.12;
+        const zone = _armOffset;
+        final offset = t <= 1.0 ? t * 42.0 : 42.0 + (t - 1.0) * 8.0;
         // Скругление растёт с тягой (0 → 16px)
-        final radius = offset < 1 ? 0.0 : (offset / zone).clamp(0.0, 1.0) * 16.0;
+        final radius = offset < 1 ? 0.0 : (offset / zone).clamp(0.0, 1.0) * 10.0;
         // Кольцо спрятано выше — выезжает с границы экрана
         final emerge = Curves.easeOutCubic.transform(displayProgress);
         final ringSlideY = 88.0 * (1.0 - emerge);
@@ -133,15 +140,9 @@ class _CustomRefreshWrapperState extends State<CustomRefreshWrapper>
             // Контент
             Transform.translate(
               offset: Offset(0, offset),
-              child: AnimatedScale(
-                scale: armed ? 0.98 : 1.0,
-                duration: const Duration(milliseconds: 200),
-                curve: Curves.easeOutCubic,
-                alignment: Alignment.topCenter,
-                child: ClipRRect(
-                  borderRadius: BorderRadius.vertical(top: Radius.circular(radius)),
-                  child: child,
-                ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.vertical(top: Radius.circular(radius)),
+                child: child,
               ),
             ),
           ],

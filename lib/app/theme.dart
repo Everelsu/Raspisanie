@@ -23,7 +23,7 @@ class AppThemeColors {
 class AppThemes {
   static const _colors = <String, AppThemeColors>{
     "dark": AppThemeColors(
-      primary: Color(0xFF7CB8F7),
+      primary: Color(0xFFFFFFFF),
       surface: Color(0xFF101010),
       card: Color(0xFF1C1C1E),
       onSurface: Color(0xFFE5E5EA),
@@ -32,7 +32,7 @@ class AppThemes {
       brightness: Brightness.dark,
     ),
     "light": AppThemeColors(
-      primary: Color(0xFF7EB5D8),
+      primary: Color(0xFF111111),
       surface: Color(0xFFF2F2F7),
       card: Color(0xFFFFFFFF),
       onSurface: Color(0xFF1C1C1E),
@@ -145,11 +145,14 @@ class AppThemes {
       useMaterial3: true,
       colorScheme: scheme,
       brightness: c.brightness,
+      visualDensity: VisualDensity.standard,
       scaffoldBackgroundColor: c.surface,
       splashFactory: InkSparkle.splashFactory,
+      iconTheme: IconThemeData(color: c.onSurfaceSecondary, size: 24),
+      primaryIconTheme: IconThemeData(color: primary, size: 24),
       pageTransitionsTheme: const PageTransitionsTheme(
         builders: {
-          TargetPlatform.android: CupertinoPageTransitionsBuilder(),
+          TargetPlatform.android: ZoomPageTransitionsBuilder(),
           TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
         },
       ),
@@ -258,6 +261,63 @@ class AppThemes {
       dividerTheme: DividerThemeData(
         color: c.onSurfaceSecondary.withAlpha(30),
       ),
+      textSelectionTheme: TextSelectionThemeData(
+        cursorColor: primary,
+        selectionColor: primary.withAlpha(72),
+        selectionHandleColor: primary,
+      ),
+      dialogTheme: DialogThemeData(
+        backgroundColor: c.card,
+        elevation: 3,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(22),
+        ),
+        titleTextStyle: textTheme.titleLarge,
+        contentTextStyle: textTheme.bodyMedium,
+      ),
+      popupMenuTheme: PopupMenuThemeData(
+        color: c.card,
+        elevation: 3,
+        surfaceTintColor: Colors.transparent,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(14),
+        ),
+        textStyle: textTheme.bodyMedium,
+      ),
+      tooltipTheme: TooltipThemeData(
+        waitDuration: const Duration(milliseconds: 450),
+        showDuration: const Duration(seconds: 3),
+        verticalOffset: 10,
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: Color.alphaBlend(
+            c.onSurface.withAlpha(c.brightness == Brightness.dark ? 216 : 36),
+            c.card,
+          ),
+          borderRadius: BorderRadius.circular(10),
+        ),
+        textStyle: TextStyle(
+          color: c.brightness == Brightness.dark ? c.surface : c.onSurface,
+          fontSize: 12.5,
+          height: 1.25,
+        ),
+      ),
+      scrollbarTheme: ScrollbarThemeData(
+        thickness: WidgetStateProperty.all(5),
+        radius: const Radius.circular(8),
+        thumbVisibility: WidgetStateProperty.all(false),
+        thumbColor: WidgetStatePropertyAll(primary.withAlpha(90)),
+        crossAxisMargin: 2,
+        mainAxisMargin: 4,
+        interactive: true,
+      ),
+      listTileTheme: ListTileThemeData(
+        iconColor: c.onSurfaceSecondary,
+        textColor: c.onSurface,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
+        minVerticalPadding: 4,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      ),
       bottomSheetTheme: BottomSheetThemeData(
         backgroundColor: c.card,
         shape: const RoundedRectangleBorder(
@@ -275,6 +335,8 @@ class AppThemes {
       snackBarTheme: SnackBarThemeData(
         backgroundColor: c.card,
         contentTextStyle: TextStyle(color: c.onSurface),
+        actionTextColor: primary,
+        elevation: 4,
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         insetPadding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
@@ -368,6 +430,18 @@ class AppThemes {
 
   static LinearGradient primaryGradient(String key) {
     final c = _colors[key] ?? _colors["dark"]!;
+    if (c.brightness == Brightness.light) {
+      return LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        stops: const [0.0, 0.42, 1.0],
+        colors: [
+          const Color(0xFF050505),
+          const Color(0xFF232323),
+          const Color(0xFF4A4A4A),
+        ],
+      );
+    }
     final mid = Color.alphaBlend(c.primary.withAlpha(235), c.surface);
     final end = Color.alphaBlend(c.primary.withAlpha(195), c.surface);
     return LinearGradient(
@@ -393,8 +467,8 @@ class AppThemes {
 
   /// Палитра цветов для выбора акцента (во всплывающем меню настроек).
   static const accentPalette = <Color>[
-    Color(0xFF7CB8F7), // dark default
-    Color(0xFF7EB5D8), // light default
+    Color(0xFFFFFFFF), // dark default
+    Color(0xFF111111), // light default
     Color(0xFF34C759), // green
     Color(0xFFFF6B9D), // pink
     Color(0xFF5AC8FA), // blue
@@ -403,9 +477,9 @@ class AppThemes {
     Color(0xFFFF9F1C), // orange
     Color(0xFFFF453A), // red
     Color(0xFFE8E37A), // soft yellow
-    Color.fromARGB(255, 255, 255, 255), // cyan
-    Color.fromARGB(255, 0, 0, 0), // violet
-    Color.fromARGB(255, 0, 82, 20), // mint
+    Color(0xFF00BCD4), // cyan
+    Color(0xFF8B5CF6), // violet
+    Color(0xFF1FA37A), // mint
   ];
 }
 

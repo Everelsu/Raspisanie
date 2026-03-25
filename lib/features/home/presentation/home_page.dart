@@ -1,6 +1,6 @@
 import "dart:io";
 
-import "package:animations/animations.dart";
+import "package:flutter/foundation.dart";
 import "package:flutter/material.dart";
 import "package:flutter/services.dart";
 import "package:package_info_plus/package_info_plus.dart";
@@ -14,7 +14,7 @@ import "../../../core/update/update_dialog.dart";
 import "../../../core/update/version_utils.dart";
 import "../../../core/widgets/animated_app_bar.dart";
 import "../../../core/widgets/bottom_bar_sheet.dart";
-import "../../notes/presentation/notes_page.dart";
+import "../../network/presentation/network_page.dart";
 import "../../schedule/presentation/history_calendar_sheet.dart";
 import "../../schedule/presentation/schedule_controller.dart";
 import "../../schedule/presentation/schedule_page.dart";
@@ -37,33 +37,35 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
+  /// Варианты «за сколько минут до пары» в настройках уведомлений.
+  static const List<int> _kNotificationOffsets = [5, 10, 15];
+
   int _currentIndex = 0;
   bool _sheetOpen = false;
   bool _appUpdateDialogOpen = false;
+  PageController? _pageController;
+  /// Fullscreen WebView on the network tab — hides bottom bar + in-browser toolbar.
+  bool _networkImmersive = false;
+  late final ValueNotifier<bool> _networkImmersiveNotifier;
 
-  static const _titles = ["Расписание", "Итоги", "Заметки", "Настройки"];
-  static const _screenIds = ["schedule", "stats", "notes", "settings"];
+  static const _titles = [
+    "Расписание",
+    "Итоги",
+    "Сеть",
+    "Настройки",
+  ];
+  static const _screenIds = ["schedule", "stats", "network", "settings"];
 
-  late final List<Widget> _pages;
+  PageController get _safePageController =>
+      _pageController ??= PageController(initialPage: _currentIndex);
 
   @override
   void initState() {
     super.initState();
+    _networkImmersiveNotifier = ValueNotifier<bool>(false);
+    _pageController = PageController(initialPage: _currentIndex);
     WidgetsBinding.instance.addObserver(this);
     NotificationService.openScheduleOnTap.addListener(_onOpenScheduleRequested);
-    _pages = [
-      SchedulePage(
-        controller: widget.controller,
-        fontService: widget.fontService,
-      ),
-      StatisticsPage(controller: widget.controller),
-      const NotesPage(),
-      SettingsPage(
-        controller: widget.controller,
-        onThemeChanged: widget.onThemeChanged,
-        fontService: widget.fontService,
-      ),
-    ];
     AnalyticsService.instance.logScreen(_screenIds[_currentIndex]);
     if (Platform.isAndroid && widget.controller.prefs.autoCheckAppUpdate) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -77,6 +79,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 
   @override
   void dispose() {
+    _networkImmersiveNotifier.dispose();
+    _pageController?.dispose();
+    _pageController = null;
     WidgetsBinding.instance.removeObserver(this);
     NotificationService.openScheduleOnTap.removeListener(_onOpenScheduleRequested);
     super.dispose();
@@ -97,6 +102,40 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       widget.controller.prefs.lastResumeAppUpdateCheckMs = now;
       _checkForegroundAppUpdate();
     });
+  }
+
+  /// Собираем вкладки при каждом [build], чтобы после hot reload и обновления
+  /// [HomePage] всегда передавался актуальный [ScheduleController] (кэш в
+  /// [initState] давал «битые» слоты полей и null у [NetworkPage.controller]).
+  List<Widget> _buildTabPages() {
+    return [
+      SchedulePage(
+        key: const ValueKey<Object>("home_tab_schedule"),
+        controller: widget.controller,
+        fontService: widget.fontService,
+      ),
+      StatisticsPage(
+        key: const ValueKey<Object>("home_tab_stats"),
+        controller: widget.controller,
+      ),
+      NetworkPage(
+        key: const ValueKey<Object>("network_browser_v2"),
+        scheduleController: widget.controller,
+        parentImmersiveNotifier: _networkImmersiveNotifier,
+        onImmersiveChanged: (v) {
+          setState(() {
+            _networkImmersive = v;
+            _networkImmersiveNotifier.value = v;
+          });
+        },
+      ),
+      SettingsPage(
+        key: const ValueKey<Object>("home_tab_settings"),
+        controller: widget.controller,
+        onThemeChanged: widget.onThemeChanged,
+        fontService: widget.fontService,
+      ),
+    ];
   }
 
   Future<void> _tryShowPendingBackgroundUpdate() async {
@@ -153,10 +192,40 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       setState(() {
-        _currentIndex = 0;
         _sheetOpen = false;
       });
+      _goToPage(0);
     });
+  }
+
+  Future<void> _goToPage(int index) async {
+    if (!mounted || index == _currentIndex) return;
+    if (_currentIndex == 2 && index != 2) {
+      _networkImmersiveNotifier.value = false;
+    }
+    setState(() {
+      _currentIndex = index;
+      if (index != 2) _networkImmersive = false;
+      _sheetOpen = false;
+    });
+    AnalyticsService.instance.logScreen(_screenIds[index]);
+    if (index == 1) {
+      widget.controller.loadStatistics();
+    }
+    final controller = _pageController;
+    if (controller == null) return;
+    // До первого layout [PageView] у [PageController] может не быть клиентов —
+    // тогда [jumpToPage] нужно отложить на кадр, иначе таб внизу и страница разъедутся.
+    void jump() {
+      if (!mounted) return;
+      final c = _pageController;
+      if (c == null || !c.hasClients) return;
+      c.jumpToPage(index);
+    }
+
+    jump();
+    if (controller.hasClients) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) => jump());
   }
 
   @override
@@ -173,42 +242,39 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
               showNotificationsAction: _currentIndex == 3,
               onNotificationsTap: () => _showNotificationSheet(context),
             ),
-      body: PageTransitionSwitcher(
-        duration: const Duration(milliseconds: 380),
-        transitionBuilder: (child, animation, secondaryAnimation) {
-          return SharedAxisTransition(
-            animation: animation,
-            secondaryAnimation: secondaryAnimation,
-            transitionType: SharedAxisTransitionType.horizontal,
-            child: child,
-          );
+      body: PageView(
+        controller: _safePageController,
+        physics: const NeverScrollableScrollPhysics(),
+        onPageChanged: (index) {
+          if (!mounted || index == _currentIndex) return;
+          setState(() => _currentIndex = index);
         },
-        child: KeyedSubtree(
-          key: ValueKey(_currentIndex),
-          child: RepaintBoundary(child: _pages[_currentIndex]),
-        ),
+        children: _buildTabPages()
+            .map((page) => RepaintBoundary(child: page))
+            .toList(),
       ),
-      bottomNavigationBar: BottomBarWithSheet(
-        selectedIndex: _currentIndex,
-        onIndexChanged: (index) {
-          FocusScope.of(context).unfocus();
-          HapticFeedback.selectionClick();
-          setState(() {
-            _sheetOpen = false;
-            _currentIndex = index;
-          });
-          AnalyticsService.instance.logScreen(_screenIds[index]);
-          if (index == 1) {
-            widget.controller.loadStatistics();
-          }
-        },
-        sheetOpen: _sheetOpen,
-        onSheetToggle: () {
-          HapticFeedback.lightImpact();
-          FocusScope.of(context).unfocus();
-          setState(() => _sheetOpen = !_sheetOpen);
-        },
-        sheetChild: HistoryCalendarSheet(controller: widget.controller),
+      bottomNavigationBar: AnimatedSize(
+        duration: const Duration(milliseconds: 320),
+        curve: Curves.easeOutCubic,
+        alignment: Alignment.bottomCenter,
+        clipBehavior: Clip.hardEdge,
+        child: (_currentIndex == 2 && _networkImmersive)
+            ? const SizedBox(width: double.infinity, height: 0)
+            : BottomBarWithSheet(
+                selectedIndex: _currentIndex,
+                onIndexChanged: (index) async {
+                  FocusScope.of(context).unfocus();
+                  HapticFeedback.selectionClick();
+                  await _goToPage(index);
+                },
+                sheetOpen: _sheetOpen,
+                onSheetToggle: () {
+                  HapticFeedback.lightImpact();
+                  FocusScope.of(context).unfocus();
+                  setState(() => _sheetOpen = !_sheetOpen);
+                },
+                sheetChild: HistoryCalendarSheet(controller: widget.controller),
+              ),
       ),
     );
   }
@@ -217,8 +283,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     final theme = Theme.of(context);
     final ctrl = widget.controller;
     final prefs = ctrl.prefs;
-    final bg = theme.cardTheme.color ?? theme.cardColor;
-    final primary = theme.colorScheme.primary;
+    final surface = theme.colorScheme.surface;
 
     showModalBottomSheet<void>(
       context: context,
@@ -226,130 +291,291 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       isScrollControlled: true,
       builder: (ctx) => Container(
         constraints: BoxConstraints(
-          maxHeight: MediaQuery.of(ctx).size.height * 0.6,
+          maxHeight: MediaQuery.of(ctx).size.height * 0.72,
         ),
         decoration: BoxDecoration(
-          color: bg,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withAlpha(40),
-              blurRadius: 20,
-              offset: const Offset(0, -4),
-            ),
-          ],
+          color: surface,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
         ),
         child: ListenableBuilder(
           listenable: ctrl,
           builder: (ctx, _) => StatefulBuilder(
             builder: (ctx, setSheetState) => SafeArea(
               top: false,
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(20, 10, 20, 24),
-                child: SingleChildScrollView(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 20),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
                     Center(
                       child: Container(
                         width: 36,
                         height: 4,
                         decoration: BoxDecoration(
-                          color: theme.colorScheme.onSurface.withAlpha(80),
+                          color: theme.colorScheme.onSurface.withAlpha(60),
                           borderRadius: BorderRadius.circular(2),
                         ),
                       ),
                     ),
-                    const SizedBox(height: 20),
-                    Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(8),
-                          decoration: BoxDecoration(
-                            color: primary.withAlpha(24),
-                            borderRadius: BorderRadius.circular(12),
+                    const SizedBox(height: 12),
+                    Text(
+                      "Уведомления",
+                      style: theme.textTheme.bodySmall,
+                    ),
+                    const SizedBox(height: 10),
+                    Card(
+                      clipBehavior: Clip.antiAlias,
+                      margin: EdgeInsets.zero,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          _notificationSwitchTile(
+                            theme,
+                            setSheetState,
+                            "Напоминания о парах",
+                            "Пуш за выбранное время до начала пары (на текущий день)",
+                            prefs.notificationsEnabled,
+                            (v) async {
+                              setSheetState(() => prefs.notificationsEnabled = v);
+                              if (!v) {
+                                await NotificationService.instance.cancelAll();
+                              } else {
+                                await ctrl.syncNotificationsNow();
+                              }
+                              WidgetsBinding.instance.addPostFrameCallback((_) {
+                                if (mounted) setState(() {});
+                              });
+                            },
                           ),
-                          child: Icon(
-                            Icons.notifications_outlined,
-                            size: 22,
-                            color: primary,
+                          _notificationDivider(theme),
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  "За сколько минут до пары",
+                                  style: theme.textTheme.bodyLarge?.copyWith(
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                                Text(
+                                  "Когда придёт напоминание о следующей паре",
+                                  style: theme.textTheme.bodySmall?.copyWith(
+                                    color: theme.colorScheme.onSurfaceVariant,
+                                  ),
+                                ),
+                                const SizedBox(height: 10),
+                                _notificationOffsetChooser(
+                                  theme,
+                                  ctrl,
+                                  setSheetState,
+                                ),
+                                if (!prefs.notificationsEnabled)
+                                  Padding(
+                                    padding: const EdgeInsets.only(top: 8),
+                                    child: Text(
+                                      "Включите напоминания, чтобы выбрать интервал",
+                                      style: theme.textTheme.bodySmall
+                                          ?.copyWith(
+                                        color: theme
+                                            .colorScheme.onSurfaceVariant,
+                                      ),
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          ),
+                          _notificationDivider(theme),
+                          _notificationSwitchTile(
+                            theme,
+                            setSheetState,
+                            "Изменение расписания",
+                            "Пуш, когда данные расписания обновились",
+                            prefs.notifyScheduleChanges,
+                            (v) {
+                              setSheetState(
+                                  () => prefs.notifyScheduleChanges = v);
+                              WidgetsBinding.instance.addPostFrameCallback((_) {
+                                if (mounted) setState(() {});
+                              });
+                            },
+                          ),
+                        ],
+                      ),
+                    ),
+                    if (!kReleaseMode) ...[
+                      const SizedBox(height: 16),
+                      Text(
+                        "Отладка",
+                        style: theme.textTheme.bodySmall,
+                      ),
+                      const SizedBox(height: 8),
+                      Card(
+                        clipBehavior: Clip.antiAlias,
+                        margin: EdgeInsets.zero,
+                        child: Padding(
+                          padding: const EdgeInsets.all(16),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                "Тест уведомлений",
+                                style: theme.textTheme.bodyLarge?.copyWith(
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                "Каналы и exact alarm. В release не показывается.",
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: theme.colorScheme.onSurfaceVariant,
+                                ),
+                              ),
+                              const SizedBox(height: 12),
+                              Wrap(
+                                spacing: 8,
+                                runSpacing: 8,
+                                children: [
+                                  OutlinedButton(
+                                    onPressed: () async {
+                                      await NotificationService.instance
+                                          .showTestNow();
+                                    },
+                                    child: const Text("Сейчас"),
+                                  ),
+                                  OutlinedButton(
+                                    onPressed: () async {
+                                      final ok = await NotificationService
+                                          .instance
+                                          .scheduleTestIn1Min();
+                                      if (!ctx.mounted) return;
+                                      ScaffoldMessenger.of(ctx).showSnackBar(
+                                        SnackBar(
+                                          content: Text(
+                                            ok
+                                                ? "Тест через 1 мин запланирован"
+                                                : "Не удалось (нет разрешения)",
+                                          ),
+                                        ),
+                                      );
+                                    },
+                                    child: const Text("Через 1 мин"),
+                                  ),
+                                  OutlinedButton(
+                                    onPressed: () async {
+                                      final name =
+                                          prefs.selectedGroupName.trim();
+                                      await NotificationService.instance
+                                          .showScheduleChanged(
+                                        groupName:
+                                            name.isEmpty ? "Тест" : name,
+                                        fromBackgroundWorker: true,
+                                      );
+                                    },
+                                    child: const Text("«Изменилось»"),
+                                  ),
+                                ],
+                              ),
+                            ],
                           ),
                         ),
-                        const SizedBox(width: 12),
-                        Text(
-                          "Уведомления",
-                          style: theme.textTheme.titleLarge?.copyWith(
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 20),
-                  _notificationSwitchTile(
-                    theme,
-                    setSheetState,
-                    "Напоминания о парах",
-                    "Приходят при открытии и обновлении расписания",
-                    prefs.notificationsEnabled,
-                    (v) async {
-                      setSheetState(() => prefs.notificationsEnabled = v);
-                      if (!v) {
-                        await NotificationService.instance.cancelAll();
-                      } else {
-                        await ctrl.syncNotificationsNow();
-                      }
-                      WidgetsBinding.instance.addPostFrameCallback((_) {
-                        if (mounted) setState(() {});
-                      });
-                    },
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    "За сколько минут до пары",
-                    style: theme.textTheme.titleSmall?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: [5, 10, 15].map((m) {
-                      final selected = prefs.notificationOffset == m;
-                      return ChoiceChip(
-                        label: Text("$m мин"),
-                        selected: selected,
-                        selectedColor: primary.withAlpha(48),
-                        onSelected: (_) async {
-                          setSheetState(() => prefs.notificationOffset = m);
-                          await ctrl.syncNotificationsNow();
-                          WidgetsBinding.instance.addPostFrameCallback((_) {
-                            if (mounted) setState(() {});
-                          });
-                        },
-                      );
-                    }).toList(),
-                  ),
-                  const SizedBox(height: 12),
-                  _notificationSwitchTile(
-                    theme,
-                    setSheetState,
-                    "Обновление расписания",
-                    "Уведомлять при изменении данных",
-                    prefs.notifyScheduleChanges,
-                    (v) {
-                      setSheetState(() => prefs.notifyScheduleChanges = v);
-                      WidgetsBinding.instance.addPostFrameCallback((_) {
-                        if (mounted) setState(() {});
-                      });
-                    },
-                  ),
-
+                      ),
+                    ],
                   ],
                 ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _notificationOffsetChooser(
+    ThemeData theme,
+    ScheduleController ctrl,
+    StateSetter setSheetState,
+  ) {
+    final prefs = ctrl.prefs;
+    final remindersOn = prefs.notificationsEnabled;
+    return Opacity(
+      opacity: remindersOn ? 1 : 0.45,
+      child: IgnorePointer(
+        ignoring: !remindersOn,
+        child: Row(
+          children: [
+            for (var i = 0; i < _kNotificationOffsets.length; i++) ...[
+              if (i > 0) const SizedBox(width: 10),
+              Expanded(
+                child: _notificationOffsetButton(
+                  theme,
+                  minutes: _kNotificationOffsets[i],
+                  selected:
+                      prefs.notificationOffset == _kNotificationOffsets[i],
+                  onTap: () async {
+                    final m = _kNotificationOffsets[i];
+                    setSheetState(() => prefs.notificationOffset = m);
+                    await ctrl.syncNotificationsNow();
+                    WidgetsBinding.instance.addPostFrameCallback((_) {
+                      if (mounted) setState(() {});
+                    });
+                  },
                 ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _notificationDivider(ThemeData theme) {
+    return Divider(
+      height: 1,
+      indent: 16,
+      endIndent: 16,
+      color: theme.dividerTheme.color,
+    );
+  }
+
+  Widget _notificationOffsetButton(
+    ThemeData theme, {
+    required int minutes,
+    required bool selected,
+    required VoidCallback onTap,
+  }) {
+    final cs = theme.colorScheme;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: () {
+          HapticFeedback.lightImpact();
+          onTap();
+        },
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 6),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
+            color: selected
+                ? cs.primary.withAlpha(25)
+                : theme.scaffoldBackgroundColor,
+            border: Border.all(
+              color: selected ? cs.primary : cs.onSurface.withAlpha(30),
+              width: selected ? 2 : 1,
+            ),
+          ),
+          child: Center(
+            child: Text(
+              "$minutes мин",
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                color: selected ? cs.primary : cs.onSurface,
               ),
             ),
           ),
@@ -360,26 +586,34 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 
   Widget _notificationSwitchTile(
     ThemeData theme,
-    StateSetter setSheetState,
+    StateSetter sheetState, // ignore: unused_parameter — нужен для единой сигнатуры с вызовом из листа
     String title,
     String subtitle,
     bool value,
     ValueChanged<bool> onChanged,
   ) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
       child: Row(
         children: [
           Expanded(
             child: Column(
+              mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(title, style: theme.textTheme.bodyLarge),
+                Text(
+                  title,
+                  style: theme.textTheme.bodyLarge,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
                 Text(
                   subtitle,
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: theme.colorScheme.onSurfaceVariant,
                   ),
+                  maxLines: 3,
+                  overflow: TextOverflow.ellipsis,
                 ),
               ],
             ),
@@ -432,3 +666,4 @@ class _HomeAnimatedAppBar extends StatelessWidget implements PreferredSizeWidget
     );
   }
 }
+

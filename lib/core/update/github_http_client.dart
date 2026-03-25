@@ -63,7 +63,7 @@ class GitHubHttpClient {
         }
       }
       throw lastError is Exception
-          ? lastError as Exception
+          ? lastError
           : Exception("$lastError");
     } finally {
       client.close();

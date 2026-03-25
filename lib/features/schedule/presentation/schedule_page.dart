@@ -75,36 +75,103 @@ class SchedulePage extends StatelessWidget {
           );
         } else {
           final useAnimations = schedule.length <= 14;
-          final listView = ListView.builder(
-            physics: const AlwaysScrollableScrollPhysics(
-                parent: BouncingScrollPhysics()),
-            padding: EdgeInsets.fromLTRB(
-              12,
-              contentTopUnderAppBar(context),
-              12,
-              116,
-            ),
-            itemCount: schedule.length,
-            itemBuilder: (context, index) {
-              final card = _DayCard(
-                day: schedule[index],
-                college: college,
-                prefs: prefs,
-                controller: controller,
-                fontService: fontService,
-              );
-              if (!useAnimations) return card;
-              return AnimationConfiguration.staggeredList(
-                position: index,
-                duration: const Duration(milliseconds: 300),
-                child: SlideAnimation(
-                  verticalOffset: 30.0,
-                  child: FadeInAnimation(child: card),
+          // Баннер по тексту [error], без геттеров на [ScheduleController] —
+          // иначе после hot reload старый инстанс контроллера даёт Lookup failed.
+          final showOfflineBanner = error != null &&
+              (error.contains("Показаны сохранённые") ||
+                  error.contains("Не удалось обновить"));
+
+          final listPadding = EdgeInsets.fromLTRB(
+            12,
+            contentTopUnderAppBar(context),
+            12,
+            116,
+          );
+          const listPhysics = AlwaysScrollableScrollPhysics(
+            parent: BouncingScrollPhysics(),
+          );
+
+          Widget buildDayItem(int index) {
+            final card = _DayCard(
+              day: schedule[index],
+              college: college,
+              prefs: prefs,
+              controller: controller,
+              fontService: fontService,
+            );
+            if (!useAnimations) return card;
+            return AnimationConfiguration.staggeredList(
+              position: index,
+              duration: const Duration(milliseconds: 300),
+              child: SlideAnimation(
+                verticalOffset: 30.0,
+                child: FadeInAnimation(child: card),
+              ),
+            );
+          }
+
+          final Widget listView;
+          if (showOfflineBanner) {
+            final lastMs = prefs.lastScheduleNetworkOkMs;
+            // Один CustomScrollView: pull-to-refresh срабатывает и при тяге с баннера,
+            // а не только с области списка (Column+Expanded(ListView) ломал жест).
+            listView = CustomScrollView(
+              physics: listPhysics,
+              slivers: [
+                SliverToBoxAdapter(
+                  child: _ScheduleOfflineBanner(
+                    theme: theme,
+                    lastSync: lastMs != null
+                        ? DateTime.fromMillisecondsSinceEpoch(lastMs)
+                        : null,
+                    errorHint: error,
+                  ),
+                ),
+                SliverPadding(
+                  padding: listPadding,
+                  sliver: SliverList(
+                    delegate: SliverChildBuilderDelegate(
+                      (context, index) => buildDayItem(index),
+                      childCount: schedule.length,
+                    ),
+                  ),
+                ),
+              ],
+            );
+          } else {
+            listView = ListView.builder(
+              physics: listPhysics,
+              padding: listPadding,
+              itemCount: schedule.length,
+              itemBuilder: (context, index) => buildDayItem(index),
+            );
+          }
+
+          body = useAnimations ? AnimationLimiter(child: listView) : listView;
+        }
+
+        // Без прокрутки pull-to-refresh на пустых/загрузочных экранах не срабатывает.
+        // Важно: сохранить виджет в отдельную переменную — иначе [body] внутри
+        // [LayoutBuilder] указывает на сам LayoutBuilder (рекурсия, нет размера).
+        if (schedule.isEmpty) {
+          final emptyStateContent = body;
+          body = LayoutBuilder(
+            builder: (context, constraints) {
+              var maxH = constraints.maxHeight;
+              if (!maxH.isFinite) {
+                maxH = MediaQuery.sizeOf(context).height;
+              }
+              return SingleChildScrollView(
+                physics: const AlwaysScrollableScrollPhysics(
+                  parent: BouncingScrollPhysics(),
+                ),
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(minHeight: maxH),
+                  child: emptyStateContent,
                 ),
               );
             },
           );
-          body = useAnimations ? AnimationLimiter(child: listView) : listView;
         }
 
         return CustomRefreshWrapper(
@@ -931,18 +998,30 @@ class _LessonTile extends StatelessWidget {
                 const SizedBox(width: 8),
                 Container(
                   margin: const EdgeInsets.only(top: 2),
-                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(6),
                     color: theme.colorScheme.primary.withAlpha(25),
                   ),
-                  child: Text(
-                    "$sg п/г",
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w700,
-                      color: theme.colorScheme.primary,
-                    ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.groups_outlined,
+                        size: 13,
+                        color: theme.colorScheme.primary,
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        "$sg п/г",
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          color: theme.colorScheme.primary,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ],
@@ -978,7 +1057,7 @@ class _LessonTile extends StatelessWidget {
         lines.add(_detailLine(
           context: context,
           theme: theme,
-          icon: Icons.groups_2_outlined,
+          icon: Icons.groups_outlined,
           text: item.subject!,
           href: item.subjectHref,
           subScheduleKind: SubScheduleKind.teacherOrGroup,
@@ -1142,6 +1221,93 @@ class _WindowRow extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _ScheduleOfflineBanner extends StatelessWidget {
+  const _ScheduleOfflineBanner({
+    required this.theme,
+    required this.lastSync,
+    this.errorHint,
+  });
+
+  final ThemeData theme;
+  final DateTime? lastSync;
+  final String? errorHint;
+
+  @override
+  Widget build(BuildContext context) {
+    final last = lastSync != null
+        ? "${lastSync!.day.toString().padLeft(2, "0")}.${lastSync!.month.toString().padLeft(2, "0")} "
+            "${lastSync!.hour.toString().padLeft(2, "0")}:${lastSync!.minute.toString().padLeft(2, "0")}"
+        : null;
+    return Material(
+      color: theme.colorScheme.errorContainer.withAlpha(220),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(
+              Icons.wifi_off_rounded,
+              size: 20,
+              color: theme.colorScheme.onErrorContainer,
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    "Нет сети или сервер недоступен — показано сохранённое расписание",
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      color: theme.colorScheme.onErrorContainer,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  if (last != null)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: Text(
+                        "Последнее успешное обновление: $last",
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onErrorContainer
+                              .withAlpha(230),
+                        ),
+                      ),
+                    ),
+                  if (last == null)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: Text(
+                        "Успешного обновления ещё не было в этой сессии",
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onErrorContainer
+                              .withAlpha(200),
+                        ),
+                      ),
+                    ),
+                  if (errorHint != null && errorHint!.trim().isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: Text(
+                        errorHint!,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onErrorContainer
+                              .withAlpha(200),
+                          fontSize: 11,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

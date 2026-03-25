@@ -220,8 +220,6 @@ class ExpressScheduleRepository {
     required String file,
     required String college,
   }) async {
-    final cached = subScheduleCache?.load(file, college);
-    if (cached != null && cached.isNotEmpty) return cached;
     final base = baseUrlFor(college);
     final url = "$base$file";
     final response = await _client.getBytes(url);

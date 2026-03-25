@@ -4,7 +4,6 @@ import "../data/lesson_times.dart";
 import "../domain/models.dart";
 import "schedule_controller.dart";
 
-/// Тип подрасписания: кабинет или преподаватель/группа (предмет).
 enum SubScheduleKind {
   classroom,
   teacherOrGroup,
@@ -20,10 +19,7 @@ Future<void> showSubScheduleSheet({
   showModalBottomSheet(
     context: context,
     isScrollControlled: true,
-    backgroundColor: Theme.of(context).cardTheme.color,
-    shape: const RoundedRectangleBorder(
-      borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-    ),
+    backgroundColor: Colors.transparent,
     builder: (ctx) => _SubScheduleContent(
       file: file,
       controller: controller,
@@ -40,6 +36,7 @@ class _SubScheduleContent extends StatefulWidget {
     required this.title,
     required this.kind,
   });
+
   final String file;
   final ScheduleController controller;
   final String title;
@@ -53,6 +50,7 @@ class _SubScheduleContentState extends State<_SubScheduleContent> {
   List<DaySchedule>? _schedule;
   bool _loading = true;
   String? _error;
+  bool _isOfflineSnapshot = false;
 
   @override
   void initState() {
@@ -61,79 +59,227 @@ class _SubScheduleContentState extends State<_SubScheduleContent> {
   }
 
   Future<void> _load() async {
+    final cached = widget.controller.repository.subScheduleCache?.load(
+      widget.file,
+      widget.controller.college,
+    );
+
+    if (cached != null && cached.isNotEmpty && mounted) {
+      setState(() {
+        _schedule = cached;
+        _loading = false;
+        _error = null;
+        _isOfflineSnapshot = false;
+      });
+    } else if (mounted) {
+      setState(() {
+        _loading = true;
+        _error = null;
+        _isOfflineSnapshot = false;
+      });
+    }
+
     try {
       final result = await widget.controller.repository.fetchSubSchedule(
         file: widget.file,
         college: widget.controller.college,
       );
-      if (mounted) setState(() { _schedule = result; _loading = false; });
+      if (!mounted) return;
+      setState(() {
+        _schedule = result;
+        _loading = false;
+        _error = null;
+        _isOfflineSnapshot = false;
+      });
     } catch (e) {
-      if (mounted) setState(() { _error = e.toString(); _loading = false; });
+      if (!mounted) return;
+      if (cached != null && cached.isNotEmpty) {
+        setState(() {
+          _schedule = cached;
+          _loading = false;
+          _error = null;
+          _isOfflineSnapshot = true;
+        });
+        return;
+      }
+      setState(() {
+        _error = e.toString();
+        _loading = false;
+        _isOfflineSnapshot = false;
+      });
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final primary = theme.colorScheme.primary;
+    final cardColor = theme.cardTheme.color ?? theme.colorScheme.surface;
+    final isDark = theme.brightness == Brightness.dark;
+
     return DraggableScrollableSheet(
-      initialChildSize: 0.6,
-      minChildSize: 0.3,
-      maxChildSize: 0.9,
+      initialChildSize: 0.68,
+      minChildSize: 0.34,
+      maxChildSize: 0.92,
       expand: false,
       builder: (ctx, scrollController) {
-        return Column(
-          children: [
-            const SizedBox(height: 8),
-            Container(
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(
-                color: theme.colorScheme.onSurface.withAlpha(40),
-                borderRadius: BorderRadius.circular(2),
-              ),
+        return Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: const Alignment(-0.7, -1.0),
+              end: const Alignment(0.9, 1.0),
+              colors: [
+                Color.alphaBlend(primary.withAlpha(isDark ? 30 : 18), cardColor),
+                Color.alphaBlend(primary.withAlpha(isDark ? 12 : 6), cardColor),
+                cardColor,
+              ],
             ),
-            Padding(
-              padding: const EdgeInsets.all(16),
-              child: Text(
-                widget.title,
-                style: theme.textTheme.titleMedium,
-                textAlign: TextAlign.center,
-              ),
-            ),
-            const Divider(height: 1),
-            Expanded(
-              child: _loading
-                  ? const Center(child: CircularProgressIndicator())
-                  : _error != null
-                      ? Center(
-                          child: Padding(
-                            padding: const EdgeInsets.all(24),
-                            child: Text(_error!,
-                                style: TextStyle(
-                                    color: theme.colorScheme.error)),
-                          ),
-                        )
-                      : _schedule == null || _schedule!.isEmpty
-                          ? Center(
-                              child: Text("Нет данных",
-                                  style: theme.textTheme.bodyLarge),
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+          ),
+          child: SafeArea(
+            top: false,
+            child: Column(
+              children: [
+                const SizedBox(height: 10),
+                Container(
+                  width: 44,
+                  height: 5,
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.onSurface.withAlpha(36),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+                  child: _HeaderCard(
+                    title: widget.title,
+                    kind: widget.kind,
+                    isTeacherMode: widget.controller.prefs.isTeacherMode,
+                    isOfflineSnapshot: _isOfflineSnapshot,
+                    isLoaded: _schedule != null && _schedule!.isNotEmpty,
+                    isLoading: _loading,
+                    onRefresh: _load,
+                  ),
+                ),
+                Expanded(
+                  child: _loading && (_schedule == null || _schedule!.isEmpty)
+                      ? const Center(child: CircularProgressIndicator())
+                      : _error != null
+                          ? _ErrorState(
+                              message: _error!,
+                              onRetry: _load,
                             )
-                          : ListView.builder(
-                              controller: scrollController,
-                              padding: const EdgeInsets.all(16),
-                              itemCount: _schedule!.length,
-                              itemBuilder: (_, i) => _MiniDayCard(
-                                day: _schedule![i],
-                                college: widget.controller.college,
-                                isTeacherMode: widget.controller.prefs.isTeacherMode,
-                                sheetTitle: widget.title,
-                                kind: widget.kind,
-                              ),
-                            ),
+                          : _schedule == null || _schedule!.isEmpty
+                              ? const _EmptyState(
+                                  title: "Нет данных",
+                                  subtitle:
+                                      "Подрасписание на сегодня пока недоступно.",
+                                )
+                              : ListView.builder(
+                                  controller: scrollController,
+                                  physics: const BouncingScrollPhysics(
+                                    parent: AlwaysScrollableScrollPhysics(),
+                                  ),
+                                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+                                  itemCount: _schedule!.length,
+                                  itemBuilder: (_, i) => _MiniDayCard(
+                                    day: _schedule![i],
+                                    college: widget.controller.college,
+                                    isTeacherMode:
+                                        widget.controller.prefs.isTeacherMode,
+                                    sheetTitle: widget.title,
+                                    kind: widget.kind,
+                                  ),
+                                ),
+                ),
+              ],
             ),
-          ],
+          ),
         );
       },
+    );
+  }
+}
+
+class _HeaderCard extends StatelessWidget {
+  const _HeaderCard({
+    required this.title,
+    required this.kind,
+    required this.isTeacherMode,
+    required this.isOfflineSnapshot,
+    required this.isLoaded,
+    required this.isLoading,
+    required this.onRefresh,
+  });
+
+  final String title;
+  final SubScheduleKind kind;
+  /// Преподаватель открывает подрасписание группы; студент — преподавателя.
+  final bool isTeacherMode;
+  final bool isOfflineSnapshot;
+  final bool isLoaded;
+  final bool isLoading;
+  final VoidCallback onRefresh;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final primary = theme.colorScheme.primary;
+    final isDark = theme.brightness == Brightness.dark;
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 14, 10, 14),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(22),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            primary.withAlpha(isDark ? 38 : 24),
+            primary.withAlpha(isDark ? 16 : 10),
+          ],
+        ),
+        border: Border.all(
+          color: primary.withAlpha(isDark ? 48 : 28),
+          width: 0.8,
+        ),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: primary.withAlpha(isDark ? 46 : 28),
+            ),
+            child: Icon(
+              kind == SubScheduleKind.classroom
+                  ? Icons.meeting_room_outlined
+                  : (isTeacherMode
+                      ? Icons.groups_outlined
+                      : Icons.person_outline_rounded),
+              color: primary,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                    height: 1.15,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -146,63 +292,147 @@ class _MiniDayCard extends StatelessWidget {
     required this.kind,
     this.sheetTitle = "",
   });
+
   final DaySchedule day;
   final String college;
   final bool isTeacherMode;
   final SubScheduleKind kind;
-  /// Заголовок панели (кабинет, преподаватель или группа) — не дублируем в строке.
   final String sheetTitle;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final primary = theme.colorScheme.primary;
+    final isToday = _isToday(day.date);
+    final cardColor = theme.cardTheme.color ?? theme.colorScheme.surface;
+    final isDark = theme.brightness == Brightness.dark;
+    final items = day.items.toList()
+      ..sort((a, b) => a.lessonNumber.compareTo(b.lessonNumber));
+
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            "${day.day} — ${day.date}",
-            style: theme.textTheme.titleSmall?.copyWith(
-              color: theme.colorScheme.primary,
-            ),
+      child: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: const Alignment(-0.6, -0.8),
+            end: const Alignment(0.9, 1.0),
+            colors: [
+              Color.alphaBlend(
+                primary.withAlpha(isToday ? (isDark ? 44 : 28) : (isDark ? 20 : 12)),
+                cardColor,
+              ),
+              cardColor,
+            ],
           ),
-          const SizedBox(height: 6),
-          ...day.items.map((item) {
-            final time = LessonTimes.formatTime(item.lessonNumber,
-                college: college);
-            return Padding(
-              padding: const EdgeInsets.only(bottom: 4),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
+          borderRadius: BorderRadius.circular(22),
+          border: Border.all(
+            color: primary.withAlpha(
+              isToday ? (isDark ? 52 : 34) : (isDark ? 24 : 14),
+            ),
+            width: 0.8,
+          ),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
                 children: [
-                  SizedBox(
-                    width: 24,
-                    child: Text(
-                      "${item.lessonNumber}.",
-                      style: theme.textTheme.bodySmall?.copyWith(
-                          fontWeight: FontWeight.bold),
-                    ),
-                  ),
                   Expanded(
                     child: Text(
-                      kind == SubScheduleKind.classroom
-                          ? _buildClassroomItemLine(item, time)
-                          : _buildTeacherOrGroupItemLine(item, time),
-                      style: theme.textTheme.bodySmall,
+                      "${_capitalize(day.day)} • ${day.date}",
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        color: isToday ? primary : null,
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
                   ),
+                  if (isToday)
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 5,
+                      ),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(999),
+                        color: primary.withAlpha(isDark ? 42 : 20),
+                      ),
+                      child: Text(
+                        "Сегодня",
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: primary,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
                 ],
               ),
-            );
-          }),
-          const Divider(),
-        ],
+              const SizedBox(height: 10),
+              if (items.isEmpty)
+                Text(
+                  "Нет занятий",
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: theme.colorScheme.onSurface.withAlpha(140),
+                    fontStyle: FontStyle.italic,
+                  ),
+                )
+              else
+                ...items.map((item) {
+                  final time = LessonTimes.formatTime(
+                    item.lessonNumber,
+                    college: college,
+                  );
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: Container(
+                      padding: const EdgeInsets.fromLTRB(10, 10, 10, 10),
+                      decoration: BoxDecoration(
+                        color: theme.colorScheme.onSurface.withAlpha(isDark ? 10 : 5),
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Container(
+                            width: 34,
+                            height: 34,
+                            alignment: Alignment.center,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: primary.withAlpha(isDark ? 40 : 22),
+                            ),
+                            child: Text(
+                              "${item.lessonNumber}",
+                              style: theme.textTheme.bodyMedium?.copyWith(
+                                fontWeight: FontWeight.w800,
+                                color: primary,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              kind == SubScheduleKind.classroom
+                                  ? _buildClassroomItemLine(item, time)
+                                  : _buildTeacherOrGroupItemLine(item, time),
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                height: 1.4,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                }),
+            ],
+          ),
+        ),
       ),
     );
   }
 
-  /// Строка пары для подрасписания по кабинету: предмет • преподаватель/группа • время (кабинет не дублируем).
   String _buildClassroomItemLine(ScheduleItem item, String time) {
     final subject = (item.subject ?? "").trim();
     final teacherOrGroup = (item.teacher ?? "").trim();
@@ -211,10 +441,9 @@ class _MiniDayCard extends StatelessWidget {
     if (teacherOrGroup.isNotEmpty) parts.add(teacherOrGroup);
     if (time.isNotEmpty) parts.add(time);
     if (parts.isEmpty) return "Нет данных";
-    return parts.join(" \u2022 ");
+    return parts.join(" • ");
   }
 
-  /// Строка пары для подрасписания по преподавателю/группе: предмет • кабинет • время (препода/группу не дублируем).
   String _buildTeacherOrGroupItemLine(ScheduleItem item, String time) {
     final subject = (item.subject ?? "").trim();
     final classroom = (item.classroom ?? "").trim();
@@ -222,21 +451,132 @@ class _MiniDayCard extends StatelessWidget {
 
     final parts = <String>[];
     if (isTeacherMode) {
-      if (teacherOrGroup.isNotEmpty && !_titleMatches(teacherOrGroup)) parts.add(teacherOrGroup);
+      if (teacherOrGroup.isNotEmpty && !_titleMatches(teacherOrGroup)) {
+        parts.add(teacherOrGroup);
+      }
       if (classroom.isNotEmpty) parts.add("Ауд. $classroom");
-      if (subject.isNotEmpty && subject != teacherOrGroup && !_titleMatches(subject)) parts.add(subject);
+      if (subject.isNotEmpty &&
+          subject != teacherOrGroup &&
+          !_titleMatches(subject)) {
+        parts.add(subject);
+      }
     } else {
       if (subject.isNotEmpty && !_titleMatches(subject)) parts.add(subject);
       if (classroom.isNotEmpty) parts.add("Ауд. $classroom");
-      if (teacherOrGroup.isNotEmpty && !_titleMatches(teacherOrGroup)) parts.add(teacherOrGroup);
+      if (teacherOrGroup.isNotEmpty && !_titleMatches(teacherOrGroup)) {
+        parts.add(teacherOrGroup);
+      }
     }
     if (time.isNotEmpty) parts.add(time);
     if (parts.isEmpty) return "Нет данных";
-    return parts.join(" \u2022 ");
+    return parts.join(" • ");
   }
 
   bool _titleMatches(String value) {
     final t = sheetTitle.trim();
     return t.isNotEmpty && (t == value || "Ауд. $value" == t || t == "Ауд. $value");
+  }
+
+  bool _isToday(String rawDate) {
+    final now = DateTime.now();
+    final dotDate =
+        "${now.day.toString().padLeft(2, "0")}.${now.month.toString().padLeft(2, "0")}.${now.year}";
+    final isoDate =
+        "${now.year}-${now.month.toString().padLeft(2, "0")}-${now.day.toString().padLeft(2, "0")}";
+    return rawDate == dotDate || rawDate == isoDate;
+  }
+
+  String _capitalize(String value) {
+    if (value.isEmpty) return value;
+    return value[0].toUpperCase() + value.substring(1);
+  }
+}
+
+class _ErrorState extends StatelessWidget {
+  const _ErrorState({
+    required this.message,
+    required this.onRetry,
+  });
+
+  final String message;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.cloud_off_outlined,
+              size: 34,
+              color: theme.colorScheme.error,
+            ),
+            const SizedBox(height: 10),
+            Text(
+              message,
+              textAlign: TextAlign.center,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: theme.colorScheme.error,
+              ),
+            ),
+            const SizedBox(height: 14),
+            FilledButton.tonalIcon(
+              onPressed: onRetry,
+              icon: const Icon(Icons.refresh_rounded),
+              label: const Text("Повторить"),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _EmptyState extends StatelessWidget {
+  const _EmptyState({
+    required this.title,
+    required this.subtitle,
+  });
+
+  final String title;
+  final String subtitle;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.event_busy_outlined,
+              size: 34,
+              color: theme.colorScheme.primary.withAlpha(180),
+            ),
+            const SizedBox(height: 10),
+            Text(
+              title,
+              style: theme.textTheme.titleSmall?.copyWith(
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              subtitle,
+              textAlign: TextAlign.center,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurface.withAlpha(140),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }

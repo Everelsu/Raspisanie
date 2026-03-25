@@ -77,7 +77,7 @@ class ScheduleWidgetProvider : HomeWidgetProvider() {
                 else -> R.drawable.widget_background_dark
             }
             val themeTitleColor = when (themeKey) {
-                "light" -> Color.parseColor("#0F172A")
+                "light" -> Color.parseColor("#111111")
                 "green" -> Color.parseColor("#E7FBEF")
                 "pink" -> Color.parseColor("#FCE7F3")
                 "blue" -> Color.parseColor("#E0E7FF")
@@ -86,12 +86,12 @@ class ScheduleWidgetProvider : HomeWidgetProvider() {
                 "orange" -> Color.parseColor("#FFF3E0")
                 "red" -> Color.parseColor("#FFE5E3")
                 "teal" -> Color.parseColor("#F8F3D0")
-                "dark" -> Color.parseColor("#F3F4F6")
-                else -> Color.parseColor("#F3F4F6")
+                "dark" -> Color.parseColor("#FFFFFF")
+                else -> Color.parseColor("#FFFFFF")
             }
             val titleColor = accentColor ?: themeTitleColor
             val subColor = when (themeKey) {
-                "light" -> Color.parseColor("#4B5563")
+                "light" -> Color.parseColor("#2F2F2F")
                 "green" -> Color.parseColor("#BBF7D0")
                 "pink" -> Color.parseColor("#F9A8D4")
                 "blue" -> Color.parseColor("#93C5FD")
@@ -100,11 +100,11 @@ class ScheduleWidgetProvider : HomeWidgetProvider() {
                 "orange" -> Color.parseColor("#FDBA74")
                 "red" -> Color.parseColor("#FECACA")
                 "teal" -> Color.parseColor("#C6C09A")
-                "dark" -> Color.parseColor("#9CA3AF")
-                else -> Color.parseColor("#9CA3AF")
+                "dark" -> Color.parseColor("#B8B8B8")
+                else -> Color.parseColor("#B8B8B8")
             }
             val footerColor = when (themeKey) {
-                "light" -> Color.parseColor("#6B7280")
+                "light" -> Color.parseColor("#3A3A3A")
                 "green" -> Color.parseColor("#A7F3D0")
                 "pink" -> Color.parseColor("#FBCFE8")
                 "blue" -> Color.parseColor("#93C5FD")
@@ -113,8 +113,8 @@ class ScheduleWidgetProvider : HomeWidgetProvider() {
                 "orange" -> Color.parseColor("#FED7AA")
                 "red" -> Color.parseColor("#FDA4AF")
                 "teal" -> Color.parseColor("#E8E37A")
-                "dark" -> Color.parseColor("#6B7280")
-                else -> Color.parseColor("#6B7280")
+                "dark" -> Color.parseColor("#9A9A9A")
+                else -> Color.parseColor("#9A9A9A")
             }
 
             val views = RemoteViews(context.packageName, R.layout.schedule_widget_layout)

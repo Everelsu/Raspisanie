@@ -92,6 +92,9 @@ class NotificationService {
   static const _channel = "lesson_reminders";
   static const _channelChanges = "schedule_changes";
 
+  /// Android: только `@drawable/…` с белым силуэтом на прозрачном фоне (не mipmap launcher).
+  static const _androidSmallIcon = "@drawable/ic_stat_notify";
+
   static const _kEnabled = "ns_enabled";
   static const _kOffset = "ns_offset";
   static const _kLessons = "ns_lessons";
@@ -234,9 +237,17 @@ class NotificationService {
     await prefs.setBool(_kEnabled, false);
   }
 
-  /// Уведомление о смене расписания. Не показывается, если приложение на переднем плане.
-  Future<void> showScheduleChanged({required String groupName}) async {
-    if (appInForeground) return;
+  /// Уведомление о смене расписания.
+  ///
+  /// В **основном изоляте** не показывается, если [appInForeground] — пользователь
+  /// уже в приложении. Фоновый Workmanager выполняется в **другом изоляте**, где
+  /// [appInForeground] по умолчанию true, поэтому оттуда передавайте
+  /// [fromBackgroundWorker]: true.
+  Future<void> showScheduleChanged({
+    required String groupName,
+    bool fromBackgroundWorker = false,
+  }) async {
+    if (!fromBackgroundWorker && appInForeground) return;
     await _ensureInit();
     final title = "Расписание изменилось";
     final body = groupName.trim().isEmpty
@@ -305,7 +316,7 @@ class NotificationService {
           channelDescription: "Уведомления",
           importance: Importance.max,
           priority: Priority.max,
-          icon: "@mipmap/ic_launcher",
+          icon: _androidSmallIcon,
           playSound: true,
           enableVibration: true,
         ),
@@ -329,7 +340,7 @@ class NotificationService {
         channelDescription: "За N минут до начала пары",
         importance: Importance.max,
         priority: Priority.high,
-        icon: "@mipmap/ic_launcher",
+        icon: _androidSmallIcon,
         playSound: true,
         enableVibration: true,
         visibility: NotificationVisibility.public,

@@ -11,10 +11,10 @@ import "package:path_provider/path_provider.dart";
 import "package:share_plus/share_plus.dart";
 import "package:url_launcher/url_launcher.dart";
 
-
 import "../../../app/theme.dart"
     show AppThemeColors, AppThemes, contentTopUnderAppBar;
 import "../../../core/database/schedule_database.dart";
+import "../../../core/widgets/app_icon_image.dart";
 import "../../../core/services/analytics_service.dart";
 import "../../../core/update/app_update_service.dart";
 import "../../../core/update/github_http_client.dart";
@@ -33,11 +33,13 @@ class _UrlProbeResult {
   const _UrlProbeResult({
     required this.ok,
     required this.message,
+    this.latencyMs,
     required this.checkedAt,
   });
 
   final bool ok;
   final String message;
+  final int? latencyMs;
   final DateTime checkedAt;
 }
 
@@ -83,6 +85,26 @@ class _SettingsPageState extends State<SettingsPage> {
 
   void _dismissKeyboard() {
     FocusManager.instance.primaryFocus?.unfocus();
+  }
+
+  String _formatFriendlySyncTime(DateTime value) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final date = DateTime(value.year, value.month, value.day);
+    final dayDiff = today.difference(date).inDays;
+    final time = DateFormat("HH:mm").format(value);
+    if (dayDiff == 0) return "Сегодня в $time";
+    if (dayDiff == 1) return "Вчера в $time";
+    return DateFormat("dd.MM.yyyy HH:mm").format(value);
+  }
+
+  String _formatProbeCaption(_UrlProbeResult probe) {
+    if (!probe.ok) return probe.message;
+    final latency = probe.latencyMs;
+    if (latency == null || latency <= 0) {
+      return "Доступно";
+    }
+    return "Отклик: $latency мс";
   }
 
   @override
@@ -137,8 +159,6 @@ class _SettingsPageState extends State<SettingsPage> {
             const SizedBox(height: 20),
             _section(theme, "ОФОРМЛЕНИЕ"),
             _fontSettingsCard(theme),
-            const SizedBox(height: 10),
-            _fontSizeCard(theme),
             const SizedBox(height: 12),
             _themeGrid(theme),
             const SizedBox(height: 12),
@@ -156,8 +176,8 @@ class _SettingsPageState extends State<SettingsPage> {
   Future<void> _loadDbSettings() async {
     final saved =
         await ScheduleDatabase.instance.getDatabaseSetting("retention_days");
-    final lastDbBackup = await ScheduleDatabase.instance
-        .getDatabaseSetting("db_last_backup_at");
+    final lastDbBackup =
+        await ScheduleDatabase.instance.getDatabaseSetting("db_last_backup_at");
     final parsed = int.tryParse(saved ?? "");
     final parsedDbBackup = int.tryParse(lastDbBackup ?? "");
     final count = await ScheduleDatabase.instance.getSnapshotCount();
@@ -179,181 +199,191 @@ class _SettingsPageState extends State<SettingsPage> {
 
   Widget _fontSettingsCard(ThemeData theme) {
     final cs = theme.colorScheme;
-    final isDark = theme.brightness == Brightness.dark;
+    const fontSizeKeys = [
+      PreferencesManager.fontSizeSmall,
+      PreferencesManager.fontSizeNormal,
+      PreferencesManager.fontSizeLarge,
+      PreferencesManager.fontSizeExtraLarge,
+    ];
+    const fontSizeLabels = ["Мелкий", "Обычный", "Крупный", "Очень крупный"];
+    final sizeIdx = fontSizeKeys.indexOf(prefs.fontSize).clamp(0, 3);
+
     return ListenableBuilder(
       listenable: widget.fontService,
       builder: (context, _) {
+        final selectedFont = widget.fontService.current;
         return Card(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(18),
-            side: BorderSide(
-              color: cs.primary.withAlpha(isDark ? 30 : 20),
-              width: 0.8,
-            ),
-          ),
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 10),
+                child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Container(
-                      padding: const EdgeInsets.all(6),
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          colors: [
-                            cs.primary.withAlpha(40),
-                            cs.primary.withAlpha(20),
-                          ],
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                        ),
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(
-                          color: cs.primary.withAlpha(50),
-                          width: 0.8,
-                        ),
-                      ),
-                      child: Icon(
-                        Icons.text_fields_rounded,
-                        size: 16,
-                        color: cs.primary,
-                      ),
+                    Text(
+                      "Шрифт приложения",
+                      style: theme.textTheme.bodySmall,
                     ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            "Шрифт приложения",
-                            style: theme.textTheme.bodyLarge?.copyWith(
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                          Text(
-                            "Интерфейс и «Поделиться днём»",
-                            style: theme.textTheme.bodySmall?.copyWith(
-                              color: cs.onSurfaceVariant,
-                              fontSize: 12,
-                            ),
-                          ),
-                        ],
+                    const SizedBox(height: 10),
+                    GridView.builder(
+                      primary: false,
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      padding: EdgeInsets.zero,
+                      itemCount: AppFont.values.length,
+                      gridDelegate:
+                          const SliverGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: 2,
+                        crossAxisSpacing: 10,
+                        mainAxisSpacing: 10,
+                        mainAxisExtent: 60,
                       ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 10),
-                GridView.count(
-                  crossAxisCount: 2,
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  crossAxisSpacing: 8,
-                  mainAxisSpacing: 8,
-                  childAspectRatio: 2.65,
-                  children: AppFont.values.map((font) {
-                    final selected = widget.fontService.current == font;
-                    return Material(
-                      color: Colors.transparent,
-                      child: InkWell(
-                        borderRadius: BorderRadius.circular(14),
-                        onTap: () async {
-                          await widget.fontService.setFont(font);
-                          await AnalyticsService.instance
-                              .logFontChanged(widget.fontService.displayName(font));
-                        },
-                        child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 200),
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 10,
-                            vertical: 6,
-                          ),
-                          decoration: BoxDecoration(
-                            gradient: selected
-                                ? LinearGradient(
-                                    begin: Alignment.topLeft,
-                                    end: Alignment.bottomRight,
-                                    colors: [
-                                      cs.primary.withAlpha(isDark ? 50 : 36),
-                                      cs.primary.withAlpha(isDark ? 28 : 18),
-                                    ],
-                                  )
-                                : LinearGradient(
-                                    colors: [
-                                      cs.surfaceContainerHighest
-                                          .withAlpha(isDark ? 100 : 80),
-                                      cs.surfaceContainerHighest
-                                          .withAlpha(isDark ? 70 : 55),
-                                    ],
-                                  ),
-                            borderRadius: BorderRadius.circular(14),
-                            border: Border.all(
-                              color: selected
-                                  ? cs.primary.withAlpha(120)
-                                  : cs.outlineVariant
-                                      .withAlpha(isDark ? 80 : 100),
-                              width: selected ? 1.4 : 0.8,
-                            ),
-                            boxShadow: selected
-                                ? [
-                                    BoxShadow(
-                                      color: cs.primary.withAlpha(20),
-                                      blurRadius: 8,
-                                      offset: const Offset(0, 2),
+                      itemBuilder: (context, index) {
+                        final font = AppFont.values[index];
+                        final selected = selectedFont == font;
+
+                        return Material(
+                          color: Colors.transparent,
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(12),
+                            onTap: () async {
+                              await widget.fontService.setFont(font);
+                              await AnalyticsService.instance.logFontChanged(
+                                  widget.fontService.displayName(font));
+                            },
+                            child: AnimatedContainer(
+                              duration: const Duration(milliseconds: 200),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 8,
+                              ),
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(12),
+                                color: selected
+                                    ? cs.primary.withAlpha(25)
+                                    : theme.scaffoldBackgroundColor,
+                                border: Border.all(
+                                  color: selected
+                                      ? cs.primary
+                                      : cs.onSurface.withAlpha(30),
+                                  width: selected ? 2 : 1,
+                                ),
+                              ),
+                              child: Row(
+                                children: [
+                                  Text(
+                                    "Аа",
+                                    style: widget.fontService.previewStyle(
+                                      font,
+                                      color: selected
+                                          ? cs.primary
+                                          : cs.onSurface,
+                                      fontSize: 17,
+                                      fontWeight: FontWeight.w700,
                                     ),
-                                  ]
-                                : null,
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              SizedBox(
-                                height: 22,
-                                child: Align(
-                                  alignment: Alignment.centerLeft,
-                                  child: FittedBox(
-                                    fit: BoxFit.scaleDown,
-                                    alignment: Alignment.centerLeft,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
                                     child: Text(
-                                      "Аа",
+                                      widget.fontService.displayName(font),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
                                       style: widget.fontService.previewStyle(
                                         font,
                                         color: selected
                                             ? cs.primary
-                                            : cs.onSurface,
-                                        fontSize: 18,
-                                        fontWeight: FontWeight.w700,
+                                            : cs.onSurface.withAlpha(200),
+                                        fontSize: 12,
+                                        fontWeight: selected
+                                            ? FontWeight.w700
+                                            : FontWeight.w500,
                                       ),
                                     ),
                                   ),
-                                ),
+                                  if (selected)
+                                    Icon(
+                                      Icons.check_circle_rounded,
+                                      size: 16,
+                                      color: cs.primary,
+                                    ),
+                                ],
                               ),
-                              const SizedBox(height: 2),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ],
+                ),
+              ),
+              _divider(theme),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
                               Text(
-                                widget.fontService.displayName(font),
-                                maxLines: 1,
+                                "Размер текста",
+                                style: theme.textTheme.bodyLarge,
+                                maxLines: 2,
                                 overflow: TextOverflow.ellipsis,
-                                style: widget.fontService.previewStyle(
-                                  font,
-                                  color: selected
-                                      ? cs.primary.withAlpha(200)
-                                      : cs.onSurfaceVariant,
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.w500,
-                                ),
+                              ),
+                              Text(
+                                "Масштаб в расписании и настройках",
+                                style: theme.textTheme.bodySmall,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
                               ),
                             ],
                           ),
                         ),
-                      ),
-                    );
-                  }).toList(),
+                        const SizedBox(width: 8),
+                        Text(
+                          fontSizeLabels[sizeIdx],
+                          style: theme.textTheme.bodyLarge?.copyWith(
+                            color: cs.primary,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                    Slider(
+                      value: sizeIdx.toDouble(),
+                      min: 0,
+                      max: 3,
+                      divisions: 3,
+                      onChanged: (v) {
+                        setState(
+                          () => prefs.fontSize = fontSizeKeys[v.round()],
+                        );
+                      },
+                      onChangeEnd: (_) => widget.onThemeChanged(),
+                    ),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: fontSizeLabels
+                          .map(
+                            (l) => Text(
+                              l,
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: theme.colorScheme.onSurfaceVariant,
+                              ),
+                            ),
+                          )
+                          .toList(),
+                    ),
+                  ],
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
         );
       },
@@ -377,7 +407,8 @@ class _SettingsPageState extends State<SettingsPage> {
                       theme, "Студент", Icons.school_outlined, !isTeacher, () {
                     ctrl.setUserMode("student");
                     AnalyticsService.instance.logUserModeChanged("student");
-                    ScheduleBackgroundWorker.ensureRegisteredIfNeeded(prefs: prefs);
+                    ScheduleBackgroundWorker.ensureRegisteredIfNeeded(
+                        prefs: prefs);
                     _loadGroupsAsync();
                   }),
                 ),
@@ -388,7 +419,8 @@ class _SettingsPageState extends State<SettingsPage> {
                       () {
                     ctrl.setUserMode("teacher");
                     AnalyticsService.instance.logUserModeChanged("teacher");
-                    ScheduleBackgroundWorker.ensureRegisteredIfNeeded(prefs: prefs);
+                    ScheduleBackgroundWorker.ensureRegisteredIfNeeded(
+                        prefs: prefs);
                     _loadGroupsAsync();
                   }),
                 ),
@@ -450,54 +482,56 @@ class _SettingsPageState extends State<SettingsPage> {
   Widget _collegeCard(ThemeData theme) {
     final sources = prefs.allCollegeSources;
     final selectedCollege = ctrl.college;
-    final hasSelected = sources.any((s) => s.id == selectedCollege);
-    final initialValue = hasSelected
-        ? selectedCollege
-        : (sources.isNotEmpty ? sources.first.id : PreferencesManager.collegeDefault);
+    final selectedSource = sources.where((s) => s.id == selectedCollege).isNotEmpty
+        ? sources.firstWhere((s) => s.id == selectedCollege)
+        : null;
+
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text("Источник расписания", style: theme.textTheme.bodySmall),
-            const SizedBox(height: 8),
-            DropdownButtonFormField<String>(
-              initialValue: initialValue,
-              decoration: InputDecoration(
-                filled: true,
-                fillColor: theme.scaffoldBackgroundColor,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide.none,
-                ),
-                contentPadding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              ),
-              dropdownColor: theme.cardTheme.color,
-              items: sources
-                  .map((source) => DropdownMenuItem(
-                        value: source.id,
-                        child: Text(source.name, style: theme.textTheme.bodyLarge),
-                      ))
-                  .toList(),
-              onChanged: (v) {
-                if (v != null) {
-                  ctrl.setCollege(v);
-                  AnalyticsService.instance.logCollegeChanged(v);
-                  ScheduleBackgroundWorker.ensureRegisteredIfNeeded(prefs: prefs);
-                  _loadGroupsAsync();
-                  _loadLessonTimesForSelectedCollege();
-                }
-              },
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text("Выберите техникум", style: theme.textTheme.bodySmall),
+              ],
             ),
-            const SizedBox(height: 8),
-            Align(
-              alignment: Alignment.centerRight,
-              child: TextButton.icon(
-                onPressed: () => _showCollegeSourcesSheet(theme),
-                icon: const Icon(Icons.link_rounded, size: 18),
-                label: const Text("Управлять ссылками"),
+            const SizedBox(height: 10),
+            GestureDetector(
+              onTap: () => _showCollegeSourcesSheet(theme),
+              child: Container(
+                width: double.infinity,
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                decoration: BoxDecoration(
+                  color: theme.scaffoldBackgroundColor,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: theme.colorScheme.onSurface.withAlpha(30),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        selectedSource?.name ?? "Нажмите для выбора",
+                        style: selectedSource != null
+                            ? theme.textTheme.bodyLarge
+                            : theme.textTheme.bodyMedium?.copyWith(
+                                color:
+                                    theme.colorScheme.onSurface.withAlpha(120),
+                              ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    Icon(
+                      Icons.expand_more,
+                      color: theme.colorScheme.onSurface.withAlpha(100),
+                    ),
+                  ],
+                ),
               ),
             ),
           ],
@@ -524,23 +558,34 @@ class _SettingsPageState extends State<SettingsPage> {
           builder: (ctx, setSheetState) {
             final sources = prefs.allCollegeSources;
             final syncedAt = prefs.syncedCollegeSourcesCheckedAt;
+            final currentFont = widget.fontService.current;
             return SafeArea(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text("Ссылки", style: theme.textTheme.titleLarge),
-                    const SizedBox(height: 4),
-                    Text(
-                      "Можно добавить свой источник и выбрать его в списке техникумов.",
-                      style: theme.textTheme.bodySmall,
-                    ),
-                    const SizedBox(height: 10),
-                    SizedBox(
-                      width: double.infinity,
-                      child: FilledButton.tonalIcon(
+              child: SizedBox(
+                height: MediaQuery.of(ctx).size.height * 0.52,
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.max,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                    Material(
+                      color: theme.cardTheme.color ?? theme.colorScheme.surface,
+                      borderRadius: BorderRadius.circular(12),
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text("Источники", style: theme.textTheme.titleLarge),
+                            const SizedBox(height: 4),
+                            Text(
+                              "Можно добавить свой источник и выбрать его в списке.",
+                              style: theme.textTheme.bodySmall,
+                            ),
+                            const SizedBox(height: 10),
+                            SizedBox(
+                              width: double.infinity,
+                              child: FilledButton.tonalIcon(
                         onPressed: syncRunning
                             ? null
                             : () async {
@@ -561,40 +606,44 @@ class _SettingsPageState extends State<SettingsPage> {
                                   );
                                 }
                               },
-                        icon: syncRunning
-                            ? const SizedBox(
-                                width: 18,
-                                height: 18,
-                                child: CircularProgressIndicator(strokeWidth: 2),
-                              )
-                            : const Icon(Icons.sync_rounded),
-                        label: Text(
-                          syncRunning
-                              ? "Синхронизация..."
-                              : "Синхронизировать ссылки",
+                              icon: syncRunning
+                                  ? const SizedBox(
+                                      width: 18,
+                                      height: 18,
+                                      child: CircularProgressIndicator(strokeWidth: 2),
+                                    )
+                                  : const Icon(Icons.sync_rounded),
+                              label: Text(
+                                syncRunning
+                                    ? "Синхронизация..."
+                                    : "Синхронизировать ссылки",
+                              ),
+                              ),
+                            ),
+                            if (lastSync != null || syncedAt != null) ...[
+                              const SizedBox(height: 6),
+                              Text(
+                                lastSync != null
+                                    ? "Синхронизировано: ${_formatFriendlySyncTime(lastSync!.checkedAt)} • ${lastSync!.message}"
+                                    : "Синхронизировано: ${_formatFriendlySyncTime(syncedAt!)}",
+                                style: widget.fontService.previewStyle(
+                                  currentFont,
+                                  color: theme.colorScheme.onSurfaceVariant,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ],
+                          ],
                         ),
                       ),
                     ),
-                    if (lastSync != null || syncedAt != null) ...[
-                      const SizedBox(height: 6),
-                      Text(
-                        lastSync != null
-                            ? "Последняя синхронизация: ${DateFormat('HH:mm:ss').format(lastSync!.checkedAt)} • ${lastSync!.message}"
-                            : "Последняя синхронизация: ${DateFormat('HH:mm:ss').format(syncedAt!)}",
-                        style: theme.textTheme.labelSmall?.copyWith(
-                          color: theme.colorScheme.onSurfaceVariant,
-                        ),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ],
-                    const SizedBox(height: 12),
-                    ConstrainedBox(
-                      constraints: BoxConstraints(
-                        maxHeight: MediaQuery.of(context).size.height * 0.45,
-                      ),
+                    const SizedBox(height: 14),
+                    Expanded(
                       child: ListView.separated(
-                        shrinkWrap: true,
+                        padding: const EdgeInsets.only(top: 2, bottom: 10),
                         itemCount: sources.length,
                         separatorBuilder: (_, __) => const SizedBox(height: 6),
                         itemBuilder: (_, i) {
@@ -609,6 +658,10 @@ class _SettingsPageState extends State<SettingsPage> {
                                   : theme.colorScheme.error);
                           return ListTile(
                             dense: true,
+                            contentPadding:
+                                const EdgeInsets.fromLTRB(12, 6, 8, 6),
+                            horizontalTitleGap: 10,
+                            minLeadingWidth: 18,
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(12),
                               side: BorderSide(
@@ -638,11 +691,14 @@ class _SettingsPageState extends State<SettingsPage> {
                                   )
                                 else if (probe != null)
                                   Text(
-                                    '${probe.message} • ${DateFormat('HH:mm').format(probe.checkedAt)}',
+                                    _formatProbeCaption(probe),
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
-                                    style: theme.textTheme.labelSmall?.copyWith(
+                                    style: widget.fontService.previewStyle(
+                                      currentFont,
                                       color: probeColor,
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w500,
                                     ),
                                   ),
                               ],
@@ -661,6 +717,12 @@ class _SettingsPageState extends State<SettingsPage> {
                               children: [
                                 IconButton(
                                   tooltip: "Копировать URL",
+                                  visualDensity: VisualDensity.compact,
+                                  padding: EdgeInsets.zero,
+                                  constraints: const BoxConstraints.tightFor(
+                                    width: 32,
+                                    height: 32,
+                                  ),
                                   onPressed: () async {
                                     await Clipboard.setData(
                                         ClipboardData(text: s.baseUrl));
@@ -688,7 +750,13 @@ class _SettingsPageState extends State<SettingsPage> {
                                   )
                                 else
                                   IconButton(
-                                    tooltip: "Пинг (проверить доступность)",
+                                    tooltip: "Пинг",
+                                    visualDensity: VisualDensity.compact,
+                                    padding: EdgeInsets.zero,
+                                    constraints: const BoxConstraints.tightFor(
+                                      width: 32,
+                                      height: 32,
+                                    ),
                                     onPressed: () async {
                                       setSheetState(() {
                                         runningIds.add(s.id);
@@ -703,45 +771,70 @@ class _SettingsPageState extends State<SettingsPage> {
                                         pingById[s.id] = result;
                                       });
                                     },
-                                    icon: const Icon(Icons.wifi_tethering_rounded,
+                                    icon: const Icon(
+                                        Icons.wifi_tethering_rounded,
                                         size: 20),
                                   ),
-                                if (!s.builtIn) ...[
-                                  IconButton(
-                                    tooltip: "Изменить",
-                                    onPressed: () async {
-                                      _dismissKeyboard();
-                                      final ok =
-                                          await _showEditCollegeSourceDialog(s);
-                                      if (!ok || !mounted || !ctx.mounted) {
+                                if (!s.builtIn)
+                                  PopupMenuButton<String>(
+                                    tooltip: "Действия",
+                                    padding: EdgeInsets.zero,
+                                    iconSize: 20,
+                                    splashRadius: 18,
+                                    icon: const Icon(Icons.more_horiz_rounded,
+                                        size: 20),
+                                    itemBuilder: (_) => const [
+                                      PopupMenuItem<String>(
+                                        value: "edit",
+                                        child: Row(
+                                          children: [
+                                            Icon(Icons.edit_outlined, size: 18),
+                                            SizedBox(width: 8),
+                                            Text("Изменить"),
+                                          ],
+                                        ),
+                                      ),
+                                      PopupMenuItem<String>(
+                                        value: "delete",
+                                        child: Row(
+                                          children: [
+                                            Icon(Icons.delete_outline_rounded,
+                                                size: 18),
+                                            SizedBox(width: 8),
+                                            Text("Удалить"),
+                                          ],
+                                        ),
+                                      ),
+                                    ],
+                                    onSelected: (value) async {
+                                      if (value == "edit") {
+                                        _dismissKeyboard();
+                                        final ok =
+                                            await _showEditCollegeSourceDialog(s);
+                                        if (!ok || !mounted || !ctx.mounted) {
+                                          return;
+                                        }
+                                        ctrl.refreshCollegeSources();
+                                        setSheetState(() {});
+                                        setState(() {});
                                         return;
                                       }
-                                      ctrl.refreshCollegeSources();
-                                      setSheetState(() {});
-                                      setState(() {});
-                                    },
-                                    icon: const Icon(Icons.edit_outlined, size: 20),
-                                  ),
-                                  IconButton(
-                                    tooltip: "Удалить",
-                                    onPressed: () {
-                                      final updated = prefs.customCollegeSources
-                                          .where((e) => e.id != s.id)
-                                          .toList();
-                                      prefs.saveCustomCollegeSources(updated);
-                                      ctrl.refreshCollegeSources();
-                                      if (ctrl.college == s.id) {
-                                        ctrl.setCollege(
-                                            PreferencesManager.collegeDefault);
-                                        _loadGroupsAsync();
+                                      if (value == "delete") {
+                                        final updated = prefs.customCollegeSources
+                                            .where((e) => e.id != s.id)
+                                            .toList();
+                                        prefs.saveCustomCollegeSources(updated);
+                                        ctrl.refreshCollegeSources();
+                                        if (ctrl.college == s.id) {
+                                          ctrl.setCollege(
+                                              PreferencesManager.collegeDefault);
+                                          _loadGroupsAsync();
+                                        }
+                                        setSheetState(() {});
+                                        setState(() {});
                                       }
-                                      setSheetState(() {});
-                                      setState(() {});
                                     },
-                                    icon: const Icon(
-                                        Icons.delete_outline_rounded, size: 20),
                                   ),
-                                ],
                               ],
                             ),
                             onTap: () {
@@ -762,10 +855,12 @@ class _SettingsPageState extends State<SettingsPage> {
                         },
                       ),
                     ),
-                    const SizedBox(height: 10),
-                    SizedBox(
-                      width: double.infinity,
-                      child: FilledButton.tonalIcon(
+                    const SizedBox(height: 8),
+                    SafeArea(
+                      top: false,
+                      child: SizedBox(
+                        width: double.infinity,
+                        child: FilledButton.tonalIcon(
                         onPressed: () async {
                           _dismissKeyboard();
                           final added = await _showAddCollegeSourceDialog();
@@ -778,9 +873,11 @@ class _SettingsPageState extends State<SettingsPage> {
                         label: const Text("Добавить ссылку"),
                       ),
                     ),
+                    ),
                   ],
                 ),
               ),
+            ),
             );
           },
         );
@@ -963,7 +1060,8 @@ class _SettingsPageState extends State<SettingsPage> {
       }
 
       final sources = decoded["sources"];
-      final colleges = (sources is Map<String, dynamic>) ? sources["colleges"] : null;
+      final colleges =
+          (sources is Map<String, dynamic>) ? sources["colleges"] : null;
       if (colleges is! Map<String, dynamic>) {
         return _CollegeSourcesSyncResult(
           savedCount: 0,
@@ -1031,6 +1129,7 @@ class _SettingsPageState extends State<SettingsPage> {
       return _UrlProbeResult(
         ok: false,
         message: "Некорректный URL",
+        latencyMs: null,
         checkedAt: checkedAt,
       );
     }
@@ -1039,6 +1138,7 @@ class _SettingsPageState extends State<SettingsPage> {
       final client = http.Client();
       try {
         late http.BaseResponse res;
+        final sw = Stopwatch()..start();
         try {
           res = await client
               .head(Uri.parse(url))
@@ -1049,11 +1149,16 @@ class _SettingsPageState extends State<SettingsPage> {
               .get(Uri.parse(url))
               .timeout(const Duration(seconds: 18));
         }
+        sw.stop();
 
         final ok = res.statusCode >= 200 && res.statusCode < 400;
-        final message =
-            ok ? "Доступно (код ${res.statusCode})" : "HTTP ${res.statusCode}";
-        return _UrlProbeResult(ok: ok, message: message, checkedAt: checkedAt);
+        final message = ok ? "Доступно" : "Сайт недоступен";
+        return _UrlProbeResult(
+          ok: ok,
+          message: message,
+          latencyMs: sw.elapsedMilliseconds,
+          checkedAt: checkedAt,
+        );
       } finally {
         client.close();
       }
@@ -1061,6 +1166,7 @@ class _SettingsPageState extends State<SettingsPage> {
       return _UrlProbeResult(
         ok: false,
         message: "Нет ответа",
+        latencyMs: null,
         checkedAt: checkedAt,
       );
     }
@@ -1164,16 +1270,15 @@ class _SettingsPageState extends State<SettingsPage> {
                                   });
                                   return;
                                 }
-                                final updated = prefs.customCollegeSources
-                                    .map((e) {
-                                      if (e.id != source.id) return e;
-                                      return CollegeSource(
-                                        id: source.id,
-                                        name: safeName,
-                                        baseUrl: safeUrl,
-                                      );
-                                    })
-                                    .toList();
+                                final updated =
+                                    prefs.customCollegeSources.map((e) {
+                                  if (e.id != source.id) return e;
+                                  return CollegeSource(
+                                    id: source.id,
+                                    name: safeName,
+                                    baseUrl: safeUrl,
+                                  );
+                                }).toList();
                                 prefs.saveCustomCollegeSources(updated);
                                 Navigator.pop(ctx, true);
                               },
@@ -1232,7 +1337,7 @@ class _SettingsPageState extends State<SettingsPage> {
   Widget _groupCard(ThemeData theme) {
     final selected = ctrl.selectedGroup;
     final isTeacher = prefs.isTeacherMode;
-    final label = isTeacher ? "..." : "группу";
+    final label = isTeacher ? "преподавателя" : "группу";
 
     return Card(
       child: Padding(
@@ -1241,27 +1346,36 @@ class _SettingsPageState extends State<SettingsPage> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text("Выберите ${label.toLowerCase()}",
-                    style: theme.textTheme.bodySmall),
-                GestureDetector(
-                  onTap: _loadingGroups ? null : _loadGroupsAsync,
-                  child: _loadingGroups
+                Expanded(
+                  child: Text(
+                    "Выберите ${label.toLowerCase()}",
+                    style: theme.textTheme.bodySmall,
+                  ),
+                ),
+                IconButton(
+                  onPressed: _loadingGroups ? null : _loadGroupsAsync,
+                  tooltip: "Обновить список",
+                  style: IconButton.styleFrom(
+                    foregroundColor: theme.colorScheme.primary,
+                    padding: const EdgeInsets.all(8),
+                    minimumSize: const Size(40, 40),
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    visualDensity: VisualDensity.compact,
+                  ),
+                  icon: _loadingGroups
                       ? SizedBox(
-                          width: 16,
-                          height: 16,
+                          width: 18,
+                          height: 18,
                           child: CircularProgressIndicator(
                             strokeWidth: 2,
                             color: theme.colorScheme.primary,
                           ),
                         )
-                      : Text(
-                          "Обновить",
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: theme.colorScheme.primary,
-                            fontWeight: FontWeight.w600,
-                          ),
+                      : Icon(
+                          Icons.refresh_rounded,
+                          size: 22,
+                          color: theme.colorScheme.primary,
                         ),
                 ),
               ],
@@ -1463,8 +1577,14 @@ class _SettingsPageState extends State<SettingsPage> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(title, style: theme.textTheme.bodyLarge, maxLines: 2, overflow: TextOverflow.ellipsis),
-                Text(subtitle, style: theme.textTheme.bodySmall, maxLines: 2, overflow: TextOverflow.ellipsis),
+                Text(title,
+                    style: theme.textTheme.bodyLarge,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis),
+                Text(subtitle,
+                    style: theme.textTheme.bodySmall,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis),
               ],
             ),
           ),
@@ -1490,69 +1610,16 @@ class _SettingsPageState extends State<SettingsPage> {
           _switchTile(
             theme,
             "Отправлять аналитику Firebase",
-            "Отправка обезличенной аналитики (экраны и действия) — помогает улучшать приложение",
+            "Отправка анонимной аналитики",
             prefs.analyticsEnabled,
             (v) async {
               setState(() => prefs.analyticsEnabled = v);
               await AnalyticsService.instance.setEnabled(v);
-              AnalyticsService.instance.logEvent("analytics_toggled", {"enabled": v});
+              AnalyticsService.instance
+                  .logEvent("analytics_toggled", {"enabled": v});
             },
           ),
         ],
-      ),
-    );
-  }
-
-  Widget _fontSizeCard(ThemeData theme) {
-    const sizes = [
-      PreferencesManager.fontSizeSmall,
-      PreferencesManager.fontSizeNormal,
-      PreferencesManager.fontSizeLarge,
-      PreferencesManager.fontSizeExtraLarge,
-    ];
-    const labels = ["Мелкий", "Обычный", "Крупный", "Очень крупный"];
-    final idx = sizes.indexOf(prefs.fontSize).clamp(0, 3);
-
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text("Размер шрифта", style: theme.textTheme.bodyLarge),
-                Text(labels[idx],
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                        color: theme.colorScheme.primary,
-                        fontWeight: FontWeight.w600)),
-              ],
-            ),
-            const SizedBox(height: 4),
-            Text(
-              "Изменение размера текста в расписании.",
-              style: theme.textTheme.bodySmall,
-            ),
-            Slider(
-              value: idx.toDouble(),
-              min: 0,
-              max: 3,
-              divisions: 3,
-              onChanged: (v) {
-                setState(() => prefs.fontSize = sizes[v.round()]);
-              },
-              onChangeEnd: (_) => widget.onThemeChanged(),
-            ),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: labels
-                  .map((l) => Text(l,
-                      style: theme.textTheme.bodySmall?.copyWith(fontSize: 10)))
-                  .toList(),
-            ),
-          ],
-        ),
       ),
     );
   }
@@ -1583,8 +1650,9 @@ class _SettingsPageState extends State<SettingsPage> {
   }) async {
     final current = _editingLessonTimes[lessonNumber];
     if (current == null) return;
-    final initial = _parseTimeOfDay(start ? current.startTime : current.endTime) ??
-        const TimeOfDay(hour: 8, minute: 0);
+    final initial =
+        _parseTimeOfDay(start ? current.startTime : current.endTime) ??
+            const TimeOfDay(hour: 8, minute: 0);
     final picked = await showTimePicker(
       context: context,
       initialTime: initial,
@@ -1670,9 +1738,8 @@ class _SettingsPageState extends State<SettingsPage> {
   Widget _lessonTimesCard(ThemeData theme) {
     final entries = _editingLessonTimes.entries.toList()
       ..sort((a, b) => a.key.compareTo(b.key));
-    final collegeName = ctrl.college == PreferencesManager.collegeZabgc
-        ? "ЗабГК"
-        : "ЧТОТиБ";
+    final collegeName =
+        ctrl.college == PreferencesManager.collegeZabgc ? "ЗабГК" : "ЧТОТиБ";
     return Card(
       child: Padding(
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
@@ -1890,7 +1957,8 @@ class _SettingsPageState extends State<SettingsPage> {
                         color: colors.surface,
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(
-                          color: theme.colorScheme.onSurface.withValues(alpha: 0.15),
+                          color: theme.colorScheme.onSurface
+                              .withValues(alpha: 0.15),
                         ),
                       ),
                       child: Center(
@@ -1932,7 +2000,9 @@ class _SettingsPageState extends State<SettingsPage> {
                   onPressed: () {
                     Navigator.of(ctx).pop();
                     WidgetsBinding.instance.addPostFrameCallback((_) {
-                      if (mounted) _showAccentColorPicker(theme, themeKey: themeKey);
+                      if (mounted) {
+                        _showAccentColorPicker(theme, themeKey: themeKey);
+                      }
                     });
                   },
                   icon: const Icon(Icons.palette_outlined, size: 20),
@@ -1991,10 +2061,12 @@ class _SettingsPageState extends State<SettingsPage> {
             final hueDeg = (customHue.clamp(0.0, 1.0) * 360.0);
             final sat = customSaturation.clamp(0.0, 1.0);
             final light = customLightness.clamp(0.0, 1.0);
-            final customColor = HSLColor.fromAHSL(1, hueDeg, sat, light).toColor();
+            final customColor =
+                HSLColor.fromAHSL(1, hueDeg, sat, light).toColor();
             return SafeArea(
               child: Padding(
-                padding: EdgeInsets.fromLTRB(20, 16, 20, 24 + MediaQuery.of(ctx).viewPadding.bottom),
+                padding: EdgeInsets.fromLTRB(
+                    20, 16, 20, 24 + MediaQuery.of(ctx).viewPadding.bottom),
                 child: SingleChildScrollView(
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
@@ -2018,7 +2090,8 @@ class _SettingsPageState extends State<SettingsPage> {
                         children: [
                           GestureDetector(
                             onTap: () {
-                              prefs.setAccentColorForTheme(targetThemeKey, null);
+                              prefs.setAccentColorForTheme(
+                                  targetThemeKey, null);
                               widget.onThemeChanged();
                               ctrl.refreshHomeWidgetTheme();
                               AnalyticsService.instance.logAccentChanged(
@@ -2037,7 +2110,8 @@ class _SettingsPageState extends State<SettingsPage> {
                                 border: Border.all(
                                   color: accentValue == null
                                       ? theme.colorScheme.primary
-                                      : theme.colorScheme.onSurface.withValues(alpha: 0.2),
+                                      : theme.colorScheme.onSurface
+                                          .withValues(alpha: 0.2),
                                   width: accentValue == null ? 2 : 1,
                                 ),
                               ),
@@ -2053,7 +2127,8 @@ class _SettingsPageState extends State<SettingsPage> {
                             return GestureDetector(
                               onTap: () {
                                 HapticFeedback.lightImpact();
-                                prefs.setAccentColorForTheme(targetThemeKey, color.toARGB32());
+                                prefs.setAccentColorForTheme(
+                                    targetThemeKey, color.toARGB32());
                                 widget.onThemeChanged();
                                 ctrl.refreshHomeWidgetTheme();
                                 AnalyticsService.instance.logAccentChanged(
@@ -2072,7 +2147,8 @@ class _SettingsPageState extends State<SettingsPage> {
                                   border: Border.all(
                                     color: isSelected
                                         ? theme.colorScheme.onSurface
-                                        : theme.colorScheme.onSurface.withValues(alpha: 0.25),
+                                        : theme.colorScheme.onSurface
+                                            .withValues(alpha: 0.25),
                                     width: isSelected ? 2.5 : 1,
                                   ),
                                   boxShadow: isSelected
@@ -2116,7 +2192,8 @@ class _SettingsPageState extends State<SettingsPage> {
                               color: customColor,
                               borderRadius: BorderRadius.circular(12),
                               border: Border.all(
-                                color: theme.colorScheme.onSurface.withValues(alpha: 0.2),
+                                color: theme.colorScheme.onSurface
+                                    .withValues(alpha: 0.2),
                               ),
                             ),
                           ),
@@ -2125,26 +2202,32 @@ class _SettingsPageState extends State<SettingsPage> {
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.stretch,
                               children: [
-                                Text("Оттенок", style: theme.textTheme.labelSmall),
+                                Text("Оттенок",
+                                    style: theme.textTheme.labelSmall),
                                 Slider(
                                   value: customHue,
-                                  onChanged: (v) => setSheetState(() => customHue = v),
+                                  onChanged: (v) =>
+                                      setSheetState(() => customHue = v),
                                   min: 0,
                                   max: 1,
                                   activeColor: customColor,
                                 ),
-                                Text("Насыщенность", style: theme.textTheme.labelSmall),
+                                Text("Насыщенность",
+                                    style: theme.textTheme.labelSmall),
                                 Slider(
                                   value: customSaturation,
-                                  onChanged: (v) => setSheetState(() => customSaturation = v),
+                                  onChanged: (v) =>
+                                      setSheetState(() => customSaturation = v),
                                   min: 0,
                                   max: 1,
                                   activeColor: customColor,
                                 ),
-                                Text("Яркость", style: theme.textTheme.labelSmall),
+                                Text("Яркость",
+                                    style: theme.textTheme.labelSmall),
                                 Slider(
                                   value: customLightness,
-                                  onChanged: (v) => setSheetState(() => customLightness = v),
+                                  onChanged: (v) =>
+                                      setSheetState(() => customLightness = v),
                                   min: 0,
                                   max: 1,
                                   activeColor: customColor,
@@ -2158,7 +2241,8 @@ class _SettingsPageState extends State<SettingsPage> {
                       FilledButton.icon(
                         onPressed: () {
                           HapticFeedback.lightImpact();
-                          prefs.setAccentColorForTheme(targetThemeKey, customColor.toARGB32());
+                          prefs.setAccentColorForTheme(
+                              targetThemeKey, customColor.toARGB32());
                           widget.onThemeChanged();
                           ctrl.refreshHomeWidgetTheme();
                           AnalyticsService.instance.logAccentChanged(
@@ -2273,9 +2357,12 @@ class _SettingsPageState extends State<SettingsPage> {
   Widget _appInfoCard(ThemeData theme) {
     const authorLink = "https://everelsu.github.io/RelsevLink/";
     const releasesLink = "https://github.com/Everelsu/Raspisanie/releases";
-    const authorAvatarUrl ="https://raw.githubusercontent.com/Everelsu/RelsevLink/main/avatar.png";
+    const authorAvatarUrl =
+        "https://raw.githubusercontent.com/Everelsu/RelsevLink/main/avatar.png";
     const betaTesterLink = "https://t.me/skromniyvadya";
-    const betaTesterAvatarUrl = "https://raw.githubusercontent.com/Everelsu/RelsevLink/6b2647524fe3ade73d931079e77f8225ccffd2f5/scromny.jpg";
+    const betaTesterTelegramDeepLink = "tg://resolve?domain=skromniyvadya";
+    const betaTesterAvatarUrl =
+        "https://raw.githubusercontent.com/Everelsu/RelsevLink/6b2647524fe3ade73d931079e77f8225ccffd2f5/scromny.jpg";
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(20),
@@ -2284,17 +2371,22 @@ class _SettingsPageState extends State<SettingsPage> {
           children: [
             Row(
               children: [
-                Container(
-                  padding: const EdgeInsets.all(10),
+                DecoratedBox(
                   decoration: BoxDecoration(
-                    color: theme.colorScheme.primaryContainer.withAlpha(80),
-                    borderRadius: BorderRadius.circular(12),
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: theme.colorScheme.outlineVariant.withAlpha(100),
+                      width: 1,
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withAlpha(28),
+                        blurRadius: 12,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
                   ),
-                  child: Icon(
-                    Icons.calendar_month_rounded,
-                    size: 32,
-                    color: theme.colorScheme.onPrimaryContainer,
-                  ),
+                  child: const AppIconImage(size: 52),
                 ),
                 const SizedBox(width: 16),
                 Expanded(
@@ -2346,13 +2438,6 @@ class _SettingsPageState extends State<SettingsPage> {
                   _divider(theme),
                   Padding(
                     padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
-                    child: Text(
-                      "Обновления устанавливаются из GitHub.",
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant,
-                        height: 1.35,
-                      ),
-                    ),
                   ),
                   Padding(
                     padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
@@ -2388,7 +2473,8 @@ class _SettingsPageState extends State<SettingsPage> {
                     mode: LaunchMode.externalApplication,
                   );
                   if (opened || !mounted) return;
-                  await Clipboard.setData(const ClipboardData(text: authorLink));
+                  await Clipboard.setData(
+                      const ClipboardData(text: authorLink));
                   if (!mounted) return;
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(
@@ -2412,7 +2498,7 @@ class _SettingsPageState extends State<SettingsPage> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              "Relsev",
+                              "@Re1sev",
                               style: theme.textTheme.titleSmall?.copyWith(
                                 fontWeight: FontWeight.w600,
                               ),
@@ -2443,13 +2529,19 @@ class _SettingsPageState extends State<SettingsPage> {
               borderRadius: BorderRadius.circular(12),
               child: InkWell(
                 onTap: () async {
-                  final uri = Uri.parse(betaTesterLink);
-                  final opened = await launchUrl(
-                    uri,
+                  final telegramUri = Uri.parse(betaTesterTelegramDeepLink);
+                  final openedInTelegram = await launchUrl(
+                    telegramUri,
                     mode: LaunchMode.externalApplication,
                   );
+                  final opened = openedInTelegram ||
+                      await launchUrl(
+                        Uri.parse(betaTesterLink),
+                        mode: LaunchMode.externalApplication,
+                      );
                   if (opened || !mounted) return;
-                  await Clipboard.setData(const ClipboardData(text: betaTesterLink));
+                  await Clipboard.setData(
+                      const ClipboardData(text: betaTesterLink));
                   if (!mounted) return;
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(
@@ -2466,7 +2558,8 @@ class _SettingsPageState extends State<SettingsPage> {
                   ),
                   child: Row(
                     children: [
-                      _AuthorAvatar(avatarUrl: betaTesterAvatarUrl, theme: theme),
+                      _AuthorAvatar(
+                          avatarUrl: betaTesterAvatarUrl, theme: theme),
                       const SizedBox(width: 14),
                       Expanded(
                         child: Column(
@@ -2576,9 +2669,7 @@ class _SettingsPageState extends State<SettingsPage> {
               children: [
                 Expanded(
                   child: FilledButton.tonalIcon(
-                    onPressed: _dbTransferBusy
-                        ? null
-                        : _exportDatabase,
+                    onPressed: _dbTransferBusy ? null : _exportDatabase,
                     icon: const Icon(Icons.upload_file_outlined, size: 18),
                     label: const Text("Экспорт БД"),
                   ),
@@ -2586,9 +2677,7 @@ class _SettingsPageState extends State<SettingsPage> {
                 const SizedBox(width: 8),
                 Expanded(
                   child: FilledButton.tonalIcon(
-                    onPressed: _dbTransferBusy
-                        ? null
-                        : _importDatabase,
+                    onPressed: _dbTransferBusy ? null : _importDatabase,
                     icon: const Icon(Icons.download_outlined, size: 18),
                     label: const Text("Импорт БД"),
                   ),
@@ -2600,12 +2689,14 @@ class _SettingsPageState extends State<SettingsPage> {
               children: [
                 Expanded(
                   child: FilledButton.tonalIcon(
-                    onPressed: _dbBusy ? null : () async {
-                      setState(() => _dbBusy = true);
-                      await ScheduleDatabase.instance.clearAll();
-                      await _loadDbSettings();
-                      if (mounted) setState(() => _dbBusy = false);
-                    },
+                    onPressed: _dbBusy
+                        ? null
+                        : () async {
+                            setState(() => _dbBusy = true);
+                            await ScheduleDatabase.instance.clearAll();
+                            await _loadDbSettings();
+                            if (mounted) setState(() => _dbBusy = false);
+                          },
                     icon: const Icon(Icons.delete_outline, size: 18),
                     label: const Text("Очистить БД"),
                   ),
@@ -2614,10 +2705,12 @@ class _SettingsPageState extends State<SettingsPage> {
                 Expanded(
                   child: FilledButton.tonalIcon(
                     onPressed: () {
-                      StorageCleanup.clearAllPrefsCache(prefs.sharedPreferences);
+                      StorageCleanup.clearAllPrefsCache(
+                          prefs.sharedPreferences);
                       if (mounted) {
                         ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text("Кэш расписания очищен")),
+                          const SnackBar(
+                              content: Text("Кэш расписания очищен")),
                         );
                       }
                     },
@@ -2907,13 +3000,47 @@ class _GroupSelectorSheetState extends State<_GroupSelectorSheet> {
 
   Widget _groupTile(ThemeData theme, Group g, bool isFav) {
     final isSelected = widget.selected?.id == g.id;
+    final leadingIcon =
+        widget.isTeacher ? Icons.person_outline_rounded : Icons.groups_outlined;
     return ListTile(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       selected: isSelected,
       selectedTileColor: theme.colorScheme.primary.withAlpha(20),
-      leading: isFav
-          ? Icon(Icons.star, color: theme.colorScheme.primary, size: 20)
-          : null,
+      leading: SizedBox(
+        width: 44,
+        height: 40,
+        child: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            CircleAvatar(
+              radius: 18,
+              backgroundColor: theme.colorScheme.primary.withAlpha(22),
+              child: Icon(
+                leadingIcon,
+                color: theme.colorScheme.primary,
+                size: 20,
+              ),
+            ),
+            if (isFav)
+              Positioned(
+                right: -2,
+                top: -4,
+                child: Container(
+                  padding: const EdgeInsets.all(2),
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.surface,
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    Icons.star_rounded,
+                    size: 16,
+                    color: theme.colorScheme.primary,
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
       title: Text(g.name, style: theme.textTheme.bodyLarge),
       trailing: isSelected
           ? Icon(Icons.check_circle, color: theme.colorScheme.primary)
