@@ -3,6 +3,26 @@ import "dart:ui";
 import "package:flutter/material.dart";
 import "package:flutter/services.dart";
 
+class AnimatedAppBarVisuals {
+  const AnimatedAppBarVisuals._();
+
+  static const double defaultBottomRadius = 20.0;
+
+  static double totalHeight(BuildContext context, {double? barHeight}) {
+    return MediaQuery.paddingOf(context).top + (barHeight ?? kToolbarHeight);
+  }
+
+  static Color baseColor(ThemeData theme) {
+    final isDark = theme.brightness == Brightness.dark;
+    final primary = theme.colorScheme.primary;
+    final surface = theme.colorScheme.surface;
+    return Color.alphaBlend(
+      primary.withAlpha(isDark ? 18 : 10),
+      surface.withValues(alpha: isDark ? 0.82 : 0.88),
+    );
+  }
+}
+
 /// Animated app bar with blur background, animated title/subtitle and action area.
 class AnimatedAppBar extends StatefulWidget implements PreferredSizeWidget {
   const AnimatedAppBar({
@@ -12,7 +32,7 @@ class AnimatedAppBar extends StatefulWidget implements PreferredSizeWidget {
     this.subtitle,
     this.actions = const [],
     this.titleWidget,
-    this.bottomRadius = 20.0,
+    this.bottomRadius = AnimatedAppBarVisuals.defaultBottomRadius,
     this.blurSigma = 22.0,
     this.height,
   });
@@ -39,15 +59,11 @@ class _AnimatedAppBarState extends State<AnimatedAppBar> {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
     final primary = theme.colorScheme.primary;
-    final surface = theme.colorScheme.surface;
     final topPadding = MediaQuery.of(context).padding.top;
     final barH = widget.height ?? kToolbarHeight;
     final totalH = topPadding + barH;
 
-    final baseColor = Color.alphaBlend(
-      primary.withAlpha(isDark ? 18 : 10),
-      surface.withValues(alpha: isDark ? 0.82 : 0.88),
-    );
+    final baseColor = AnimatedAppBarVisuals.baseColor(theme);
 
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: isDark ? SystemUiOverlayStyle.light : SystemUiOverlayStyle.dark,
