@@ -24,6 +24,7 @@ class StorageCleanup {
       await clearTempDirectory();
       final cache = ScheduleCache(prefs);
       cache.trimToMaxEntries(_maxScheduleCachePairs);
+      cache.clearExpiredEntries();
       final groups = GroupsCache(prefs);
       groups.trimToMaxEntries(_maxGroupsCacheEntries);
 

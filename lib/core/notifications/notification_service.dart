@@ -176,6 +176,16 @@ class NotificationService {
 
     if (!enabled) return;
 
+    // On Android 12+, exact alarms require explicit user permission.
+    // Check once before scheduling — fall back to inexact if not granted.
+    final bool useExact;
+    if (Platform.isAndroid) {
+      useExact =
+          await _androidPlugin?.canScheduleExactNotifications() ?? false;
+    } else {
+      useExact = true;
+    }
+
     for (final lesson in lessons) {
       final notifyAt = lesson.todayStartsAt
           .subtract(Duration(minutes: offsetMinutes));
@@ -183,16 +193,33 @@ class NotificationService {
 
       if (!notifyAt.isAfter(now.add(const Duration(seconds: 30)))) continue;
 
+      final scheduledDate = tz.TZDateTime.from(notifyAt, tz.local);
+      final details = _lessonDetails(lesson, offsetMinutes);
+
       try {
         await _plugin.zonedSchedule(
           id: lesson.notificationId(),
           title: _title(lesson.number, offsetMinutes),
           body: _bodyShort(lesson),
-          scheduledDate: tz.TZDateTime.from(notifyAt, tz.local),
-          notificationDetails: _lessonDetails(lesson, offsetMinutes),
-          androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+          scheduledDate: scheduledDate,
+          notificationDetails: details,
+          androidScheduleMode: useExact
+              ? AndroidScheduleMode.exactAllowWhileIdle
+              : AndroidScheduleMode.inexactAllowWhileIdle,
         );
-      } catch (_) {}
+      } catch (_) {
+        // Последняя попытка — inexact без строгого условия доступности
+        try {
+          await _plugin.zonedSchedule(
+            id: lesson.notificationId(),
+            title: _title(lesson.number, offsetMinutes),
+            body: _bodyShort(lesson),
+            scheduledDate: scheduledDate,
+            notificationDetails: details,
+            androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+          );
+        } catch (_) {}
+      }
     }
   }
 

@@ -9,8 +9,8 @@ import "../network/http_client.dart";
 class GitHubHttpClient {
   GitHubHttpClient._();
 
-  static const Duration _timeout = Duration(seconds: 20);
-  static const int _maxAttempts = 4;
+  static const Duration _timeout = Duration(seconds: 8);
+  static const int _maxAttempts = 2;
   static const String userAgent =
       "Raspisanie/2 (Flutter; +https://github.com/Everelsu/Raspisanie)";
 
