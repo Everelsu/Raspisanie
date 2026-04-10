@@ -159,12 +159,13 @@ class ScheduleController extends ChangeNotifier {
     } catch (e) {
       error = _humanReadableError(e);
       if (schedule.isEmpty) {
-        final cached = _repository.scheduleCache?.load(
+        final cached = _repository.scheduleCache?.loadAllowingExpired(
             group.fileName, college);
         if (cached != null && cached.isNotEmpty) {
           schedule = cached;
           error = "Показаны сохранённые данные. $error";
           _updateHomeWidget();
+          await _syncLessonNotifications();
         }
       } else {
         error = "Не удалось обновить. $error";

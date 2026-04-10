@@ -2,6 +2,7 @@ import "package:flutter/material.dart";
 
 import "../data/lesson_times.dart";
 import "../domain/models.dart";
+import "day_share_sheet.dart";
 import "schedule_controller.dart";
 
 enum SubScheduleKind {
@@ -129,7 +130,8 @@ class _SubScheduleContentState extends State<_SubScheduleContent> {
               begin: const Alignment(-0.7, -1.0),
               end: const Alignment(0.9, 1.0),
               colors: [
-                Color.alphaBlend(primary.withAlpha(isDark ? 30 : 18), cardColor),
+                Color.alphaBlend(
+                    primary.withAlpha(isDark ? 30 : 18), cardColor),
                 Color.alphaBlend(primary.withAlpha(isDark ? 12 : 6), cardColor),
                 cardColor,
               ],
@@ -180,7 +182,8 @@ class _SubScheduleContentState extends State<_SubScheduleContent> {
                                   physics: const BouncingScrollPhysics(
                                     parent: AlwaysScrollableScrollPhysics(),
                                   ),
-                                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+                                  padding:
+                                      const EdgeInsets.fromLTRB(16, 0, 16, 24),
                                   itemCount: _schedule!.length,
                                   itemBuilder: (_, i) => _MiniDayCard(
                                     day: _schedule![i],
@@ -214,6 +217,7 @@ class _HeaderCard extends StatelessWidget {
 
   final String title;
   final SubScheduleKind kind;
+
   /// Преподаватель открывает подрасписание группы; студент — преподавателя.
   final bool isTeacherMode;
   final bool isOfflineSnapshot;
@@ -311,122 +315,138 @@ class _MiniDayCard extends StatelessWidget {
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
-      child: Container(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: const Alignment(-0.6, -0.8),
-            end: const Alignment(0.9, 1.0),
-            colors: [
-              Color.alphaBlend(
-                primary.withAlpha(isToday ? (isDark ? 44 : 28) : (isDark ? 20 : 12)),
-                cardColor,
-              ),
-              cardColor,
-            ],
-          ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
           borderRadius: BorderRadius.circular(22),
-          border: Border.all(
-            color: primary.withAlpha(
-              isToday ? (isDark ? 52 : 34) : (isDark ? 24 : 14),
-            ),
-            width: 0.8,
+          onLongPress: () => showDayShareSheet(
+            context,
+            day: day,
+            college: college,
+            shareText: _formatMiniDayAsText(items),
+            subtitle: sheetTitle,
           ),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      "${_capitalize(day.day)} • ${day.date}",
-                      style: theme.textTheme.titleSmall?.copyWith(
-                        color: isToday ? primary : null,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
+          child: Container(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: const Alignment(-0.6, -0.8),
+                end: const Alignment(0.9, 1.0),
+                colors: [
+                  Color.alphaBlend(
+                    primary.withAlpha(
+                        isToday ? (isDark ? 44 : 28) : (isDark ? 20 : 12)),
+                    cardColor,
                   ),
-                  if (isToday)
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 5,
-                      ),
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(999),
-                        color: primary.withAlpha(isDark ? 42 : 20),
-                      ),
-                      child: Text(
-                        "Сегодня",
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: primary,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ),
+                  cardColor,
                 ],
               ),
-              const SizedBox(height: 10),
-              if (items.isEmpty)
-                Text(
-                  "Нет занятий",
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    color: theme.colorScheme.onSurface.withAlpha(140),
-                    fontStyle: FontStyle.italic,
+              borderRadius: BorderRadius.circular(22),
+              border: Border.all(
+                color: primary.withAlpha(
+                  isToday ? (isDark ? 52 : 34) : (isDark ? 24 : 14),
+                ),
+                width: 0.8,
+              ),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          "${_capitalize(day.day)} • ${day.date}",
+                          style: theme.textTheme.titleSmall?.copyWith(
+                            color: isToday ? primary : null,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                      if (isToday)
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 5,
+                          ),
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(999),
+                            color: primary.withAlpha(isDark ? 42 : 20),
+                          ),
+                          child: Text(
+                            "Сегодня",
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: primary,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                    ],
                   ),
-                )
-              else
-                ...items.map((item) {
-                  final time = LessonTimes.formatTime(
-                    item.lessonNumber,
-                    college: college,
-                  );
-                  return Padding(
-                    padding: const EdgeInsets.only(bottom: 10),
-                    child: Container(
-                      padding: const EdgeInsets.fromLTRB(10, 10, 10, 10),
-                      decoration: BoxDecoration(
-                        color: theme.colorScheme.onSurface.withAlpha(isDark ? 10 : 5),
-                        borderRadius: BorderRadius.circular(16),
+                  const SizedBox(height: 10),
+                  if (items.isEmpty)
+                    Text(
+                      "Нет занятий",
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: theme.colorScheme.onSurface.withAlpha(140),
+                        fontStyle: FontStyle.italic,
                       ),
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Container(
-                            width: 34,
-                            height: 34,
-                            alignment: Alignment.center,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              color: primary.withAlpha(isDark ? 40 : 22),
-                            ),
-                            child: Text(
-                              "${item.lessonNumber}",
-                              style: theme.textTheme.bodyMedium?.copyWith(
-                                fontWeight: FontWeight.w800,
-                                color: primary,
-                              ),
-                            ),
+                    )
+                  else
+                    ...items.map((item) {
+                      final time = LessonTimes.formatTime(
+                        item.lessonNumber,
+                        college: college,
+                      );
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 10),
+                        child: Container(
+                          padding: const EdgeInsets.fromLTRB(10, 10, 10, 10),
+                          decoration: BoxDecoration(
+                            color: theme.colorScheme.onSurface
+                                .withAlpha(isDark ? 10 : 5),
+                            borderRadius: BorderRadius.circular(16),
                           ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: Text(
-                              kind == SubScheduleKind.classroom
-                                  ? _buildClassroomItemLine(item, time)
-                                  : _buildTeacherOrGroupItemLine(item, time),
-                              style: theme.textTheme.bodySmall?.copyWith(
-                                height: 1.4,
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Container(
+                                width: 34,
+                                height: 34,
+                                alignment: Alignment.center,
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  color: primary.withAlpha(isDark ? 40 : 22),
+                                ),
+                                child: Text(
+                                  "${item.lessonNumber}",
+                                  style: theme.textTheme.bodyMedium?.copyWith(
+                                    fontWeight: FontWeight.w800,
+                                    color: primary,
+                                  ),
+                                ),
                               ),
-                            ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Text(
+                                  kind == SubScheduleKind.classroom
+                                      ? _buildClassroomItemLine(item, time)
+                                      : _buildTeacherOrGroupItemLine(
+                                          item, time),
+                                  style: theme.textTheme.bodySmall?.copyWith(
+                                    height: 1.4,
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
-                        ],
-                      ),
-                    ),
-                  );
-                }),
-            ],
+                        ),
+                      );
+                    }),
+                ],
+              ),
+            ),
           ),
         ),
       ),
@@ -467,6 +487,7 @@ class _MiniDayCard extends StatelessWidget {
         parts.add(teacherOrGroup);
       }
     }
+    if (item.subgroup != null) parts.add("${item.subgroup} п/г");
     if (time.isNotEmpty) parts.add(time);
     if (parts.isEmpty) return "Нет данных";
     return parts.join(" • ");
@@ -474,7 +495,8 @@ class _MiniDayCard extends StatelessWidget {
 
   bool _titleMatches(String value) {
     final t = sheetTitle.trim();
-    return t.isNotEmpty && (t == value || "Ауд. $value" == t || t == "Ауд. $value");
+    return t.isNotEmpty &&
+        (t == value || "Ауд. $value" == t || t == "Ауд. $value");
   }
 
   bool _isToday(String rawDate) {
@@ -489,6 +511,28 @@ class _MiniDayCard extends StatelessWidget {
   String _capitalize(String value) {
     if (value.isEmpty) return value;
     return value[0].toUpperCase() + value.substring(1);
+  }
+
+  String _formatMiniDayAsText(List<ScheduleItem> items) {
+    final lines = <String>[
+      "${_capitalize(day.day)}, ${day.date}",
+      "",
+    ];
+    if (items.isEmpty) {
+      lines.add("Нет занятий");
+      return lines.join("\n");
+    }
+    for (final item in items) {
+      final time = LessonTimes.formatTime(
+        item.lessonNumber,
+        college: college,
+      );
+      final line = kind == SubScheduleKind.classroom
+          ? _buildClassroomItemLine(item, time)
+          : _buildTeacherOrGroupItemLine(item, time);
+      lines.add("${item.lessonNumber}. $line");
+    }
+    return lines.join("\n");
   }
 }
 
