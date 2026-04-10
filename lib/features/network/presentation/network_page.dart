@@ -61,6 +61,7 @@ class _NetworkPageState extends State<NetworkPage>
   bool _canGoForward = false;
   String? _currentUrl;
   bool _urlBarEditing = false;
+
   /// Hides in-app browser chrome + bottom nav (via parent) for more WebView space.
   bool _immersive = false;
 
@@ -330,67 +331,68 @@ class _NetworkPageState extends State<NetworkPage>
     bool? apply;
     try {
       apply = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text("Адрес при открытии вкладки «Сеть»"),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text(
-                "Эта страница открывается при первом заходе на вкладку и по кнопке «Домой» в меню (⋯). "
-                "Можно вставить свою форму входа или другой сайт (https).",
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text("Адрес при открытии вкладки «Сеть»"),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  "Эта страница открывается при первом заходе на вкладку и по кнопке «Домой» в меню (⋯). "
+                  "Можно вставить свою форму входа или другой сайт (https).",
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
                 ),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: textCtrl,
-                keyboardType: TextInputType.url,
-                autocorrect: false,
-                enableSuggestions: false,
-                maxLines: 3,
-                decoration: const InputDecoration(
-                  labelText: "URL",
-                  hintText: "https://example.com/…",
-                  border: OutlineInputBorder(),
-                  isDense: true,
+                const SizedBox(height: 12),
+                TextField(
+                  controller: textCtrl,
+                  keyboardType: TextInputType.url,
+                  autocorrect: false,
+                  enableSuggestions: false,
+                  maxLines: 3,
+                  decoration: const InputDecoration(
+                    labelText: "URL",
+                    hintText: "https://example.com/…",
+                    border: OutlineInputBorder(),
+                    isDense: true,
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text("Отмена"),
+            ),
+            TextButton(
+              onPressed: () {
+                widget.scheduleController.prefs.networkStartUrl = "";
+                Navigator.pop(ctx, true);
+              },
+              child: const Text("Сбросить"),
+            ),
+            FilledButton(
+              onPressed: () {
+                final uri = _normalizeInputToUri(textCtrl.text.trim());
+                if (uri == null) {
+                  ScaffoldMessenger.of(ctx).showSnackBar(
+                    const SnackBar(content: Text("Некорректная ссылка")),
+                  );
+                  return;
+                }
+                widget.scheduleController.prefs.networkStartUrl =
+                    uri.toString();
+                Navigator.pop(ctx, true);
+              },
+              child: const Text("Сохранить"),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text("Отмена"),
-          ),
-          TextButton(
-            onPressed: () {
-              widget.scheduleController.prefs.networkStartUrl = "";
-              Navigator.pop(ctx, true);
-            },
-            child: const Text("Сбросить"),
-          ),
-          FilledButton(
-            onPressed: () {
-              final uri = _normalizeInputToUri(textCtrl.text.trim());
-              if (uri == null) {
-                ScaffoldMessenger.of(ctx).showSnackBar(
-                  const SnackBar(content: Text("Некорректная ссылка")),
-                );
-                return;
-              }
-              widget.scheduleController.prefs.networkStartUrl = uri.toString();
-              Navigator.pop(ctx, true);
-            },
-            child: const Text("Сохранить"),
-          ),
-        ],
-      ),
-    );
+      );
     } finally {
       // Нельзя dispose сразу после pop: маршрут диалога ещё анимирует закрытие,
       // TextField/AnimatedSwitcher дергают controller — «used after being disposed».
@@ -620,9 +622,8 @@ class _NetworkPageState extends State<NetworkPage>
                   child: _browserToolbarIcon(
                     icon: Icons.arrow_forward_ios_rounded,
                     tooltip: "Вперёд",
-                    onPressed: _canGoForward
-                        ? () => unawaited(_goForward())
-                        : null,
+                    onPressed:
+                        _canGoForward ? () => unawaited(_goForward()) : null,
                     size: 18,
                   ),
                 ),
@@ -660,7 +661,8 @@ class _NetworkPageState extends State<NetworkPage>
                 hintText: "https://...",
                 isDense: true,
                 filled: true,
-                fillColor: theme.colorScheme.surfaceContainerHighest.withAlpha(130),
+                fillColor:
+                    theme.colorScheme.surfaceContainerHighest.withAlpha(130),
                 contentPadding: const EdgeInsets.symmetric(
                   horizontal: 10,
                   vertical: 8,
@@ -701,11 +703,14 @@ class _NetworkPageState extends State<NetworkPage>
                 onTap: _openUrlBarEditor,
                 borderRadius: BorderRadius.circular(11),
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 8),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 9, vertical: 8),
                   child: Row(
                     children: [
                       Icon(
-                        isHttps ? Icons.lock_outline_rounded : Icons.link_rounded,
+                        isHttps
+                            ? Icons.lock_outline_rounded
+                            : Icons.link_rounded,
                         size: 14,
                         color: theme.colorScheme.onSurfaceVariant,
                       ),
@@ -770,7 +775,8 @@ class _NetworkPageState extends State<NetworkPage>
                   },
                 ),
                 _browserToolbarIcon(
-                  icon: _isLoading ? Icons.close_rounded : Icons.refresh_rounded,
+                  icon:
+                      _isLoading ? Icons.close_rounded : Icons.refresh_rounded,
                   tooltip: _isLoading ? "Остановить загрузку" : "Обновить",
                   onPressed: () async {
                     if (_isLoading) {
@@ -873,7 +879,8 @@ class _NetworkPageState extends State<NetworkPage>
 
     final progressValue =
         _progress >= 100 ? null : _progress.clamp(0, 100) / 100.0;
-    final barUrl = Uri.tryParse((_currentUrl ?? _addressController.text).trim());
+    final barUrl =
+        Uri.tryParse((_currentUrl ?? _addressController.text).trim());
     final isHttps = barUrl?.scheme == "https";
 
     final curve = Curves.easeOutCubic;
@@ -897,142 +904,143 @@ class _NetworkPageState extends State<NetworkPage>
         }
       },
       child: Scaffold(
-      backgroundColor: theme.colorScheme.surface,
-      extendBodyBehindAppBar: true,
-      appBar: null,
-      body: AnimatedBuilder(
-        animation: _immersiveCtrl,
-        builder: (context, _) {
-          final t = curve.transform(_immersiveCtrl.value.clamp(0.0, 1.0));
-          final topSpacer = _topSpacer(context, t);
-          final bottomPad = _webviewBottomPadding(t);
-          final barHiddenFactor = t;
+        backgroundColor: theme.colorScheme.surface,
+        extendBodyBehindAppBar: true,
+        appBar: null,
+        body: AnimatedBuilder(
+          animation: _immersiveCtrl,
+          builder: (context, _) {
+            final t = curve.transform(_immersiveCtrl.value.clamp(0.0, 1.0));
+            final topSpacer = _topSpacer(context, t);
+            final bottomPad = _webviewBottomPadding(t);
+            final barHiddenFactor = t;
 
-          return Stack(
-            clipBehavior: Clip.hardEdge,
-            children: [
-              Column(
-                children: [
-                  SizedBox(height: topSpacer),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 12),
-                    child: AnimatedOpacity(
-                      duration: const Duration(milliseconds: 180),
-                      opacity: progressValue == null ? 0 : 1,
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(99),
-                        child: LinearProgressIndicator(
-                          value: progressValue,
-                          minHeight: 3,
-                          backgroundColor: theme.colorScheme.outlineVariant
-                              .withAlpha(60),
+            return Stack(
+              clipBehavior: Clip.hardEdge,
+              children: [
+                Column(
+                  children: [
+                    SizedBox(height: topSpacer),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      child: AnimatedOpacity(
+                        duration: const Duration(milliseconds: 180),
+                        opacity: progressValue == null ? 0 : 1,
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(99),
+                          child: LinearProgressIndicator(
+                            value: progressValue,
+                            minHeight: 3,
+                            backgroundColor:
+                                theme.colorScheme.outlineVariant.withAlpha(60),
+                          ),
                         ),
                       ),
                     ),
-                  ),
-                  Expanded(
-                    child: Padding(
-                      padding: EdgeInsets.fromLTRB(12, 10, 12, bottomPad),
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(18),
-                        child: ColoredBox(
-                          color: theme.cardTheme.color ?? theme.cardColor,
-                          child: WebViewWidget(controller: controller),
+                    Expanded(
+                      child: Padding(
+                        padding: EdgeInsets.fromLTRB(12, 10, 12, bottomPad),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(18),
+                          child: ColoredBox(
+                            color: theme.cardTheme.color ?? theme.cardColor,
+                            child: WebViewWidget(controller: controller),
+                          ),
                         ),
                       ),
                     ),
-                  ),
-                ],
-              ),
-              // AnimatedAppBar already includes status bar + toolbar (see animated_app_bar.dart).
-              // Do not wrap in a fixed 56px box — that clipped the bar.
-              Positioned(
-                top: 0,
-                left: 0,
-                right: 0,
-                child: ClipRect(
-                  child: Align(
-                    alignment: Alignment.topCenter,
-                    heightFactor: (1 - barHiddenFactor).clamp(0.0, 1.0),
-                    child: _buildWebAppBar(controller, isHttps: isHttps),
+                  ],
+                ),
+                // AnimatedAppBar already includes status bar + toolbar (see animated_app_bar.dart).
+                // Do not wrap in a fixed 56px box — that clipped the bar.
+                Positioned(
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  child: ClipRect(
+                    child: Align(
+                      alignment: Alignment.topCenter,
+                      heightFactor: (1 - barHiddenFactor).clamp(0.0, 1.0),
+                      child: _buildWebAppBar(controller, isHttps: isHttps),
+                    ),
                   ),
                 ),
-              ),
-              if (_pageLoadError != null)
-                Positioned.fill(
-                  child: Material(
-                    color: theme.colorScheme.surface.withAlpha(242),
-                    child: SafeArea(
-                      child: Center(
-                        child: SingleChildScrollView(
-                          padding: const EdgeInsets.all(24),
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                Icons.cloud_off_outlined,
-                                size: 52,
-                                color: theme.colorScheme.error,
-                              ),
-                              const SizedBox(height: 16),
-                              Text(
-                                _pageLoadError!,
-                                textAlign: TextAlign.center,
-                                style: theme.textTheme.bodyLarge,
-                              ),
-                              const SizedBox(height: 20),
-                              FilledButton.icon(
-                                onPressed: _retryPageLoad,
-                                icon: const Icon(Icons.refresh_rounded),
-                                label: const Text("Повторить"),
-                              ),
-                            ],
+                if (_pageLoadError != null)
+                  Positioned.fill(
+                    child: Material(
+                      color: theme.colorScheme.surface.withAlpha(242),
+                      child: SafeArea(
+                        child: Center(
+                          child: SingleChildScrollView(
+                            padding: const EdgeInsets.all(24),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  Icons.cloud_off_outlined,
+                                  size: 52,
+                                  color: theme.colorScheme.error,
+                                ),
+                                const SizedBox(height: 16),
+                                Text(
+                                  _pageLoadError!,
+                                  textAlign: TextAlign.center,
+                                  style: theme.textTheme.bodyLarge,
+                                ),
+                                const SizedBox(height: 20),
+                                FilledButton.icon(
+                                  onPressed: _retryPageLoad,
+                                  icon: const Icon(Icons.refresh_rounded),
+                                  label: const Text("Повторить"),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                Positioned(
+                  right: 12,
+                  bottom: 12 + bottomSafe,
+                  child: FadeTransition(
+                    opacity: CurvedAnimation(
+                      parent: _immersiveCtrl,
+                      curve: const Interval(0.25, 0.85, curve: Curves.easeOut),
+                    ),
+                    child: ScaleTransition(
+                      scale: Tween<double>(begin: 0.86, end: 1.0).animate(
+                        CurvedAnimation(
+                          parent: _immersiveCtrl,
+                          curve: const Interval(0.2, 0.95,
+                              curve: Curves.easeOutBack),
+                        ),
+                      ),
+                      child: IgnorePointer(
+                        ignoring: t < 0.15,
+                        child: Material(
+                          elevation: 8,
+                          shadowColor: Colors.black54,
+                          shape: const CircleBorder(),
+                          color: theme.colorScheme.surfaceContainerHigh,
+                          child: IconButton(
+                            tooltip: "Показать панель",
+                            onPressed: () {
+                              HapticFeedback.lightImpact();
+                              _setImmersive(false);
+                            },
+                            icon: const Icon(Icons.fullscreen_exit_rounded),
                           ),
                         ),
                       ),
                     ),
                   ),
                 ),
-              Positioned(
-                right: 12,
-                bottom: 12 + bottomSafe,
-                child: FadeTransition(
-                  opacity: CurvedAnimation(
-                    parent: _immersiveCtrl,
-                    curve: const Interval(0.25, 0.85, curve: Curves.easeOut),
-                  ),
-                  child: ScaleTransition(
-                    scale: Tween<double>(begin: 0.86, end: 1.0).animate(
-                      CurvedAnimation(
-                        parent: _immersiveCtrl,
-                        curve: const Interval(0.2, 0.95, curve: Curves.easeOutBack),
-                      ),
-                    ),
-                    child: IgnorePointer(
-                      ignoring: t < 0.15,
-                      child: Material(
-                        elevation: 8,
-                        shadowColor: Colors.black54,
-                        shape: const CircleBorder(),
-                        color: theme.colorScheme.surfaceContainerHigh,
-                        child: IconButton(
-                          tooltip: "Показать панель",
-                          onPressed: () {
-                            HapticFeedback.lightImpact();
-                            _setImmersive(false);
-                          },
-                          icon: const Icon(Icons.fullscreen_exit_rounded),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          );
-        },
+              ],
+            );
+          },
+        ),
       ),
-    ),
     );
   }
 }
