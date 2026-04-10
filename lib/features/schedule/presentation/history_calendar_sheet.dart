@@ -1,10 +1,10 @@
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:table_calendar/table_calendar.dart';
 
 import '../../../core/database/schedule_database.dart';
 import '../domain/models.dart';
+import 'day_share_sheet.dart';
 import 'schedule_controller.dart';
 
 class HistoryCalendarSheet extends StatefulWidget {
@@ -128,9 +128,7 @@ class _HistoryCalendarSheetState extends State<HistoryCalendarSheet>
   void _nextMarkedDay() {
     if (_selectedDay == null || _markedDays.isEmpty) return;
     final sorted = _markedDays.toList()..sort();
-    final next = sorted
-        .where((d) => d.isAfter(_selectedDay!))
-        .firstOrNull;
+    final next = sorted.where((d) => d.isAfter(_selectedDay!)).firstOrNull;
     if (next == null) return;
     _onDaySelected(next, next);
   }
@@ -139,9 +137,7 @@ class _HistoryCalendarSheetState extends State<HistoryCalendarSheet>
   void _prevMarkedDay() {
     if (_selectedDay == null || _markedDays.isEmpty) return;
     final sorted = _markedDays.toList()..sort();
-    final prev = sorted
-        .where((d) => d.isBefore(_selectedDay!))
-        .lastOrNull;
+    final prev = sorted.where((d) => d.isBefore(_selectedDay!)).lastOrNull;
     if (prev == null) return;
     setState(() => _slideForward = false);
     _onDaySelected(prev, prev);
@@ -260,6 +256,7 @@ class _HistoryCalendarSheetState extends State<HistoryCalendarSheet>
                         ? _DayView(
                             key: ValueKey('day_$_selectedDay'),
                             day: _selectedSchedule!,
+                            college: widget.controller.college,
                             selectedDay: _selectedDay ?? DateTime.now(),
                             onBack: _backToCalendar,
                             primary: primary,
@@ -319,8 +316,19 @@ class _Header extends StatelessWidget {
 
   String _formatDate(DateTime d) {
     const months = [
-      '', 'янв', 'фев', 'мар', 'апр', 'май', 'июн',
-      'июл', 'авг', 'сен', 'окт', 'ноя', 'дек',
+      '',
+      'янв',
+      'фев',
+      'мар',
+      'апр',
+      'май',
+      'июн',
+      'июл',
+      'авг',
+      'сен',
+      'окт',
+      'ноя',
+      'дек',
     ];
     return '${d.day} ${months[d.month]}';
   }
@@ -409,7 +417,8 @@ class _Header extends StatelessWidget {
                             Text(
                               'Сохранённый день',
                               style: theme.textTheme.bodySmall?.copyWith(
-                                color: theme.colorScheme.onSurface.withAlpha(120),
+                                color:
+                                    theme.colorScheme.onSurface.withAlpha(120),
                               ),
                             ),
                           ],
@@ -444,7 +453,8 @@ class _Header extends StatelessWidget {
                 ),
               ] else if (markedCount > 0)
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                   decoration: BoxDecoration(
                     color: primary.withAlpha(isDark ? 28 : 18),
                     borderRadius: BorderRadius.circular(12),
@@ -488,7 +498,8 @@ class _NavBtn extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        width: 30, height: 30,
+        width: 30,
+        height: 30,
         decoration: BoxDecoration(
           shape: BoxShape.circle,
           color: active
@@ -620,128 +631,129 @@ class _CalendarView extends StatelessWidget {
         const dowH = 24.0;
         final availForGrid =
             (available - hintBlockH - 28).clamp(0.0, double.infinity);
-        final rowH =
-            ((availForGrid - calHeaderH - dowH) / 6).clamp(32.0, 44.0);
+        final rowH = ((availForGrid - calHeaderH - dowH) / 6).clamp(32.0, 44.0);
         final gridH = calHeaderH + dowH + 6 * rowH;
         final calendarBox = SizedBox(
           height: gridH,
           child: TableCalendar(
-                firstDay: DateTime(2020),
-                lastDay: DateTime.now().add(const Duration(days: 365)),
-                focusedDay: focusedDay,
-                selectedDayPredicate: (d) =>
-                    selectedDay != null && isSameDay(d, selectedDay),
-                onDaySelected: onDaySelected,
-                onPageChanged: onPageChanged,
-                startingDayOfWeek: StartingDayOfWeek.monday,
-                locale: 'ru_RU',
-                calendarFormat: CalendarFormat.month,
-                availableCalendarFormats: const {CalendarFormat.month: ''},
-                rowHeight: rowH,
-                daysOfWeekHeight: dowH,
-                headerStyle: HeaderStyle(
-                  formatButtonVisible: false,
-                  titleCentered: true,
-                  titleTextStyle: theme.textTheme.titleSmall!.copyWith(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: theme.colorScheme.onSurface,
-                  ),
-                  leftChevronIcon: Container(
-                    width: 26, height: 26,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: primary.withAlpha(isDark ? 28 : 18),
-                    ),
-                    child: Icon(Icons.chevron_left, color: primary, size: 16),
-                  ),
-                  rightChevronIcon: Container(
-                    width: 26, height: 26,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: primary.withAlpha(isDark ? 28 : 18),
-                    ),
-                    child: Icon(Icons.chevron_right, color: primary, size: 16),
-                  ),
-                  headerPadding: const EdgeInsets.fromLTRB(8, 2, 8, 2),
-                  leftChevronPadding: EdgeInsets.zero,
-                  rightChevronPadding: EdgeInsets.zero,
-                ),
-                daysOfWeekStyle: DaysOfWeekStyle(
-                  weekdayStyle: theme.textTheme.bodySmall!.copyWith(
-                    fontWeight: FontWeight.w600,
-                    fontSize: 10,
-                    color: theme.colorScheme.onSurface.withAlpha(160),
-                  ),
-                  weekendStyle: theme.textTheme.bodySmall!.copyWith(
-                    fontWeight: FontWeight.w600,
-                    fontSize: 10,
-                    color: theme.colorScheme.error.withAlpha(180),
-                  ),
-                ),
-                calendarStyle: CalendarStyle(
-                  cellMargin: const EdgeInsets.all(1.5),
-                  outsideDaysVisible: false,
-
-                  // Сегодня
-                  todayDecoration: BoxDecoration(
-                    color: primary.withAlpha(isDark ? 35 : 25),
-                    shape: BoxShape.circle,
-                  ),
-                  todayTextStyle: TextStyle(
-                    color: primary,
-                    fontWeight: FontWeight.w700,
-                    fontSize: 12,
-                  ),
-
-                  // Выбранный день
-                  selectedDecoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: const Alignment(-0.6, -0.6),
-                      end: const Alignment(0.8, 0.8),
-                      colors: [
-                        Color.alphaBlend(Colors.white.withAlpha(30), primary),
-                        primary,
-                        Color.alphaBlend(Colors.black.withAlpha(20), primary),
-                      ],
-                    ),
-                    shape: BoxShape.circle,
-                  ),
-                  selectedTextStyle: TextStyle(
-                    color: theme.colorScheme.onPrimary,
-                    fontWeight: FontWeight.w700,
-                    fontSize: 12,
-                  ),
-
-                  // Маркер (есть данные)
-                  markerDecoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [primary, primary.withAlpha(200)],
-                    ),
-                    shape: BoxShape.circle,
-                  ),
-                  markerSize: 4.0,
-                  markersMaxCount: 1,
-                  markerMargin: const EdgeInsets.only(top: 0),
-
-                  // Обычные дни
-                  defaultTextStyle: theme.textTheme.bodySmall!.copyWith(
-                    fontSize: 12,
-                  ),
-                  weekendTextStyle: theme.textTheme.bodySmall!.copyWith(
-                    fontSize: 12,
-                    color: theme.colorScheme.error.withAlpha(200),
-                  ),
-                  disabledTextStyle: theme.textTheme.bodySmall!.copyWith(
-                    fontSize: 12,
-                    color: theme.colorScheme.onSurface.withAlpha(50),
-                  ),
-                ),
-                eventLoader: (day) {
-                  final d = DateTime(day.year, day.month, day.day);
-                  return markedDays.contains(d) ? [true] : [];
-                },
+            firstDay: DateTime(2020),
+            lastDay: DateTime.now().add(const Duration(days: 365)),
+            focusedDay: focusedDay,
+            selectedDayPredicate: (d) =>
+                selectedDay != null && isSameDay(d, selectedDay),
+            onDaySelected: onDaySelected,
+            onPageChanged: onPageChanged,
+            startingDayOfWeek: StartingDayOfWeek.monday,
+            locale: 'ru_RU',
+            calendarFormat: CalendarFormat.month,
+            availableCalendarFormats: const {CalendarFormat.month: ''},
+            rowHeight: rowH,
+            daysOfWeekHeight: dowH,
+            headerStyle: HeaderStyle(
+              formatButtonVisible: false,
+              titleCentered: true,
+              titleTextStyle: theme.textTheme.titleSmall!.copyWith(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: theme.colorScheme.onSurface,
               ),
+              leftChevronIcon: Container(
+                width: 26,
+                height: 26,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: primary.withAlpha(isDark ? 28 : 18),
+                ),
+                child: Icon(Icons.chevron_left, color: primary, size: 16),
+              ),
+              rightChevronIcon: Container(
+                width: 26,
+                height: 26,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: primary.withAlpha(isDark ? 28 : 18),
+                ),
+                child: Icon(Icons.chevron_right, color: primary, size: 16),
+              ),
+              headerPadding: const EdgeInsets.fromLTRB(8, 2, 8, 2),
+              leftChevronPadding: EdgeInsets.zero,
+              rightChevronPadding: EdgeInsets.zero,
+            ),
+            daysOfWeekStyle: DaysOfWeekStyle(
+              weekdayStyle: theme.textTheme.bodySmall!.copyWith(
+                fontWeight: FontWeight.w600,
+                fontSize: 10,
+                color: theme.colorScheme.onSurface.withAlpha(160),
+              ),
+              weekendStyle: theme.textTheme.bodySmall!.copyWith(
+                fontWeight: FontWeight.w600,
+                fontSize: 10,
+                color: theme.colorScheme.error.withAlpha(180),
+              ),
+            ),
+            calendarStyle: CalendarStyle(
+              cellMargin: const EdgeInsets.all(1.5),
+              outsideDaysVisible: false,
+
+              // Сегодня
+              todayDecoration: BoxDecoration(
+                color: primary.withAlpha(isDark ? 35 : 25),
+                shape: BoxShape.circle,
+              ),
+              todayTextStyle: TextStyle(
+                color: primary,
+                fontWeight: FontWeight.w700,
+                fontSize: 12,
+              ),
+
+              // Выбранный день
+              selectedDecoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: const Alignment(-0.6, -0.6),
+                  end: const Alignment(0.8, 0.8),
+                  colors: [
+                    Color.alphaBlend(Colors.white.withAlpha(30), primary),
+                    primary,
+                    Color.alphaBlend(Colors.black.withAlpha(20), primary),
+                  ],
+                ),
+                shape: BoxShape.circle,
+              ),
+              selectedTextStyle: TextStyle(
+                color: theme.colorScheme.onPrimary,
+                fontWeight: FontWeight.w700,
+                fontSize: 12,
+              ),
+
+              // Маркер (есть данные)
+              markerDecoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [primary, primary.withAlpha(200)],
+                ),
+                shape: BoxShape.circle,
+              ),
+              markerSize: 4.0,
+              markersMaxCount: 1,
+              markerMargin: const EdgeInsets.only(top: 0),
+
+              // Обычные дни
+              defaultTextStyle: theme.textTheme.bodySmall!.copyWith(
+                fontSize: 12,
+              ),
+              weekendTextStyle: theme.textTheme.bodySmall!.copyWith(
+                fontSize: 12,
+                color: theme.colorScheme.error.withAlpha(200),
+              ),
+              disabledTextStyle: theme.textTheme.bodySmall!.copyWith(
+                fontSize: 12,
+                color: theme.colorScheme.onSurface.withAlpha(50),
+              ),
+            ),
+            eventLoader: (day) {
+              final d = DateTime(day.year, day.month, day.day);
+              return markedDays.contains(d) ? [true] : [];
+            },
+          ),
         );
         final body = Padding(
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
@@ -769,7 +781,8 @@ class _CalendarView extends StatelessWidget {
               ),
               const SizedBox(height: 10),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(16),
                   color: theme.colorScheme.onSurface.withAlpha(isDark ? 12 : 6),
@@ -825,7 +838,8 @@ class _CalendarView extends StatelessWidget {
 // ════════════════════════════════════════════════════════════════
 
 class _DayLoadingSkeleton extends StatefulWidget {
-  const _DayLoadingSkeleton({super.key, required this.theme, required this.primary});
+  const _DayLoadingSkeleton(
+      {super.key, required this.theme, required this.primary});
   final ThemeData theme;
   final Color primary;
 
@@ -865,57 +879,61 @@ class _DayLoadingSkeletonState extends State<_DayLoadingSkeleton>
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
-            children: List.generate(4, (i) => Padding(
-              padding: const EdgeInsets.only(bottom: 12),
-              child: Row(
-                children: [
-                  Container(
-                    width: 32,
-                    height: 32,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: widget.primary
-                          .withValues(alpha: widget.primary.a * opacity * 0.5),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Container(
-                          height: 13,
-                          width: double.infinity,
-                          decoration: BoxDecoration(
-                            color: widget.theme.colorScheme.onSurface
-                                .withValues(
-                              alpha: widget.theme.colorScheme.onSurface.a *
-                                  opacity *
-                                  0.15,
+            children: List.generate(
+                4,
+                (i) => Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 32,
+                            height: 32,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: widget.primary.withValues(
+                                  alpha: widget.primary.a * opacity * 0.5),
                             ),
-                            borderRadius: BorderRadius.circular(6),
                           ),
-                        ),
-                        const SizedBox(height: 6),
-                        Container(
-                          height: 10,
-                          width: 120,
-                          decoration: BoxDecoration(
-                            color: widget.theme.colorScheme.onSurface
-                                .withValues(
-                              alpha: widget.theme.colorScheme.onSurface.a *
-                                  opacity *
-                                  0.1,
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Container(
+                                  height: 13,
+                                  width: double.infinity,
+                                  decoration: BoxDecoration(
+                                    color: widget.theme.colorScheme.onSurface
+                                        .withValues(
+                                      alpha:
+                                          widget.theme.colorScheme.onSurface.a *
+                                              opacity *
+                                              0.15,
+                                    ),
+                                    borderRadius: BorderRadius.circular(6),
+                                  ),
+                                ),
+                                const SizedBox(height: 6),
+                                Container(
+                                  height: 10,
+                                  width: 120,
+                                  decoration: BoxDecoration(
+                                    color: widget.theme.colorScheme.onSurface
+                                        .withValues(
+                                      alpha:
+                                          widget.theme.colorScheme.onSurface.a *
+                                              opacity *
+                                              0.1,
+                                    ),
+                                    borderRadius: BorderRadius.circular(5),
+                                  ),
+                                ),
+                              ],
                             ),
-                            borderRadius: BorderRadius.circular(5),
                           ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            )),
+                        ],
+                      ),
+                    )),
           ),
         );
         return LayoutBuilder(
@@ -942,6 +960,7 @@ class _DayView extends StatelessWidget {
   const _DayView({
     super.key,
     required this.day,
+    required this.college,
     required this.selectedDay,
     required this.onBack,
     required this.primary,
@@ -953,6 +972,7 @@ class _DayView extends StatelessWidget {
   });
 
   final DaySchedule day;
+  final String college;
   final DateTime selectedDay;
   final VoidCallback onBack;
   final Color primary;
@@ -994,6 +1014,7 @@ class _DayView extends StatelessWidget {
           else
             _DayCard(
               day: day,
+              college: college,
               items: items,
               primary: primary,
               theme: theme,
@@ -1004,6 +1025,46 @@ class _DayView extends StatelessWidget {
     );
   }
 }
+
+String _formatHistoryDayAsText(DaySchedule day) {
+  final items = day.items.toList()
+    ..sort((a, b) {
+      final byLesson = a.lessonNumber.compareTo(b.lessonNumber);
+      if (byLesson != 0) return byLesson;
+      return (a.subgroup ?? 0).compareTo(b.subgroup ?? 0);
+    });
+
+  final lines = <String>[
+    '${_capitalizeHistory(day.day)}, ${day.date}',
+    '',
+  ];
+
+  if (items.isEmpty) {
+    lines.add('Нет занятий');
+    return lines.join('\n');
+  }
+
+  for (final item in items) {
+    final parts = <String>[
+      '${item.lessonNumber}. ${item.subject ?? '—'}',
+    ];
+    if (item.teacher != null && item.teacher!.trim().isNotEmpty) {
+      parts.add(item.teacher!.trim());
+    }
+    if (item.classroom != null && item.classroom!.trim().isNotEmpty) {
+      parts.add('каб. ${item.classroom!.trim()}');
+    }
+    if (item.subgroup != null) {
+      parts.add('подгр. ${item.subgroup}');
+    }
+    lines.add(parts.join(' • '));
+  }
+
+  return lines.join('\n');
+}
+
+String _capitalizeHistory(String value) =>
+    value.isEmpty ? value : value[0].toUpperCase() + value.substring(1);
 
 // ── Пустой день ──────────────────────────────────────────────────────────────
 
@@ -1066,6 +1127,7 @@ class _EmptyDay extends StatelessWidget {
 class _DayCard extends StatelessWidget {
   const _DayCard({
     required this.day,
+    required this.college,
     required this.items,
     required this.primary,
     required this.theme,
@@ -1073,6 +1135,7 @@ class _DayCard extends StatelessWidget {
   });
 
   final DaySchedule day;
+  final String college;
   final List<ScheduleItem> items;
   final Color primary;
   final ThemeData theme;
@@ -1082,123 +1145,141 @@ class _DayCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final cardColor = theme.cardTheme.color ?? theme.colorScheme.surface;
 
-    return Container(
-      margin: const EdgeInsets.only(top: 4),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: const Alignment(-0.7, -0.8),
-          end: const Alignment(1.0, 1.0),
-          stops: const [0.0, 0.35, 0.75, 1.0],
-          colors: [
-            Color.alphaBlend(primary.withAlpha(isDark ? 42 : 28), cardColor),
-            Color.alphaBlend(primary.withAlpha(isDark ? 22 : 14), cardColor),
-            Color.alphaBlend(primary.withAlpha(isDark ? 10 : 6), cardColor),
-            cardColor,
-          ],
-        ),
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: primary.withAlpha(isDark ? 35 : 22),
-          width: 0.8,
+        onLongPress: () => showDayShareSheet(
+          context,
+          day: day,
+          college: college,
+          shareText: _formatHistoryDayAsText(day),
+          subtitle: "Сохранённый день",
         ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Заголовок карточки
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
-            child: Row(
-              children: [
-                Container(
-                  width: 3, height: 18,
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [primary, primary.withAlpha(140)],
+        child: Container(
+          margin: const EdgeInsets.only(top: 4),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: const Alignment(-0.7, -0.8),
+              end: const Alignment(1.0, 1.0),
+              stops: const [0.0, 0.35, 0.75, 1.0],
+              colors: [
+                Color.alphaBlend(
+                    primary.withAlpha(isDark ? 42 : 28), cardColor),
+                Color.alphaBlend(
+                    primary.withAlpha(isDark ? 22 : 14), cardColor),
+                Color.alphaBlend(primary.withAlpha(isDark ? 10 : 6), cardColor),
+                cardColor,
+              ],
+            ),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(
+              color: primary.withAlpha(isDark ? 35 : 22),
+              width: 0.8,
+            ),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Заголовок карточки
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 3,
+                      height: 18,
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [primary, primary.withAlpha(140)],
+                        ),
+                        borderRadius: BorderRadius.circular(2),
+                      ),
                     ),
-                    borderRadius: BorderRadius.circular(2),
-                  ),
+                    const SizedBox(width: 10),
+                    Text(
+                      _capitalize(day.day),
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      day.date,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurface.withAlpha(130),
+                      ),
+                    ),
+                    const Spacer(),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 9, vertical: 3),
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [
+                            primary.withAlpha(isDark ? 38 : 26),
+                            primary.withAlpha(isDark ? 22 : 14),
+                          ],
+                        ),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(
+                            color: primary.withAlpha(isDark ? 45 : 30),
+                            width: 0.7),
+                      ),
+                      child: Text(
+                        '${items.map((item) => item.lessonNumber).toSet().length} ${_lessonsWord(items.map((item) => item.lessonNumber).toSet().length)}',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w600,
+                          color: primary,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
-                const SizedBox(width: 10),
-                Text(
-                  _capitalize(day.day),
-                  style: theme.textTheme.titleSmall?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  day.date,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurface.withAlpha(130),
-                  ),
-                ),
-                const Spacer(),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
+              ),
+
+              // Разделитель
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+                child: Container(
+                  height: 0.6,
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
                       colors: [
-                        primary.withAlpha(isDark ? 38 : 26),
-                        primary.withAlpha(isDark ? 22 : 14),
+                        primary.withAlpha(0),
+                        primary.withAlpha(isDark ? 45 : 30),
+                        primary.withAlpha(isDark ? 45 : 30),
+                        primary.withAlpha(0),
                       ],
-                    ),
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(
-                        color: primary.withAlpha(isDark ? 45 : 30), width: 0.7),
-                  ),
-                  child: Text(
-                    '${items.length} ${_lessonsWord(items.length)}',
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      fontSize: 10,
-                      fontWeight: FontWeight.w600,
-                      color: primary,
+                      stops: const [0.0, 0.15, 0.85, 1.0],
                     ),
                   ),
-                ),
-              ],
-            ),
-          ),
-
-          // Разделитель
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
-            child: Container(
-              height: 0.6,
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [
-                    primary.withAlpha(0),
-                    primary.withAlpha(isDark ? 45 : 30),
-                    primary.withAlpha(isDark ? 45 : 30),
-                    primary.withAlpha(0),
-                  ],
-                  stops: const [0.0, 0.15, 0.85, 1.0],
                 ),
               ),
-            ),
-          ),
 
-          // Список пар (как на основном расписании: одна цифра — несколько подгрупп)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(14, 8, 14, 14),
-            child: Column(
-              children: _groupItemsByLesson(items)
-                  .map(
-                    (e) => _HistoryLessonGroup(
-                      lessonNumber: e.key,
-                      lessonItems: e.value,
-                      theme: theme,
-                      primary: primary,
-                      isDark: isDark,
-                    ),
-                  )
-                  .toList(),
-            ),
+              // Список пар (как на основном расписании: одна цифра — несколько подгрупп)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(14, 8, 14, 14),
+                child: Column(
+                  children: _groupItemsByLesson(items)
+                      .map(
+                        (e) => _HistoryLessonGroup(
+                          lessonNumber: e.key,
+                          lessonItems: e.value,
+                          theme: theme,
+                          primary: primary,
+                          isDark: isDark,
+                        ),
+                      )
+                      .toList(),
+                ),
+              ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }
