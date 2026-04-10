@@ -1,7 +1,9 @@
+import "package:easy_refresh/easy_refresh.dart";
 import "package:flutter/material.dart";
 import "package:flutter_staggered_animations/flutter_staggered_animations.dart";
 
 import "../../../app/theme.dart";
+import "../../../core/widgets/animated_app_bar.dart";
 import "../../../core/widgets/custom_refresh.dart";
 import "../../../core/widgets/empty_state_view.dart";
 import "../../schedule/domain/models.dart";
@@ -17,11 +19,29 @@ class StatisticsPage extends StatefulWidget {
 
 class _StatisticsPageState extends State<StatisticsPage> {
   bool _loaded = false;
+  // Увеличивается только при первой загрузке данных — AnimationLimiter
+  // пересоздаётся ровно один раз, анимации при рефреше не повторяются.
+  int _listAnimKey = 0;
 
   @override
   void initState() {
     super.initState();
+    widget.controller.addListener(_onController);
     WidgetsBinding.instance.addPostFrameCallback((_) => _maybeLoad());
+  }
+
+  void _onController() {
+    if (_listAnimKey == 0 &&
+        widget.controller.statistics != null &&
+        mounted) {
+      setState(() => _listAnimKey = 1);
+    }
+  }
+
+  @override
+  void dispose() {
+    widget.controller.removeListener(_onController);
+    super.dispose();
   }
 
   void _maybeLoad() {
@@ -59,14 +79,23 @@ class _StatisticsPageState extends State<StatisticsPage> {
           return CustomRefreshWrapper(
             onRefresh: widget.controller.refreshStatistics,
             color: theme.colorScheme.primary,
-            child: ListView(
-              physics: const AlwaysScrollableScrollPhysics(),
-              children: [
-                const SizedBox(height: 120),
-                EmptyStateView(
-                  icon: Icons.bar_chart_outlined,
-                  message: "Нет данных по дисциплинам",
-                  subtitle: "Потяните вниз для обновления",
+            appBarExtent: AnimatedAppBarVisuals.totalHeight(context),
+            child: CustomScrollView(
+              slivers: [
+                SliverPadding(
+                  padding: EdgeInsets.only(
+                      top: contentTopUnderAppBar(context)),
+                ),
+                const HeaderLocator.sliver(),
+                SliverFillRemaining(
+                  hasScrollBody: false,
+                  child: Center(
+                    child: EmptyStateView(
+                      icon: Icons.bar_chart_outlined,
+                      message: "Нет данных по дисциплинам",
+                      subtitle: "Потяните вниз для обновления",
+                    ),
+                  ),
                 ),
               ],
             ),
@@ -86,8 +115,8 @@ class _StatisticsPageState extends State<StatisticsPage> {
             child = const SizedBox(height: 20);
           } else if (index == 2) {
             child = Text("ДИСЦИПЛИНЫ",
-                style: theme.textTheme.titleSmall
-                    ?.copyWith(letterSpacing: 1.2));
+                style:
+                    theme.textTheme.titleSmall?.copyWith(letterSpacing: 1.2));
           } else if (index < headerCount + disciplineCount) {
             final i = index - headerCount;
             child = Padding(
@@ -112,24 +141,30 @@ class _StatisticsPageState extends State<StatisticsPage> {
           );
         }
 
-        final listView = ListView.builder(
-          physics: const AlwaysScrollableScrollPhysics(
-              parent: BouncingScrollPhysics()),
-          padding: EdgeInsets.fromLTRB(
-            16,
-            contentTopUnderAppBar(context),
-            16,
-            116,
-          ),
-          itemCount: totalItems,
-          itemBuilder: itemBuilder,
+        final appBarTop = contentTopUnderAppBar(context);
+        final listView = CustomScrollView(
+          slivers: [
+            SliverPadding(padding: EdgeInsets.only(top: appBarTop)),
+            const HeaderLocator.sliver(),
+            SliverPadding(
+              padding: EdgeInsets.fromLTRB(16, 0, 16, 116),
+              sliver: SliverList(
+                delegate: SliverChildBuilderDelegate(
+                  itemBuilder,
+                  childCount: totalItems,
+                ),
+              ),
+            ),
+          ],
         );
 
         return CustomRefreshWrapper(
           onRefresh: widget.controller.refreshStatistics,
           color: theme.colorScheme.primary,
-          indicatorTopPadding: contentTopUnderAppBar(context),
-          child: useAnim ? AnimationLimiter(child: listView) : listView,
+          appBarExtent: AnimatedAppBarVisuals.totalHeight(context),
+          child: useAnim
+              ? AnimationLimiter(key: ValueKey(_listAnimKey), child: listView)
+              : listView,
         );
       },
     );
@@ -313,8 +348,7 @@ class _DisciplineCard extends StatelessWidget {
                       alignment: Alignment.center,
                       child: Text(
                         discipline.number.isNotEmpty
-                            ? discipline.number
-                                .replaceAll(RegExp(r'\.$'), '')
+                            ? discipline.number.replaceAll(RegExp(r'\.$'), '')
                             : "${index + 1}",
                         style: TextStyle(
                           fontSize: 14,
@@ -337,8 +371,7 @@ class _DisciplineCard extends StatelessWidget {
                             maxLines: 2,
                             overflow: TextOverflow.ellipsis,
                           ),
-                          if (isTeacherMode &&
-                              discipline.group.isNotEmpty) ...[
+                          if (isTeacherMode && discipline.group.isNotEmpty) ...[
                             const SizedBox(height: 2),
                             Text(
                               "Группа: ${discipline.group}",
@@ -374,8 +407,7 @@ class _DisciplineCard extends StatelessWidget {
                                 horizontal: 8, vertical: 3),
                             decoration: BoxDecoration(
                               borderRadius: BorderRadius.circular(6),
-                              color:
-                                  theme.colorScheme.onSurface.withAlpha(15),
+                              color: theme.colorScheme.onSurface.withAlpha(15),
                             ),
                             child: Text(
                               discipline.lessonType,
@@ -452,8 +484,7 @@ class _HourStat extends StatelessWidget {
     return Expanded(
       child: Column(
         children: [
-          Text(label,
-              style: theme.textTheme.bodySmall?.copyWith(fontSize: 11)),
+          Text(label, style: theme.textTheme.bodySmall?.copyWith(fontSize: 11)),
           const SizedBox(height: 2),
           Text(value,
               style: theme.textTheme.bodyMedium

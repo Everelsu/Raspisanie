@@ -1,4 +1,4 @@
-import "dart:convert";
+﻿import "dart:convert";
 import "dart:io";
 
 import "package:file_picker/file_picker.dart";
@@ -71,6 +71,14 @@ class SettingsPage extends StatefulWidget {
 }
 
 class _SettingsPageState extends State<SettingsPage> {
+  static const String _kDefaultNetworkStartUrl =
+      "https://poo.zabedu.ru/security/#/login";
+  static const List<(String, String)> _kNetworkStartPresets = [
+    ("ПОУ вход", "https://poo.zabedu.ru/security/#/login"),
+    ("Google", "https://www.google.com"),
+    ("Дневник", "https://poo.zabedu.ru/"),
+  ];
+
   ScheduleController get ctrl => widget.controller;
   PreferencesManager get prefs => ctrl.prefs;
   bool _loadingGroups = false;
@@ -276,9 +284,8 @@ class _SettingsPageState extends State<SettingsPage> {
                                     "Аа",
                                     style: widget.fontService.previewStyle(
                                       font,
-                                      color: selected
-                                          ? cs.primary
-                                          : cs.onSurface,
+                                      color:
+                                          selected ? cs.primary : cs.onSurface,
                                       fontSize: 17,
                                       fontWeight: FontWeight.w700,
                                     ),
@@ -482,9 +489,10 @@ class _SettingsPageState extends State<SettingsPage> {
   Widget _collegeCard(ThemeData theme) {
     final sources = prefs.allCollegeSources;
     final selectedCollege = ctrl.college;
-    final selectedSource = sources.where((s) => s.id == selectedCollege).isNotEmpty
-        ? sources.firstWhere((s) => s.id == selectedCollege)
-        : null;
+    final selectedSource =
+        sources.where((s) => s.id == selectedCollege).isNotEmpty
+            ? sources.firstWhere((s) => s.id == selectedCollege)
+            : null;
 
     return Card(
       child: Padding(
@@ -568,189 +576,164 @@ class _SettingsPageState extends State<SettingsPage> {
                     mainAxisSize: MainAxisSize.max,
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                    Material(
-                      color: theme.cardTheme.color ?? theme.colorScheme.surface,
-                      borderRadius: BorderRadius.circular(12),
-                      child: Padding(
-                        padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text("Источники", style: theme.textTheme.titleLarge),
-                            const SizedBox(height: 4),
-                            Text(
-                              "Можно добавить свой источник и выбрать его в списке.",
-                              style: theme.textTheme.bodySmall,
-                            ),
-                            const SizedBox(height: 10),
-                            SizedBox(
-                              width: double.infinity,
-                              child: FilledButton.tonalIcon(
-                        onPressed: syncRunning
-                            ? null
-                            : () async {
-                                setSheetState(() {
-                                  syncRunning = true;
-                                });
-                                final result =
-                                    await _syncCollegeSourcesFromRemote();
-                                if (!mounted || !ctx.mounted) return;
-                                setSheetState(() {
-                                  syncRunning = false;
-                                  lastSync = result;
-                                });
-                                setState(() {});
-                                if (ctx.mounted) {
-                                  ScaffoldMessenger.of(ctx).showSnackBar(
-                                    SnackBar(content: Text(result.message)),
-                                  );
-                                }
-                              },
-                              icon: syncRunning
-                                  ? const SizedBox(
-                                      width: 18,
-                                      height: 18,
-                                      child: CircularProgressIndicator(strokeWidth: 2),
-                                    )
-                                  : const Icon(Icons.sync_rounded),
-                              label: Text(
-                                syncRunning
-                                    ? "Синхронизация..."
-                                    : "Синхронизировать ссылки",
-                              ),
-                              ),
-                            ),
-                            if (lastSync != null || syncedAt != null) ...[
-                              const SizedBox(height: 6),
+                      Material(
+                        color:
+                            theme.cardTheme.color ?? theme.colorScheme.surface,
+                        borderRadius: BorderRadius.circular(12),
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text("Источники",
+                                  style: theme.textTheme.titleLarge),
+                              const SizedBox(height: 4),
                               Text(
-                                lastSync != null
-                                    ? "Синхронизировано: ${_formatFriendlySyncTime(lastSync!.checkedAt)} • ${lastSync!.message}"
-                                    : "Синхронизировано: ${_formatFriendlySyncTime(syncedAt!)}",
-                                style: widget.fontService.previewStyle(
-                                  currentFont,
-                                  color: theme.colorScheme.onSurfaceVariant,
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w500,
+                                "Можно добавить свой источник и выбрать его в списке.",
+                                style: theme.textTheme.bodySmall,
+                              ),
+                              const SizedBox(height: 10),
+                              SizedBox(
+                                width: double.infinity,
+                                child: FilledButton.tonalIcon(
+                                  onPressed: syncRunning
+                                      ? null
+                                      : () async {
+                                          setSheetState(() {
+                                            syncRunning = true;
+                                          });
+                                          final result =
+                                              await _syncCollegeSourcesFromRemote();
+                                          if (!mounted || !ctx.mounted) return;
+                                          setSheetState(() {
+                                            syncRunning = false;
+                                            lastSync = result;
+                                          });
+                                          setState(() {});
+                                          if (ctx.mounted) {
+                                            ScaffoldMessenger.of(ctx)
+                                                .showSnackBar(
+                                              SnackBar(
+                                                  content:
+                                                      Text(result.message)),
+                                            );
+                                          }
+                                        },
+                                  icon: syncRunning
+                                      ? const SizedBox(
+                                          width: 18,
+                                          height: 18,
+                                          child: CircularProgressIndicator(
+                                              strokeWidth: 2),
+                                        )
+                                      : const Icon(Icons.sync_rounded),
+                                  label: Text(
+                                    syncRunning
+                                        ? "Синхронизация..."
+                                        : "Синхронизировать ссылки",
+                                  ),
                                 ),
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
                               ),
-                            ],
-                          ],
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 14),
-                    Expanded(
-                      child: ListView.separated(
-                        padding: const EdgeInsets.only(top: 2, bottom: 10),
-                        itemCount: sources.length,
-                        separatorBuilder: (_, __) => const SizedBox(height: 6),
-                        itemBuilder: (_, i) {
-                          final s = sources[i];
-                          final selected = ctrl.college == s.id;
-                          final isRunning = runningIds.contains(s.id);
-                          final probe = pingById[s.id];
-                          final probeColor = probe == null
-                              ? theme.colorScheme.onSurfaceVariant
-                              : (probe.ok
-                                  ? theme.colorScheme.primary
-                                  : theme.colorScheme.error);
-                          return ListTile(
-                            dense: true,
-                            contentPadding:
-                                const EdgeInsets.fromLTRB(12, 6, 8, 6),
-                            horizontalTitleGap: 10,
-                            minLeadingWidth: 18,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                              side: BorderSide(
-                                color: selected
-                                    ? theme.colorScheme.primary
-                                    : theme.colorScheme.outlineVariant,
-                              ),
-                            ),
-                            title: Text(s.name),
-                            subtitle: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
+                              if (lastSync != null || syncedAt != null) ...[
+                                const SizedBox(height: 6),
                                 Text(
-                                  s.baseUrl,
-                                  maxLines: 1,
+                                  lastSync != null
+                                      ? "Синхронизировано: ${_formatFriendlySyncTime(lastSync!.checkedAt)} • ${lastSync!.message}"
+                                      : "Синхронизировано: ${_formatFriendlySyncTime(syncedAt!)}",
+                                  style: widget.fontService.previewStyle(
+                                    currentFont,
+                                    color: theme.colorScheme.onSurfaceVariant,
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                  maxLines: 2,
                                   overflow: TextOverflow.ellipsis,
                                 ),
-                                if (isRunning)
-                                  Text(
-                                    'Проверяю...',
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: theme.textTheme.labelSmall?.copyWith(
-                                      color: theme.colorScheme.onSurfaceVariant,
-                                    ),
-                                  )
-                                else if (probe != null)
-                                  Text(
-                                    _formatProbeCaption(probe),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: widget.fontService.previewStyle(
-                                      currentFont,
-                                      color: probeColor,
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.w500,
-                                    ),
-                                  ),
                               ],
-                            ),
-                            leading: Icon(
-                              s.builtIn
-                                  ? Icons.lock_outline_rounded
-                                  : Icons.link_rounded,
-                              size: 18,
-                              color: s.builtIn
-                                  ? theme.colorScheme.onSurfaceVariant
-                                  : theme.colorScheme.primary,
-                            ),
-                            trailing: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                IconButton(
-                                  tooltip: "Копировать URL",
-                                  visualDensity: VisualDensity.compact,
-                                  padding: EdgeInsets.zero,
-                                  constraints: const BoxConstraints.tightFor(
-                                    width: 32,
-                                    height: 32,
-                                  ),
-                                  onPressed: () async {
-                                    await Clipboard.setData(
-                                        ClipboardData(text: s.baseUrl));
-                                    if (ctx.mounted) {
-                                      ScaffoldMessenger.of(ctx).showSnackBar(
-                                        const SnackBar(
-                                          content: Text("Ссылка скопирована"),
-                                        ),
-                                      );
-                                    }
-                                  },
-                                  icon: const Icon(Icons.content_copy_rounded,
-                                      size: 20),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                      Expanded(
+                        child: ListView.separated(
+                          padding: const EdgeInsets.only(top: 2, bottom: 10),
+                          itemCount: sources.length,
+                          separatorBuilder: (_, __) =>
+                              const SizedBox(height: 6),
+                          itemBuilder: (_, i) {
+                            final s = sources[i];
+                            final selected = ctrl.college == s.id;
+                            final isRunning = runningIds.contains(s.id);
+                            final probe = pingById[s.id];
+                            final probeColor = probe == null
+                                ? theme.colorScheme.onSurfaceVariant
+                                : (probe.ok
+                                    ? theme.colorScheme.primary
+                                    : theme.colorScheme.error);
+                            return ListTile(
+                              dense: true,
+                              contentPadding:
+                                  const EdgeInsets.fromLTRB(12, 6, 8, 6),
+                              horizontalTitleGap: 10,
+                              minLeadingWidth: 18,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                                side: BorderSide(
+                                  color: selected
+                                      ? theme.colorScheme.primary
+                                      : theme.colorScheme.outlineVariant,
                                 ),
-                                if (isRunning)
-                                  const SizedBox(
-                                    width: 20,
-                                    height: 20,
-                                    child: Padding(
-                                      padding: EdgeInsets.all(2),
-                                      child: CircularProgressIndicator(
-                                        strokeWidth: 2,
+                              ),
+                              title: Text(s.name),
+                              subtitle: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(
+                                    s.baseUrl,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                  if (isRunning)
+                                    Text(
+                                      'Проверяю...',
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style:
+                                          theme.textTheme.labelSmall?.copyWith(
+                                        color:
+                                            theme.colorScheme.onSurfaceVariant,
+                                      ),
+                                    )
+                                  else if (probe != null)
+                                    Text(
+                                      _formatProbeCaption(probe),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: widget.fontService.previewStyle(
+                                        currentFont,
+                                        color: probeColor,
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w500,
                                       ),
                                     ),
-                                  )
-                                else
+                                ],
+                              ),
+                              leading: Icon(
+                                s.builtIn
+                                    ? Icons.lock_outline_rounded
+                                    : Icons.link_rounded,
+                                size: 18,
+                                color: s.builtIn
+                                    ? theme.colorScheme.onSurfaceVariant
+                                    : theme.colorScheme.primary,
+                              ),
+                              trailing: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
                                   IconButton(
-                                    tooltip: "Пинг",
+                                    tooltip: "Копировать URL",
                                     visualDensity: VisualDensity.compact,
                                     padding: EdgeInsets.zero,
                                     constraints: const BoxConstraints.tightFor(
@@ -758,126 +741,165 @@ class _SettingsPageState extends State<SettingsPage> {
                                       height: 32,
                                     ),
                                     onPressed: () async {
-                                      setSheetState(() {
-                                        runningIds.add(s.id);
-                                      });
-                                      final result =
-                                          await _probeCollegeSourceUrl(
-                                        s.baseUrl,
-                                      );
-                                      if (!ctx.mounted || !mounted) return;
-                                      setSheetState(() {
-                                        runningIds.remove(s.id);
-                                        pingById[s.id] = result;
-                                      });
+                                      await Clipboard.setData(
+                                          ClipboardData(text: s.baseUrl));
+                                      if (ctx.mounted) {
+                                        ScaffoldMessenger.of(ctx).showSnackBar(
+                                          const SnackBar(
+                                            content: Text("Ссылка скопирована"),
+                                          ),
+                                        );
+                                      }
                                     },
-                                    icon: const Icon(
-                                        Icons.wifi_tethering_rounded,
+                                    icon: const Icon(Icons.content_copy_rounded,
                                         size: 20),
                                   ),
-                                if (!s.builtIn)
-                                  PopupMenuButton<String>(
-                                    tooltip: "Действия",
-                                    padding: EdgeInsets.zero,
-                                    iconSize: 20,
-                                    splashRadius: 18,
-                                    icon: const Icon(Icons.more_horiz_rounded,
-                                        size: 20),
-                                    itemBuilder: (_) => const [
-                                      PopupMenuItem<String>(
-                                        value: "edit",
-                                        child: Row(
-                                          children: [
-                                            Icon(Icons.edit_outlined, size: 18),
-                                            SizedBox(width: 8),
-                                            Text("Изменить"),
-                                          ],
+                                  if (isRunning)
+                                    const SizedBox(
+                                      width: 20,
+                                      height: 20,
+                                      child: Padding(
+                                        padding: EdgeInsets.all(2),
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
                                         ),
                                       ),
-                                      PopupMenuItem<String>(
-                                        value: "delete",
-                                        child: Row(
-                                          children: [
-                                            Icon(Icons.delete_outline_rounded,
-                                                size: 18),
-                                            SizedBox(width: 8),
-                                            Text("Удалить"),
-                                          ],
-                                        ),
+                                    )
+                                  else
+                                    IconButton(
+                                      tooltip: "Пинг",
+                                      visualDensity: VisualDensity.compact,
+                                      padding: EdgeInsets.zero,
+                                      constraints:
+                                          const BoxConstraints.tightFor(
+                                        width: 32,
+                                        height: 32,
                                       ),
-                                    ],
-                                    onSelected: (value) async {
-                                      if (value == "edit") {
-                                        _dismissKeyboard();
-                                        final ok =
-                                            await _showEditCollegeSourceDialog(s);
-                                        if (!ok || !mounted || !ctx.mounted) {
+                                      onPressed: () async {
+                                        setSheetState(() {
+                                          runningIds.add(s.id);
+                                        });
+                                        final result =
+                                            await _probeCollegeSourceUrl(
+                                          s.baseUrl,
+                                        );
+                                        if (!ctx.mounted || !mounted) return;
+                                        setSheetState(() {
+                                          runningIds.remove(s.id);
+                                          pingById[s.id] = result;
+                                        });
+                                      },
+                                      icon: const Icon(
+                                          Icons.wifi_tethering_rounded,
+                                          size: 20),
+                                    ),
+                                  if (!s.builtIn)
+                                    PopupMenuButton<String>(
+                                      tooltip: "Действия",
+                                      padding: EdgeInsets.zero,
+                                      iconSize: 20,
+                                      splashRadius: 18,
+                                      icon: const Icon(Icons.more_horiz_rounded,
+                                          size: 20),
+                                      itemBuilder: (_) => const [
+                                        PopupMenuItem<String>(
+                                          value: "edit",
+                                          child: Row(
+                                            children: [
+                                              Icon(Icons.edit_outlined,
+                                                  size: 18),
+                                              SizedBox(width: 8),
+                                              Text("Изменить"),
+                                            ],
+                                          ),
+                                        ),
+                                        PopupMenuItem<String>(
+                                          value: "delete",
+                                          child: Row(
+                                            children: [
+                                              Icon(Icons.delete_outline_rounded,
+                                                  size: 18),
+                                              SizedBox(width: 8),
+                                              Text("Удалить"),
+                                            ],
+                                          ),
+                                        ),
+                                      ],
+                                      onSelected: (value) async {
+                                        if (value == "edit") {
+                                          _dismissKeyboard();
+                                          final ok =
+                                              await _showEditCollegeSourceDialog(
+                                                  s);
+                                          if (!ok || !mounted || !ctx.mounted) {
+                                            return;
+                                          }
+                                          ctrl.refreshCollegeSources();
+                                          setSheetState(() {});
+                                          setState(() {});
                                           return;
                                         }
-                                        ctrl.refreshCollegeSources();
-                                        setSheetState(() {});
-                                        setState(() {});
-                                        return;
-                                      }
-                                      if (value == "delete") {
-                                        final updated = prefs.customCollegeSources
-                                            .where((e) => e.id != s.id)
-                                            .toList();
-                                        prefs.saveCustomCollegeSources(updated);
-                                        ctrl.refreshCollegeSources();
-                                        if (ctrl.college == s.id) {
-                                          ctrl.setCollege(
-                                              PreferencesManager.collegeDefault);
-                                          _loadGroupsAsync();
+                                        if (value == "delete") {
+                                          final updated = prefs
+                                              .customCollegeSources
+                                              .where((e) => e.id != s.id)
+                                              .toList();
+                                          prefs.saveCustomCollegeSources(
+                                              updated);
+                                          ctrl.refreshCollegeSources();
+                                          if (ctrl.college == s.id) {
+                                            ctrl.setCollege(PreferencesManager
+                                                .collegeDefault);
+                                            _loadGroupsAsync();
+                                          }
+                                          setSheetState(() {});
+                                          setState(() {});
                                         }
-                                        setSheetState(() {});
-                                        setState(() {});
-                                      }
-                                    },
-                                  ),
-                              ],
-                            ),
-                            onTap: () {
-                              ctrl.setCollege(s.id);
-                              _loadGroupsAsync();
-                              _loadLessonTimesForSelectedCollege();
+                                      },
+                                    ),
+                                ],
+                              ),
+                              onTap: () {
+                                ctrl.setCollege(s.id);
+                                _loadGroupsAsync();
+                                _loadLessonTimesForSelectedCollege();
+                                setSheetState(() {});
+                                setState(() {});
+                              },
+                              onLongPress: () async {
+                                final u = Uri.tryParse(s.baseUrl);
+                                if (u != null && await canLaunchUrl(u)) {
+                                  await launchUrl(u,
+                                      mode: LaunchMode.externalApplication);
+                                }
+                              },
+                            );
+                          },
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      SafeArea(
+                        top: false,
+                        child: SizedBox(
+                          width: double.infinity,
+                          child: FilledButton.tonalIcon(
+                            onPressed: () async {
+                              _dismissKeyboard();
+                              final added = await _showAddCollegeSourceDialog();
+                              if (!added || !mounted || !ctx.mounted) return;
+                              ctrl.refreshCollegeSources();
                               setSheetState(() {});
                               setState(() {});
                             },
-                            onLongPress: () async {
-                              final u = Uri.tryParse(s.baseUrl);
-                              if (u != null && await canLaunchUrl(u)) {
-                                await launchUrl(u,
-                                    mode: LaunchMode.externalApplication);
-                              }
-                            },
-                          );
-                        },
+                            icon: const Icon(Icons.add_link_rounded),
+                            label: const Text("Добавить ссылку"),
+                          ),
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 8),
-                    SafeArea(
-                      top: false,
-                      child: SizedBox(
-                        width: double.infinity,
-                        child: FilledButton.tonalIcon(
-                        onPressed: () async {
-                          _dismissKeyboard();
-                          final added = await _showAddCollegeSourceDialog();
-                          if (!added || !mounted || !ctx.mounted) return;
-                          ctrl.refreshCollegeSources();
-                          setSheetState(() {});
-                          setState(() {});
-                        },
-                        icon: const Icon(Icons.add_link_rounded),
-                        label: const Text("Добавить ссылку"),
-                      ),
-                    ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
-            ),
             );
           },
         );
