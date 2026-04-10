@@ -130,7 +130,7 @@ class ExpressScheduleRepository {
         _decoder.decode(bytes: response.bodyBytes, headers: response.headers);
     final days = await compute(_parseInIsolate, decoded.html);
     if (days.isEmpty) {
-      final cached = scheduleCache?.load(groupFile, college);
+      final cached = scheduleCache?.loadAllowingExpired(groupFile, college);
       if (cached != null && cached.isNotEmpty) {
         return cached;
       }
