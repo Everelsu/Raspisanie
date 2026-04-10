@@ -74,11 +74,24 @@ class ScheduleCache {
     if (groupFile.isEmpty || college.isEmpty) return null;
     final ts = _prefs.getInt(_timestampKey(college, groupFile)) ?? 0;
     if (ts <= 0) return null;
-    if (_isExpired(ts)) {
-      clear(groupFile, college);
-      return null;
-    }
+    // При просрочке возвращаем null, но данные НЕ удаляем — они пригодятся
+    // как аварийный фолбэк при отсутствии сети (см. loadAllowingExpired).
+    // Реальная очистка — в StorageCleanup.
+    if (_isExpired(ts)) return null;
 
+    return _loadRaw(groupFile, college);
+  }
+
+  /// Возвращает кэш даже если он просрочен.
+  /// Используется как крайний фолбэк когда сеть недоступна.
+  List<DaySchedule>? loadAllowingExpired(String groupFile, String college) {
+    if (groupFile.isEmpty || college.isEmpty) return null;
+    final ts = _prefs.getInt(_timestampKey(college, groupFile)) ?? 0;
+    if (ts <= 0) return null;
+    return _loadRaw(groupFile, college);
+  }
+
+  List<DaySchedule>? _loadRaw(String groupFile, String college) {
     final bundled = _prefs.getString(_bundleKey(college, groupFile));
     if (bundled != null && bundled.isNotEmpty) {
       final days = _decodeBundleDays(bundled);
@@ -139,6 +152,27 @@ class ScheduleCache {
           key.startsWith("history_")) {
         _prefs.remove(key);
       }
+    }
+  }
+
+  /// Удаляет записи, у которых кэш старше удвоенного срока ([_expiryHours] × 2).
+  /// Вызывается из StorageCleanup, а не из [load] — чтобы данные оставались
+  /// доступными как аварийный фолбэк при отсутствии сети.
+  void clearExpiredEntries() {
+    final keys = _prefs.getKeys().toList();
+    for (final key in keys) {
+      if (!key.startsWith("timestamp_")) continue;
+      final ts = _prefs.getInt(key) ?? 0;
+      final ageHours =
+          (DateTime.now().millisecondsSinceEpoch - ts) / (1000 * 60 * 60);
+      // Удаляем только то, что в два раза старше нормального срока
+      if (ageHours <= _expiryHours * 2) continue;
+      final suffix = key.substring("timestamp_".length);
+      final sep = suffix.lastIndexOf("_");
+      if (sep <= 0) continue;
+      final college = suffix.substring(0, sep);
+      final groupFile = suffix.substring(sep + 1);
+      clear(groupFile, college);
     }
   }
 
