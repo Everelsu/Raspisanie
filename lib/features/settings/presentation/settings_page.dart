@@ -2381,8 +2381,8 @@ class _SettingsPageState extends State<SettingsPage> {
     const releasesLink = "https://github.com/Everelsu/Raspisanie/releases";
     const authorAvatarUrl =
         "https://raw.githubusercontent.com/Everelsu/RelsevLink/main/avatar.png";
-    const betaTesterLink = "https://t.me/skromniyvadya";
-    const betaTesterTelegramDeepLink = "tg://resolve?domain=skromniyvadya";
+    const betaTesterLink = "https://www.youtube.com/watch?v=dQw4w9WgXcQ";
+    const betaTesterTelegramDeepLink = "https://www.youtube.com/watch?v=dQw4w9WgXcQ";
     const betaTesterAvatarUrl =
         "https://raw.githubusercontent.com/Everelsu/RelsevLink/6b2647524fe3ade73d931079e77f8225ccffd2f5/scromny.jpg";
     return Card(
