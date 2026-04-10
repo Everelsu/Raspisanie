@@ -1,20 +1,18 @@
-import "dart:ui" as ui;
-import "dart:io";
-
 import "package:flutter/material.dart";
-import "package:flutter/services.dart";
 import "package:flutter_staggered_animations/flutter_staggered_animations.dart";
-import "package:share_plus/share_plus.dart";
-import "package:path_provider/path_provider.dart";
 
 import "../../../app/theme.dart";
 import "../../../core/services/analytics_service.dart";
 import "../../../core/services/font_service.dart";
+import "../../../core/widgets/animated_app_bar.dart";
+import "package:easy_refresh/easy_refresh.dart";
+
 import "../../../core/widgets/custom_refresh.dart";
 import "../../../core/widgets/empty_state_view.dart";
 import "../data/lesson_times.dart";
 import "../data/preferences_manager.dart";
 import "../domain/models.dart";
+import "day_share_sheet.dart";
 import "schedule_controller.dart";
 import "sub_schedule_sheet.dart";
 
@@ -64,7 +62,8 @@ class SchedulePage extends StatelessWidget {
                 : (prefs.isTeacherMode
                     ? "Выберите преподавателя в настройках"
                     : "Выберите группу в настройках"),
-            subtitle: prefs.isGroupSelected ? null : "Перейдите на вкладку Настройки",
+            subtitle:
+                prefs.isGroupSelected ? null : "Перейдите на вкладку Настройки",
           );
         } else if (error != null && schedule.isEmpty) {
           body = EmptyStateView(
@@ -80,6 +79,10 @@ class SchedulePage extends StatelessWidget {
           final showOfflineBanner = error != null &&
               (error.contains("Показаны сохранённые") ||
                   error.contains("Не удалось обновить"));
+          final offlineBannerKey =
+              showOfflineBanner ? "${prefs.selectedGroupFile}|$error" : "";
+          final offlineBannerDismissed = offlineBannerKey.isNotEmpty &&
+              prefs.dismissedOfflineBannerKey == offlineBannerKey;
 
           final listPadding = EdgeInsets.fromLTRB(
             12,
@@ -87,17 +90,12 @@ class SchedulePage extends StatelessWidget {
             12,
             116,
           );
-          const listPhysics = AlwaysScrollableScrollPhysics(
-            parent: BouncingScrollPhysics(),
-          );
-
           Widget buildDayItem(int index) {
             final card = _DayCard(
               day: schedule[index],
               college: college,
               prefs: prefs,
               controller: controller,
-              fontService: fontService,
             );
             if (!useAnimations) return card;
             return AnimationConfiguration.staggeredList(
@@ -111,24 +109,32 @@ class SchedulePage extends StatelessWidget {
           }
 
           final Widget listView;
-          if (showOfflineBanner) {
+          if (showOfflineBanner && !offlineBannerDismissed) {
             final lastMs = prefs.lastScheduleNetworkOkMs;
+            // Баннер уже содержит верхний отступ под AppBar — список сразу за ним.
+            final bannerListPadding = listPadding.copyWith(top: 8);
             // Один CustomScrollView: pull-to-refresh срабатывает и при тяге с баннера,
             // а не только с области списка (Column+Expanded(ListView) ломал жест).
             listView = CustomScrollView(
-              physics: listPhysics,
               slivers: [
+                SliverPadding(
+                  padding: EdgeInsets.only(top: contentTopUnderAppBar(context)),
+                ),
+                const HeaderLocator.sliver(),
                 SliverToBoxAdapter(
                   child: _ScheduleOfflineBanner(
+                    controller: controller,
                     theme: theme,
+                    topPadding: 0,
                     lastSync: lastMs != null
                         ? DateTime.fromMillisecondsSinceEpoch(lastMs)
                         : null,
                     errorHint: error,
+                    bannerKey: offlineBannerKey,
                   ),
                 ),
                 SliverPadding(
-                  padding: listPadding,
+                  padding: bannerListPadding.copyWith(top: 8),
                   sliver: SliverList(
                     delegate: SliverChildBuilderDelegate(
                       (context, index) => buildDayItem(index),
@@ -139,11 +145,22 @@ class SchedulePage extends StatelessWidget {
               ],
             );
           } else {
-            listView = ListView.builder(
-              physics: listPhysics,
-              padding: listPadding,
-              itemCount: schedule.length,
-              itemBuilder: (context, index) => buildDayItem(index),
+            listView = CustomScrollView(
+              slivers: [
+                SliverPadding(
+                  padding: EdgeInsets.only(top: contentTopUnderAppBar(context)),
+                ),
+                const HeaderLocator.sliver(),
+                SliverPadding(
+                  padding: listPadding.copyWith(top: 0),
+                  sliver: SliverList(
+                    delegate: SliverChildBuilderDelegate(
+                      (context, index) => buildDayItem(index),
+                      childCount: schedule.length,
+                    ),
+                  ),
+                ),
+              ],
             );
           }
 
@@ -155,22 +172,17 @@ class SchedulePage extends StatelessWidget {
         // [LayoutBuilder] указывает на сам LayoutBuilder (рекурсия, нет размера).
         if (schedule.isEmpty) {
           final emptyStateContent = body;
-          body = LayoutBuilder(
-            builder: (context, constraints) {
-              var maxH = constraints.maxHeight;
-              if (!maxH.isFinite) {
-                maxH = MediaQuery.sizeOf(context).height;
-              }
-              return SingleChildScrollView(
-                physics: const AlwaysScrollableScrollPhysics(
-                  parent: BouncingScrollPhysics(),
-                ),
-                child: ConstrainedBox(
-                  constraints: BoxConstraints(minHeight: maxH),
-                  child: emptyStateContent,
-                ),
-              );
-            },
+          body = CustomScrollView(
+            slivers: [
+              SliverPadding(
+                padding: EdgeInsets.only(top: contentTopUnderAppBar(context)),
+              ),
+              const HeaderLocator.sliver(),
+              SliverFillRemaining(
+                hasScrollBody: false,
+                child: emptyStateContent,
+              ),
+            ],
           );
         }
 
@@ -185,7 +197,7 @@ class SchedulePage extends StatelessWidget {
             await controller.refreshSchedule();
           },
           color: theme.colorScheme.primary,
-          indicatorTopPadding: contentTopUnderAppBar(context),
+          appBarExtent: AnimatedAppBarVisuals.totalHeight(context),
           child: body,
         );
       },
@@ -199,14 +211,12 @@ class _DayCard extends StatelessWidget {
     required this.college,
     required this.prefs,
     required this.controller,
-    required this.fontService,
   });
 
   final DaySchedule day;
   final String college;
   final PreferencesManager prefs;
   final ScheduleController controller;
-  final FontService fontService;
 
   @override
   Widget build(BuildContext context) {
@@ -275,7 +285,7 @@ class _DayCard extends StatelessWidget {
                             borderRadius: BorderRadius.circular(8),
                           ),
                           child: Text(
-                            "${items.length} ${_lessonsWord(items.length)}",
+                            "${_lessonCount(items)} ${_lessonsWord(_lessonCount(items))}",
                             style: theme.textTheme.bodySmall
                                 ?.copyWith(fontSize: 10),
                           ),
@@ -303,393 +313,13 @@ class _DayCard extends StatelessWidget {
   }
 
   void _showShareMenu(BuildContext context, List<ScheduleItem> items) {
-    HapticFeedback.mediumImpact();
-    final theme = Theme.of(context);
-    showModalBottomSheet(
-      context: context,
-      builder: (ctx) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const SizedBox(height: 8),
-            Container(
-              width: 40, height: 4,
-              decoration: BoxDecoration(
-                color: theme.colorScheme.onSurface.withAlpha(40),
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-            const SizedBox(height: 12),
-            ListTile(
-              leading: Icon(Icons.share_outlined, color: theme.colorScheme.primary),
-              title: const Text("Поделиться"),
-              onTap: () {
-                Navigator.pop(ctx);
-                SharePlus.instance.share(
-                  ShareParams(text: _formatDayAsText(items)),
-                );
-              },
-            ),
-            ListTile(
-              leading: Icon(Icons.copy_outlined, color: theme.colorScheme.primary),
-              title: const Text("Скопировать"),
-              onTap: () {
-                Navigator.pop(ctx);
-                Clipboard.setData(ClipboardData(text: _formatDayAsText(items)));
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text("Скопировано"), duration: Duration(seconds: 1)),
-                );
-              },
-            ),
-            ListTile(
-              leading: Icon(Icons.image_outlined, color: theme.colorScheme.primary),
-              title: const Text("Поделиться изображением"),
-              onTap: () async {
-                Navigator.pop(ctx);
-                await _shareDayAsImage(context, items, fontService);
-              },
-            ),
-            const SizedBox(height: 8),
-          ],
-        ),
-      ),
+    showDayShareSheet(
+      context,
+      day: day,
+      college: college,
+      shareText: _formatDayAsText(items),
+      subtitle: prefs.selectedGroupName.trim(),
     );
-  }
-
-  Future<void> _shareDayAsImage(
-    BuildContext context,
-    List<ScheduleItem> items,
-    FontService fontService,
-  ) async {
-    ui.Image? image;
-    try {
-      image = await _renderDayImage(context, items, fontService);
-      final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
-      image.dispose();
-      image = null;
-      if (bytes == null) return;
-      final pngBytes = bytes.buffer.asUint8List();
-      final safeDate = day.date.replaceAll(".", "-");
-      final fileName =
-          "schedule_${safeDate}_${DateTime.now().millisecondsSinceEpoch}.png";
-      final dir = await getTemporaryDirectory();
-      final file = File("${dir.path}/$fileName");
-      await file.writeAsBytes(pngBytes, flush: true);
-      await Future.delayed(const Duration(milliseconds: 250));
-      if (!context.mounted) return;
-      await SharePlus.instance.share(
-        ShareParams(
-          files: [
-            XFile(file.path, mimeType: "image/png", name: fileName),
-          ],
-        ),
-      );
-    } catch (_) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Не удалось сформировать изображение")),
-        );
-      }
-    } finally {
-      image?.dispose();
-    }
-  }
-
-  Future<ui.Image> _renderDayImage(
-    BuildContext context,
-    List<ScheduleItem> items,
-    FontService fontService,
-  ) async {
-    final tf = fontService.textForCanvas;
-    const width = 800.0;
-    const horizontalPadding = 28.0;
-    const topPadding = 24.0;
-    const headerGap = 12.0;
-    const tileGap = 8.0;
-    const badgeSize = 32.0;
-    const footerHeight = 24.0;
-    const linePadding = 8.0;
-    const subgroupChipPaddingH = 6.0;
-    const subgroupChipPaddingV = 4.0;
-
-    final theme = Theme.of(context);
-    final sortedItems = items.toList()
-      ..sort((a, b) {
-        final cn = a.lessonNumber.compareTo(b.lessonNumber);
-        if (cn != 0) return cn;
-        return (a.subgroup ?? 0).compareTo(b.subgroup ?? 0);
-      });
-
-    final isDark = theme.brightness == Brightness.dark;
-    final baseA = isDark ? const Color(0xFF0E172A) : const Color(0xFFEFF4FF);
-    final baseB = isDark ? const Color(0xFF111827) : const Color(0xFFE7EEFF);
-    final accent = HSLColor.fromColor(theme.colorScheme.primary)
-        .withSaturation(
-          (HSLColor.fromColor(theme.colorScheme.primary).saturation + 0.12)
-              .clamp(0.0, 1.0),
-        )
-        .withLightness(
-          (HSLColor.fromColor(theme.colorScheme.primary).lightness + 0.02)
-              .clamp(0.0, 1.0),
-        )
-        .toColor();
-    final blendSoft = Color.alphaBlend(accent.withAlpha(78), baseB);
-    final blendDeep = Color.alphaBlend(accent.withAlpha(44), baseA);
-    final fgPrimary = isDark ? Colors.white : const Color(0xFF0F172A);
-    final fgSecondary =
-        isDark ? Colors.white.withAlpha(210) : const Color(0xFF334155);
-    final fgMuted =
-        isDark ? Colors.white.withAlpha(180) : const Color(0xFF475569);
-
-    final headerStyle = tf(fgPrimary,
-        fontSize: 28, fontWeight: FontWeight.w700, height: 1.1);
-    final subStyle = tf(fgSecondary,
-        fontSize: 16, fontWeight: FontWeight.w500, height: 1.2);
-    final titleStyle = tf(fgPrimary,
-        fontSize: 17, fontWeight: FontWeight.w700, height: 1.15);
-    final detailsStyle =
-        tf(fgMuted, fontSize: 13, fontWeight: FontWeight.w500, height: 1.2);
-    final subgroupChipStyle = tf(theme.colorScheme.primary,
-        fontSize: 12, fontWeight: FontWeight.w700, height: 1.2);
-
-    TextPainter tp(
-      String text,
-      TextStyle style,
-      double maxWidth, {
-      int? maxLines,
-    }) {
-      final p = TextPainter(
-        text: TextSpan(text: text, style: style),
-        textDirection: TextDirection.ltr,
-        maxLines: maxLines,
-        ellipsis: maxLines == null ? null : "...",
-      )..layout(maxWidth: maxWidth, minWidth: 0);
-      return p;
-    }
-
-    final dateLabel = "${_capitalizeDay(day.day)}, ${_formatDate(day.date)}";
-    final titlePainter = tp("Расписание", headerStyle, width - horizontalPadding * 2);
-    final datePainter = tp(dateLabel, subStyle, width - horizontalPadding * 2);
-    final groupPainter = tp(
-      prefs.selectedGroupName.isEmpty ? "Группа не выбрана" : prefs.selectedGroupName,
-      subStyle.copyWith(fontSize: 14, color: fgMuted),
-      width - horizontalPadding * 2,
-      maxLines: 1,
-    );
-
-    final contentWidth = width - horizontalPadding * 2;
-    final textAreaWidth = contentWidth - badgeSize - 16;
-
-    final grouped = <int, List<ScheduleItem>>{};
-    for (final item in sortedItems) {
-      grouped.putIfAbsent(item.lessonNumber, () => []).add(item);
-    }
-    final lessonNumbers = grouped.keys.toList()..sort();
-
-    double contentHeight = 0;
-    final tileHeights = <double>[];
-    final sel = prefs.selectedGroupName.trim();
-
-    for (final lessonNum in lessonNumbers) {
-      final lessonItems = grouped[lessonNum]!;
-      double tileH = linePadding;
-      for (final item in lessonItems) {
-        final time = LessonTimes.formatTime(item.lessonNumber, college: college);
-        final title = item.subject?.trim().isNotEmpty == true ? item.subject!.trim() : "—";
-        final isViewByClassroom = item.classroom != null &&
-            item.classroom!.isNotEmpty &&
-            (sel == "Ауд. ${item.classroom}".trim() || sel == item.classroom!.trim());
-        final detailsParts = <String>[
-          if (time.isNotEmpty) time,
-          if (item.classroom?.isNotEmpty == true && !isViewByClassroom) "Ауд. ${item.classroom}",
-          if (item.teacher?.isNotEmpty == true) item.teacher!,
-        ];
-        final details = detailsParts.join("  ·  ");
-        final titleLayout = tp(title, titleStyle, textAreaWidth - 50, maxLines: 2);
-        final detailsP = details.isEmpty ? null : tp(details, detailsStyle, textAreaWidth - 50, maxLines: 1);
-        final sg = item.subgroup;
-        final chipP = sg == null ? null : tp("$sg п/г", subgroupChipStyle, 40, maxLines: 1);
-        final lineContentH = titleLayout.height +
-            (detailsP?.height ?? 0) + (detailsP != null ? 3 : 0);
-        final chipH = chipP != null ? (chipP.height + subgroupChipPaddingV * 2) : 0.0;
-        tileH += (lineContentH > chipH ? lineContentH : chipH) + linePadding;
-      }
-      final minTileH = badgeSize + 16;
-      tileHeights.add(tileH < minTileH ? minTileH : tileH);
-      contentHeight += (tileH < minTileH ? minTileH : tileH) + tileGap;
-    }
-    if (contentHeight > 0) contentHeight -= tileGap;
-
-    final emptyHeight = 48.0;
-    if (lessonNumbers.isEmpty) contentHeight = emptyHeight;
-
-    final headerHeight = titlePainter.height + 4 + datePainter.height + 2 + groupPainter.height;
-    final height = topPadding + headerHeight + headerGap + contentHeight + footerHeight + 16;
-
-    final dpr = MediaQuery.devicePixelRatioOf(context);
-    final exportScale = (dpr * 1.35).clamp(2.5, 3.75);
-    final outW = (width * exportScale).round();
-    final outH = (height * exportScale).round();
-
-    final recorder = ui.PictureRecorder();
-    final canvas = Canvas(
-      recorder,
-      Rect.fromLTWH(0, 0, outW.toDouble(), outH.toDouble()),
-    );
-    canvas.scale(exportScale);
-    final primary = theme.colorScheme.primary;
-
-    canvas.drawRect(
-      Rect.fromLTWH(0, 0, width, height),
-      Paint()
-        ..shader = ui.Gradient.linear(
-          const Offset(0, 0),
-          Offset(width, height),
-          [blendDeep, baseA, blendSoft, baseB],
-          const [0.0, 0.28, 0.68, 1.0],
-        ),
-    );
-    canvas.drawCircle(
-      Offset(width - 80, -30),
-      180,
-      Paint()..color = accent.withAlpha(30),
-    );
-
-    titlePainter.paint(canvas, Offset(horizontalPadding, topPadding));
-    datePainter.paint(
-      canvas,
-      Offset(horizontalPadding, topPadding + titlePainter.height + 4),
-    );
-    groupPainter.paint(
-      canvas,
-      Offset(horizontalPadding, topPadding + titlePainter.height + datePainter.height + 6),
-    );
-
-    final totalLessons = sortedItems.length;
-    final countChip = tp(
-      "$totalLessons ${_lessonsWord(totalLessons)}",
-      subStyle.copyWith(fontSize: 12, color: fgPrimary),
-      140,
-      maxLines: 1,
-    );
-    final chipW = countChip.width + 16;
-    const chipH = 26.0;
-    final chipX = width - horizontalPadding - chipW;
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(
-        Rect.fromLTWH(chipX, topPadding + 2, chipW, chipH),
-        const Radius.circular(10),
-      ),
-      Paint()..color = (isDark ? Colors.white : Colors.black).withAlpha(22),
-    );
-    countChip.paint(
-      canvas,
-      Offset(chipX + 8, topPadding + 2 + (chipH - countChip.height) / 2),
-    );
-
-    var y = topPadding + headerHeight + headerGap;
-    final rowBgPaint = Paint()
-      ..color = (isDark ? Colors.white : Colors.black).withAlpha(isDark ? 24 : 12);
-    final badgePaint = Paint()..color = primary.withAlpha(220);
-    final badgeTextStyle = tf(theme.colorScheme.onPrimary,
-        fontSize: 14, fontWeight: FontWeight.w700);
-
-    if (lessonNumbers.isEmpty) {
-      final rect = RRect.fromRectAndRadius(
-        Rect.fromLTWH(horizontalPadding, y, contentWidth, emptyHeight),
-        const Radius.circular(14),
-      );
-      canvas.drawRRect(rect, rowBgPaint);
-      final emptyP = tp("Нет занятий", titleStyle, contentWidth - 20, maxLines: 1);
-      emptyP.paint(
-        canvas,
-        Offset(horizontalPadding + 12, y + (emptyHeight - emptyP.height) / 2),
-      );
-    } else {
-      for (var ti = 0; ti < lessonNumbers.length; ti++) {
-        final lessonNum = lessonNumbers[ti];
-        final lessonItems = grouped[lessonNum]!;
-        final tileH = tileHeights[ti];
-
-        final rect = RRect.fromRectAndRadius(
-          Rect.fromLTWH(horizontalPadding, y, contentWidth, tileH),
-          const Radius.circular(14),
-        );
-        canvas.drawRRect(rect, rowBgPaint);
-
-        const badgeX = horizontalPadding + 8;
-        final badgeY = y + (tileH - badgeSize) / 2;
-        canvas.drawCircle(
-          Offset(badgeX + badgeSize / 2, badgeY + badgeSize / 2),
-          badgeSize / 2,
-          badgePaint,
-        );
-        final badgeText = tp("$lessonNum", badgeTextStyle, badgeSize);
-        badgeText.paint(
-          canvas,
-          Offset(
-            badgeX + (badgeSize - badgeText.width) / 2,
-            badgeY + (badgeSize - badgeText.height) / 2,
-          ),
-        );
-
-        final textX = badgeX + badgeSize + 8;
-        var lineY = y + linePadding;
-        for (final item in lessonItems) {
-          final time = LessonTimes.formatTime(item.lessonNumber, college: college);
-          final title = item.subject?.trim().isNotEmpty == true ? item.subject!.trim() : "—";
-          final isViewByClassroom = item.classroom != null &&
-              item.classroom!.isNotEmpty &&
-              (sel == "Ауд. ${item.classroom}".trim() || sel == item.classroom!.trim());
-          final detailsParts = <String>[
-            if (time.isNotEmpty) time,
-            if (item.classroom?.isNotEmpty == true && !isViewByClassroom) "Ауд. ${item.classroom}",
-            if (item.teacher?.isNotEmpty == true) item.teacher!,
-          ];
-          final details = detailsParts.join("  ·  ");
-          final sg = item.subgroup;
-          final chipP = sg == null ? null : tp("$sg п/г", subgroupChipStyle, 40, maxLines: 1);
-          final chipW = chipP != null ? (chipP.width + subgroupChipPaddingH * 2) : 0.0;
-          final chipH = chipP != null ? (chipP.height + subgroupChipPaddingV * 2) : 0.0;
-          final titleAreaW = textAreaWidth - chipW - 4;
-          final titleP = tp(title, titleStyle, titleAreaW, maxLines: 2);
-          final detailsP = details.isEmpty ? null : tp(details, detailsStyle, titleAreaW, maxLines: 1);
-          final lineContentH = titleP.height + (detailsP != null ? 3 + detailsP.height : 0);
-          titleP.paint(canvas, Offset(textX, lineY));
-          var curY = lineY + titleP.height;
-          if (detailsP != null) {
-            detailsP.paint(canvas, Offset(textX, curY + 3));
-            curY += 3 + detailsP.height;
-          }
-          if (chipP != null) {
-            final cx = horizontalPadding + contentWidth - 8 - chipW;
-            final cy = lineY + (lineContentH - chipH) / 2;
-            canvas.drawRRect(
-              RRect.fromRectAndRadius(
-                Rect.fromLTWH(cx, cy, chipW, chipH),
-                const Radius.circular(6),
-              ),
-              Paint()..color = theme.colorScheme.primary.withAlpha(25),
-            );
-            chipP.paint(
-              canvas,
-              Offset(cx + (chipW - chipP.width) / 2, cy + (chipH - chipP.height) / 2),
-            );
-          }
-          lineY = lineY + (lineContentH > chipH ? lineContentH : chipH) + linePadding;
-        }
-        y += tileH + tileGap;
-      }
-    }
-
-    final footerPainter = tp(
-      "Raspisanie",
-      tf(fgMuted.withAlpha(190), fontSize: 12, fontWeight: FontWeight.w500),
-      width - horizontalPadding * 2,
-    );
-    footerPainter.paint(canvas, Offset(horizontalPadding, height - footerHeight - 8));
-
-    return recorder.endRecording().toImage(outW, outH);
   }
 
   String _formatDayAsText(List<ScheduleItem> items) {
@@ -702,17 +332,26 @@ class _DayCard extends StatelessWidget {
       if (item.subgroup != null) buf.write(" (${item.subgroup} п/г)");
       final skipClassroom = item.classroom != null &&
           item.classroom!.isNotEmpty &&
-          (sel == "Ауд. ${item.classroom}".trim() || sel == item.classroom!.trim());
-      if (item.classroom != null && item.classroom!.isNotEmpty && !skipClassroom) {
+          (sel == "Ауд. ${item.classroom}".trim() ||
+              sel == item.classroom!.trim());
+      if (item.classroom != null &&
+          item.classroom!.isNotEmpty &&
+          !skipClassroom) {
         buf.write(" — ${item.classroom}");
       }
-      if (item.teacher != null && item.teacher!.isNotEmpty) buf.write(" — ${item.teacher}");
+      if (item.teacher != null && item.teacher!.isNotEmpty) {
+        buf.write(" — ${item.teacher}");
+      }
       buf.writeln();
     }
     return buf.toString().trimRight();
   }
 
-  List<Widget> _buildLessonList(BuildContext context, List<ScheduleItem> items) {
+  int _lessonCount(List<ScheduleItem> items) =>
+      items.map((item) => item.lessonNumber).toSet().length;
+
+  List<Widget> _buildLessonList(
+      BuildContext context, List<ScheduleItem> items) {
     final widgets = <Widget>[];
     final showBreaks = prefs.showBreaks;
     final showLunch = prefs.showLunch;
@@ -762,7 +401,8 @@ class _DayCard extends StatelessWidget {
             if (lt != null) widgets.add(_InfoRow(text: lt));
           }
           if (showBreaks) {
-            final bt = LessonTimes.getBreakText(prevNum, lessonNum, college: college);
+            final bt =
+                LessonTimes.getBreakText(prevNum, lessonNum, college: college);
             if (bt != null) widgets.add(_InfoRow(text: bt));
           }
         }
@@ -789,7 +429,8 @@ class _DayCard extends StatelessWidget {
     return "пар";
   }
 
-  String _capitalizeDay(String d) => d.isEmpty ? d : d[0].toUpperCase() + d.substring(1);
+  String _capitalizeDay(String d) =>
+      d.isEmpty ? d : d[0].toUpperCase() + d.substring(1);
 
   String _formatDate(String date) {
     try {
@@ -797,11 +438,26 @@ class _DayCard extends StatelessWidget {
       if (parts.length != 3) return date;
       final d = int.parse(parts[0]);
       final m = int.parse(parts[1]);
-      const months = ["", "января", "февраля", "марта", "апреля", "мая",
-        "июня", "июля", "августа", "сентября", "октября", "ноября", "декабря"];
+      const months = [
+        "",
+        "января",
+        "февраля",
+        "марта",
+        "апреля",
+        "мая",
+        "июня",
+        "июля",
+        "августа",
+        "сентября",
+        "октября",
+        "ноября",
+        "декабря"
+      ];
       if (m < 1 || m > 12) return date;
       return "$d ${months[m]}";
-    } catch (_) { return date; }
+    } catch (_) {
+      return date;
+    }
   }
 }
 
@@ -964,7 +620,8 @@ class _LessonTile extends StatelessWidget {
     return tile;
   }
 
-  Widget _singleLesson(BuildContext context, ThemeData theme, ScheduleItem item) {
+  Widget _singleLesson(
+      BuildContext context, ThemeData theme, ScheduleItem item) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1037,8 +694,10 @@ class _LessonTile extends StatelessWidget {
     final sel = controller.prefs.selectedGroupName.trim();
     final isViewByClassroom = item.classroom != null &&
         item.classroom!.isNotEmpty &&
-        (sel == "Ауд. ${item.classroom}".trim() || sel == item.classroom!.trim());
-    final hasClassroomLink = item.classroomHref != null && item.classroomHref!.isNotEmpty;
+        (sel == "Ауд. ${item.classroom}".trim() ||
+            sel == item.classroom!.trim());
+    final hasClassroomLink =
+        item.classroomHref != null && item.classroomHref!.isNotEmpty;
     final showClassroom = item.classroom != null &&
         item.classroom!.isNotEmpty &&
         (!isViewByClassroom || hasClassroomLink);
@@ -1083,14 +742,15 @@ class _LessonTile extends StatelessWidget {
     );
   }
 
-  Widget _lessonTitle(BuildContext context, ThemeData theme, ScheduleItem item) {
+  Widget _lessonTitle(
+      BuildContext context, ThemeData theme, ScheduleItem item) {
     final isTeacherMode = controller.prefs.isTeacherMode;
     final displayText = isTeacherMode
         ? ((item.teacher?.trim().isNotEmpty ?? false)
-              ? item.teacher!.trim()
-              : (item.subject?.trim().isNotEmpty ?? false)
-                  ? item.subject!.trim()
-                  : "—")
+            ? item.teacher!.trim()
+            : (item.subject?.trim().isNotEmpty ?? false)
+                ? item.subject!.trim()
+                : "—")
         : (item.subject?.trim().isNotEmpty ?? false)
             ? item.subject!.trim()
             : "—";
@@ -1176,14 +836,16 @@ class _WindowRow extends StatelessWidget {
     final startTime = LessonTimes.getTime(from, college: college);
     final endTime = LessonTimes.getTime(to, college: college);
     final timeLabel = (startTime != null && endTime != null)
-        ? "${startTime.startTime} – ${endTime.endTime}" : "";
+        ? "${startTime.startTime} – ${endTime.endTime}"
+        : "";
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6),
       child: Row(
         children: [
           Container(
-            width: 36, height: 36,
+            width: 36,
+            height: 36,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
               border: Border.all(
@@ -1193,20 +855,23 @@ class _WindowRow extends StatelessWidget {
               ),
             ),
             alignment: Alignment.center,
-            child: Icon(Icons.free_breakfast_outlined, size: 16,
-                color: theme.colorScheme.onSurface.withAlpha(50)),
+            child: Icon(Icons.free_breakfast_outlined,
+                size: 16, color: theme.colorScheme.onSurface.withAlpha(50)),
           ),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(label, style: theme.textTheme.bodySmall?.copyWith(
-                    fontStyle: FontStyle.italic,
-                    color: theme.colorScheme.onSurface.withAlpha(100))),
+                Text(label,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                        fontStyle: FontStyle.italic,
+                        color: theme.colorScheme.onSurface.withAlpha(100))),
                 if (timeLabel.isNotEmpty)
-                  Text(timeLabel, style: theme.textTheme.bodySmall?.copyWith(
-                      fontSize: 11, color: theme.colorScheme.onSurface.withAlpha(60))),
+                  Text(timeLabel,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                          fontSize: 11,
+                          color: theme.colorScheme.onSurface.withAlpha(60))),
                 if (details.isNotEmpty)
                   Text(
                     details.join(" · "),
@@ -1226,87 +891,189 @@ class _WindowRow extends StatelessWidget {
   }
 }
 
-class _ScheduleOfflineBanner extends StatelessWidget {
+class _ScheduleOfflineBanner extends StatefulWidget {
   const _ScheduleOfflineBanner({
+    required this.controller,
     required this.theme,
+    required this.topPadding,
     required this.lastSync,
+    required this.bannerKey,
+    this.errorHint,
+  });
+
+  final ScheduleController controller;
+  final ThemeData theme;
+  final double topPadding;
+  final DateTime? lastSync;
+  final String? errorHint;
+  final String bannerKey;
+
+  @override
+  State<_ScheduleOfflineBanner> createState() => _ScheduleOfflineBannerState();
+}
+
+class _ScheduleOfflineBannerState extends State<_ScheduleOfflineBanner>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _ctrl;
+  late final Animation<double> _fade;
+  late final Animation<Offset> _slide;
+  bool _hidden = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 300),
+    );
+    _fade = CurvedAnimation(parent: _ctrl, curve: Curves.easeOut);
+    _slide = Tween<Offset>(
+      begin: const Offset(0, -0.25),
+      end: Offset.zero,
+    ).animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeOutCubic));
+    _ctrl.forward();
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_hidden) return const SizedBox.shrink();
+    return FadeTransition(
+      opacity: _fade,
+      child: SlideTransition(
+        position: _slide,
+        child: _BannerContent(
+          theme: widget.theme,
+          topPadding: widget.topPadding,
+          lastSync: widget.lastSync,
+          errorHint: widget.errorHint,
+          onClose: () async {
+            widget.controller.prefs.dismissedOfflineBannerKey =
+                widget.bannerKey;
+            await _ctrl.reverse();
+            if (!mounted) return;
+            setState(() => _hidden = true);
+          },
+        ),
+      ),
+    );
+  }
+}
+
+class _BannerContent extends StatelessWidget {
+  const _BannerContent({
+    required this.theme,
+    required this.topPadding,
+    required this.lastSync,
+    required this.onClose,
     this.errorHint,
   });
 
   final ThemeData theme;
+  final double topPadding;
   final DateTime? lastSync;
   final String? errorHint;
+  final VoidCallback onClose;
 
   @override
   Widget build(BuildContext context) {
+    final cs = theme.colorScheme;
     final last = lastSync != null
         ? "${lastSync!.day.toString().padLeft(2, "0")}.${lastSync!.month.toString().padLeft(2, "0")} "
             "${lastSync!.hour.toString().padLeft(2, "0")}:${lastSync!.minute.toString().padLeft(2, "0")}"
         : null;
-    return Material(
-      color: theme.colorScheme.errorContainer.withAlpha(220),
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Icon(
-              Icons.wifi_off_rounded,
-              size: 20,
-              color: theme.colorScheme.onErrorContainer,
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    "Нет сети или сервер недоступен — показано сохранённое расписание",
-                    style: theme.textTheme.titleSmall?.copyWith(
-                      color: theme.colorScheme.onErrorContainer,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  if (last != null)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 4),
-                      child: Text(
-                        "Последнее успешное обновление: $last",
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.onErrorContainer
-                              .withAlpha(230),
-                        ),
-                      ),
-                    ),
-                  if (last == null)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 4),
-                      child: Text(
-                        "Успешного обновления ещё не было в этой сессии",
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.onErrorContainer
-                              .withAlpha(200),
-                        ),
-                      ),
-                    ),
-                  if (errorHint != null && errorHint!.trim().isNotEmpty)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 4),
-                      child: Text(
-                        errorHint!,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.onErrorContainer
-                              .withAlpha(200),
-                          fontSize: 11,
-                        ),
-                      ),
-                    ),
-                ],
+
+    // Получаем чистый текст ошибки — убираем префикс «Показаны сохранённые данные. »
+    String? hint = errorHint?.trim();
+    if (hint != null) {
+      const prefix1 = "Показаны сохранённые данные. ";
+      const prefix2 = "Не удалось обновить. ";
+      if (hint.startsWith(prefix1)) hint = hint.substring(prefix1.length);
+      if (hint.startsWith(prefix2)) hint = hint.substring(prefix2.length);
+      if (hint.isEmpty) hint = null;
+    }
+
+    return Padding(
+      padding: EdgeInsets.fromLTRB(12, topPadding + 6, 12, 4),
+      child: Container(
+        decoration: BoxDecoration(
+          color: cs.errorContainer.withAlpha(230),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: cs.error.withAlpha(60),
+            width: 0.8,
+          ),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.only(top: 1),
+                child: Icon(
+                  Icons.wifi_off_rounded,
+                  size: 18,
+                  color: cs.onErrorContainer,
+                ),
               ),
-            ),
-          ],
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      "Нет сети — показано сохранённое расписание",
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: cs.onErrorContainer,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    if (hint != null && hint.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 2),
+                        child: Text(
+                          hint,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: cs.onErrorContainer.withAlpha(200),
+                          ),
+                        ),
+                      ),
+                    if (last != null)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 2),
+                        child: Text(
+                          "Обновлено: $last",
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: cs.onErrorContainer.withAlpha(170),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 4),
+              IconButton(
+                tooltip: "Закрыть",
+                onPressed: onClose,
+                visualDensity: VisualDensity.compact,
+                splashRadius: 18,
+                icon: Icon(
+                  Icons.close_rounded,
+                  size: 18,
+                  color: cs.onErrorContainer.withAlpha(210),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -1322,10 +1089,12 @@ class _InfoRow extends StatelessWidget {
     final theme = Theme.of(context);
     return Padding(
       padding: const EdgeInsets.only(left: 48, top: 2, bottom: 2),
-      child: Text(text, style: theme.textTheme.bodySmall?.copyWith(
-        fontStyle: FontStyle.italic, fontSize: 11,
-        color: theme.colorScheme.onSurface.withAlpha(80),
-      )),
+      child: Text(text,
+          style: theme.textTheme.bodySmall?.copyWith(
+            fontStyle: FontStyle.italic,
+            fontSize: 11,
+            color: theme.colorScheme.onSurface.withAlpha(80),
+          )),
     );
   }
 }
