@@ -83,10 +83,8 @@ class PreferencesManager {
   String get selectedGroupFile => _prefs.getString("selected_group") ?? "";
   set selectedGroupFile(String v) => _prefs.setString("selected_group", v);
 
-  String get selectedGroupName =>
-      _prefs.getString("selected_group_name") ?? "";
-  set selectedGroupName(String v) =>
-      _prefs.setString("selected_group_name", v);
+  String get selectedGroupName => _prefs.getString("selected_group_name") ?? "";
+  set selectedGroupName(String v) => _prefs.setString("selected_group_name", v);
 
   bool get isGroupSelected =>
       selectedGroupFile.isNotEmpty && selectedGroupName.isNotEmpty;
@@ -97,7 +95,9 @@ class PreferencesManager {
 
   /// Акцентный цвет для темы. У каждой темы свой; null — цвет по умолчанию из темы.
   int? accentColorForTheme(String themeKey) =>
-      _prefs.containsKey("accent_$themeKey") ? _prefs.getInt("accent_$themeKey") : null;
+      _prefs.containsKey("accent_$themeKey")
+          ? _prefs.getInt("accent_$themeKey")
+          : null;
   void setAccentColorForTheme(String themeKey, int? value) {
     if (value == null) {
       _prefs.remove("accent_$themeKey");
@@ -136,6 +136,17 @@ class PreferencesManager {
 
   bool get showPastDays => _prefs.getBool("show_past_days") ?? false;
   set showPastDays(bool v) => _prefs.setBool("show_past_days", v);
+
+  String get dismissedOfflineBannerKey =>
+      _prefs.getString("dismissed_offline_banner_key") ?? "";
+  set dismissedOfflineBannerKey(String v) {
+    final value = v.trim();
+    if (value.isEmpty) {
+      _prefs.remove("dismissed_offline_banner_key");
+    } else {
+      _prefs.setString("dismissed_offline_banner_key", value);
+    }
+  }
 
   // --- Network (in-app browser) ---
   /// Стартовый URL вкладки «Сеть». Пусто — встроенная ссылка по умолчанию.
@@ -193,10 +204,8 @@ class PreferencesManager {
   bool get isTeacherMode => userMode == "teacher";
 
   // --- Auto refresh ---
-  bool get autoRefreshEnabled =>
-      _prefs.getBool("auto_refresh_enabled") ?? true;
-  set autoRefreshEnabled(bool v) =>
-      _prefs.setBool("auto_refresh_enabled", v);
+  bool get autoRefreshEnabled => _prefs.getBool("auto_refresh_enabled") ?? true;
+  set autoRefreshEnabled(bool v) => _prefs.setBool("auto_refresh_enabled", v);
 
   int get autoRefreshInterval {
     final v = _prefs.getInt("auto_refresh_interval") ?? 60;
@@ -234,8 +243,7 @@ class PreferencesManager {
   // --- App update (проверка новой версии при запуске) ---
   bool get autoCheckAppUpdate =>
       _prefs.getBool("auto_check_app_update") ?? true;
-  set autoCheckAppUpdate(bool v) =>
-      _prefs.setBool("auto_check_app_update", v);
+  set autoCheckAppUpdate(bool v) => _prefs.setBool("auto_check_app_update", v);
 
   /// Throttle проверки обновления при возврате приложения на передний план.
   int? get lastResumeAppUpdateCheckMs {
@@ -308,12 +316,12 @@ class PreferencesManager {
   set notesDarkCards(bool v) => _prefs.setBool("notes_dark_cards", v);
 
   // --- Remote lesson times ---
-  String get lessonTimesRemoteUrl =>
-      _normalizeLessonTimesRemoteUrl(
-        _prefs.getString("lesson_times_remote_url") ?? defaultLessonTimesRemoteUrl,
+  String get lessonTimesRemoteUrl => _normalizeLessonTimesRemoteUrl(
+        _prefs.getString("lesson_times_remote_url") ??
+            defaultLessonTimesRemoteUrl,
       );
-  set lessonTimesRemoteUrl(String v) =>
-      _prefs.setString("lesson_times_remote_url", _normalizeLessonTimesRemoteUrl(v));
+  set lessonTimesRemoteUrl(String v) => _prefs.setString(
+      "lesson_times_remote_url", _normalizeLessonTimesRemoteUrl(v));
 
   int? get lessonTimesRemoteSyncedAt {
     final ts = _prefs.getInt("lesson_times_remote_synced_at");
@@ -365,7 +373,8 @@ class PreferencesManager {
   set lessonTimesMinIntervalHours(int v) =>
       _prefs.setInt("lesson_times_min_interval_h", v.clamp(1, 168));
 
-  bool get lessonTimesUseEtag => _prefs.getBool("lesson_times_use_etag") ?? true;
+  bool get lessonTimesUseEtag =>
+      _prefs.getBool("lesson_times_use_etag") ?? true;
   set lessonTimesUseEtag(bool v) => _prefs.setBool("lesson_times_use_etag", v);
 
   String _normalizeLessonTimesRemoteUrl(String input) {
@@ -472,7 +481,9 @@ class PreferencesManager {
       for (final e in decoded) {
         if (e is! Map<String, dynamic>) continue;
         final source = CollegeSource.fromJson(e);
-        if (source.id.isEmpty || source.name.isEmpty || source.baseUrl.isEmpty) {
+        if (source.id.isEmpty ||
+            source.name.isEmpty ||
+            source.baseUrl.isEmpty) {
           continue;
         }
         out.add(source);
@@ -495,7 +506,9 @@ class PreferencesManager {
         final value = entry.value;
         if (id.isEmpty || value is! Map<String, dynamic>) continue;
         final source = CollegeSource.fromJson(value);
-        if (source.id.isEmpty || source.name.isEmpty || source.baseUrl.isEmpty) {
+        if (source.id.isEmpty ||
+            source.name.isEmpty ||
+            source.baseUrl.isEmpty) {
           continue;
         }
         out[id] = CollegeSource(
