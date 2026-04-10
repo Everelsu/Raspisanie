@@ -10,14 +10,22 @@ class BottomBarWithSheet extends StatefulWidget {
     required this.onIndexChanged,
     required this.sheetChild,
     this.onSheetToggle,
+    this.onSheetClosedByDrag,
     required this.sheetOpen,
+    this.onNavItemLongPress,
   });
 
   final int selectedIndex;
   final ValueChanged<int> onIndexChanged;
   final Widget sheetChild;
   final VoidCallback? onSheetToggle;
+  /// Вызывается когда шторка закрыта свайпом — всегда означает «закрыть»,
+  /// в отличие от [onSheetToggle] (toggle). Это предотвращает гонку состояний
+  /// когда пользователь успевает нажать кнопку до перерисовки.
+  final VoidCallback? onSheetClosedByDrag;
   final bool sheetOpen;
+  /// Длинное нажатие на вкладку с индексом [i]. Используется для скрытых фич.
+  final void Function(int i)? onNavItemLongPress;
 
   @override
   State<BottomBarWithSheet> createState() => _BottomBarWithSheetState();
@@ -332,7 +340,10 @@ class _BottomBarWithSheetState extends State<BottomBarWithSheet>
 
   void _triggerDragClose() {
     _closingByDrag = true;
-    widget.onSheetToggle?.call();
+    // Используем явный колбэк «закрыть» вместо toggle-колбэка,
+    // чтобы избежать гонки: если пользователь нажмёт кнопку до перерисовки,
+    // два вызова toggle аннулировали бы друг друга → шторка не открывалась.
+    (widget.onSheetClosedByDrag ?? widget.onSheetToggle)?.call();
     Future<void>.delayed(
         const Duration(milliseconds: 250), () => _closingByDrag = false);
   }
@@ -482,6 +493,9 @@ class _BottomBarWithSheetState extends State<BottomBarWithSheet>
           borderRadius: BorderRadius.circular(20),
           child: InkWell(
             onTap: () => widget.onIndexChanged(i),
+            onLongPress: widget.onNavItemLongPress != null
+                ? () => widget.onNavItemLongPress!(i)
+                : null,
             splashFactory: InkRipple.splashFactory,
             splashColor: primary.withAlpha(35),
             highlightColor: primary.withAlpha(18),
