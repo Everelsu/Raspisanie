@@ -14,6 +14,7 @@ import "../../../core/update/update_dialog.dart";
 import "../../../core/update/version_utils.dart";
 import "../../../core/widgets/animated_app_bar.dart";
 import "../../../core/widgets/bottom_bar_sheet.dart";
+import "../../games/games_menu.dart";
 import "../../network/presentation/network_page.dart";
 import "../../schedule/presentation/history_calendar_sheet.dart";
 import "../../schedule/presentation/schedule_controller.dart";
@@ -44,6 +45,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   bool _sheetOpen = false;
   bool _appUpdateDialogOpen = false;
   PageController? _pageController;
+
   /// Fullscreen WebView on the network tab — hides bottom bar + in-browser toolbar.
   bool _networkImmersive = false;
   late final ValueNotifier<bool> _networkImmersiveNotifier;
@@ -83,7 +85,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     _pageController?.dispose();
     _pageController = null;
     WidgetsBinding.instance.removeObserver(this);
-    NotificationService.openScheduleOnTap.removeListener(_onOpenScheduleRequested);
+    NotificationService.openScheduleOnTap
+        .removeListener(_onOpenScheduleRequested);
     super.dispose();
   }
 
@@ -200,6 +203,27 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 
   Future<void> _goToPage(int index) async {
     if (!mounted || index == _currentIndex) return;
+    _applyTabChange(index);
+    final controller = _pageController;
+    if (controller == null) return;
+    if (controller.hasClients) {
+      await controller.animateToPage(
+        index,
+        duration: const Duration(milliseconds: 260),
+        curve: Curves.easeOutCubic,
+      );
+      return;
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final c = _pageController;
+      if (c == null || !c.hasClients) return;
+      c.jumpToPage(index);
+    });
+  }
+
+  void _applyTabChange(int index) {
+    if (!mounted || index == _currentIndex) return;
     if (_currentIndex == 2 && index != 2) {
       _networkImmersiveNotifier.value = false;
     }
@@ -212,20 +236,33 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     if (index == 1) {
       widget.controller.loadStatistics();
     }
-    final controller = _pageController;
-    if (controller == null) return;
-    // До первого layout [PageView] у [PageController] может не быть клиентов —
-    // тогда [jumpToPage] нужно отложить на кадр, иначе таб внизу и страница разъедутся.
-    void jump() {
-      if (!mounted) return;
-      final c = _pageController;
-      if (c == null || !c.hasClients) return;
-      c.jumpToPage(index);
-    }
+  }
 
-    jump();
-    if (controller.hasClients) return;
-    WidgetsBinding.instance.addPostFrameCallback((_) => jump());
+  double _homeBarVisibility() {
+    final controller = _pageController;
+    if (controller == null || !controller.hasClients) {
+      return _currentIndex == 2 ? 0 : 1;
+    }
+    final page = controller.page ?? _currentIndex.toDouble();
+    final distanceToNetwork = (page - 2).abs();
+    if (distanceToNetwork >= 0.55) return 1;
+    return Curves.easeOut.transform(
+      (distanceToNetwork / 0.55).clamp(0.0, 1.0),
+    );
+  }
+
+  Future<void> _handleNetworkBottomZoneSwipe(DragEndDetails details) async {
+    if (!mounted || _currentIndex != 2 || _networkImmersive || _sheetOpen) {
+      return;
+    }
+    final velocity = details.primaryVelocity ?? 0.0;
+    const threshold = 320.0;
+    if (velocity.abs() < threshold) return;
+    if (velocity < 0) {
+      await _goToPage(3);
+      return;
+    }
+    await _goToPage(1);
   }
 
   @override
@@ -233,25 +270,57 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     return Scaffold(
       extendBody: true,
       extendBodyBehindAppBar: true,
-      appBar: _currentIndex == 2
-          ? null
-          : _HomeAnimatedAppBar(
-              controller: widget.controller,
-              title: _titles[_currentIndex],
-              tabIndex: _currentIndex,
-              showNotificationsAction: _currentIndex == 3,
-              onNotificationsTap: () => _showNotificationSheet(context),
+      appBar: null,
+      body: Stack(
+        fit: StackFit.expand,
+        children: [
+          PageView(
+            controller: _safePageController,
+            physics: (_networkImmersive || _currentIndex == 2)
+                ? const NeverScrollableScrollPhysics()
+                : const PageScrollPhysics(),
+            onPageChanged: (index) {
+              _applyTabChange(index);
+            },
+            children: _buildTabPages()
+                .map((page) => RepaintBoundary(child: page))
+                .toList(),
+          ),
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            child: AnimatedBuilder(
+              animation: _safePageController,
+              builder: (context, _) {
+                final visibility = _homeBarVisibility();
+                if (visibility <= 0.001) {
+                  return const SizedBox.shrink();
+                }
+                final offsetY = (1 - visibility) * -18;
+                final scale = 0.96 + visibility * 0.04;
+                return Transform.translate(
+                  offset: Offset(0, offsetY),
+                  child: Transform.scale(
+                    scale: scale,
+                    alignment: Alignment.topCenter,
+                    child: Opacity(
+                      opacity: visibility,
+                      child: _HomeAnimatedAppBar(
+                        controller: widget.controller,
+                        title: _titles[_currentIndex],
+                        tabIndex: _currentIndex,
+                        showNotificationsAction: _currentIndex == 3,
+                        onNotificationsTap: () =>
+                            _showNotificationSheet(context),
+                      ),
+                    ),
+                  ),
+                );
+              },
             ),
-      body: PageView(
-        controller: _safePageController,
-        physics: const NeverScrollableScrollPhysics(),
-        onPageChanged: (index) {
-          if (!mounted || index == _currentIndex) return;
-          setState(() => _currentIndex = index);
-        },
-        children: _buildTabPages()
-            .map((page) => RepaintBoundary(child: page))
-            .toList(),
+          ),
+        ],
       ),
       bottomNavigationBar: AnimatedSize(
         duration: const Duration(milliseconds: 320),
@@ -260,20 +329,33 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         clipBehavior: Clip.hardEdge,
         child: (_currentIndex == 2 && _networkImmersive)
             ? const SizedBox(width: double.infinity, height: 0)
-            : BottomBarWithSheet(
-                selectedIndex: _currentIndex,
-                onIndexChanged: (index) async {
-                  FocusScope.of(context).unfocus();
-                  HapticFeedback.selectionClick();
-                  await _goToPage(index);
-                },
-                sheetOpen: _sheetOpen,
-                onSheetToggle: () {
-                  HapticFeedback.lightImpact();
-                  FocusScope.of(context).unfocus();
-                  setState(() => _sheetOpen = !_sheetOpen);
-                },
-                sheetChild: HistoryCalendarSheet(controller: widget.controller),
+            : GestureDetector(
+                behavior: HitTestBehavior.translucent,
+                onHorizontalDragEnd: _currentIndex == 2
+                    ? (d) => _handleNetworkBottomZoneSwipe(d)
+                    : null,
+                child: BottomBarWithSheet(
+                  selectedIndex: _currentIndex,
+                  onIndexChanged: (index) async {
+                    FocusScope.of(context).unfocus();
+                    HapticFeedback.selectionClick();
+                    await _goToPage(index);
+                  },
+                  sheetOpen: _sheetOpen,
+                  onSheetToggle: () {
+                    HapticFeedback.lightImpact();
+                    FocusScope.of(context).unfocus();
+                    setState(() => _sheetOpen = !_sheetOpen);
+                  },
+                  onSheetClosedByDrag: () {
+                    setState(() => _sheetOpen = false);
+                  },
+                  onNavItemLongPress: (i) {
+                    if (i == 2) showGamesMenu(context);
+                  },
+                  sheetChild:
+                      HistoryCalendarSheet(controller: widget.controller),
+                ),
               ),
       ),
     );
@@ -337,7 +419,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                             "Пуш за выбранное время до начала пары (на текущий день)",
                             prefs.notificationsEnabled,
                             (v) async {
-                              setSheetState(() => prefs.notificationsEnabled = v);
+                              setSheetState(
+                                  () => prefs.notificationsEnabled = v);
                               if (!v) {
                                 await NotificationService.instance.cancelAll();
                               } else {
@@ -377,10 +460,10 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                                     padding: const EdgeInsets.only(top: 8),
                                     child: Text(
                                       "Включите напоминания, чтобы выбрать интервал",
-                                      style: theme.textTheme.bodySmall
-                                          ?.copyWith(
-                                        color: theme
-                                            .colorScheme.onSurfaceVariant,
+                                      style:
+                                          theme.textTheme.bodySmall?.copyWith(
+                                        color:
+                                            theme.colorScheme.onSurfaceVariant,
                                       ),
                                     ),
                                   ),
@@ -469,8 +552,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                                           prefs.selectedGroupName.trim();
                                       await NotificationService.instance
                                           .showScheduleChanged(
-                                        groupName:
-                                            name.isEmpty ? "Тест" : name,
+                                        groupName: name.isEmpty ? "Тест" : name,
                                         fromBackgroundWorker: true,
                                       );
                                     },
@@ -586,7 +668,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 
   Widget _notificationSwitchTile(
     ThemeData theme,
-    StateSetter sheetState, // ignore: unused_parameter — нужен для единой сигнатуры с вызовом из листа
+    StateSetter
+        sheetState, // ignore: unused_parameter — нужен для единой сигнатуры с вызовом из листа
     String title,
     String subtitle,
     bool value,
@@ -625,7 +708,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   }
 }
 
-class _HomeAnimatedAppBar extends StatelessWidget implements PreferredSizeWidget {
+class _HomeAnimatedAppBar extends StatelessWidget
+    implements PreferredSizeWidget {
   const _HomeAnimatedAppBar({
     required this.controller,
     required this.title,
@@ -666,4 +750,3 @@ class _HomeAnimatedAppBar extends StatelessWidget implements PreferredSizeWidget
     );
   }
 }
-
