@@ -44,6 +44,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   int _currentIndex = 0;
   bool _sheetOpen = false;
   bool _appUpdateDialogOpen = false;
+  bool _isProgrammaticNavigation = false;
   PageController? _pageController;
 
   /// Fullscreen WebView on the network tab — hides bottom bar + in-browser toolbar.
@@ -207,11 +208,16 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     final controller = _pageController;
     if (controller == null) return;
     if (controller.hasClients) {
-      await controller.animateToPage(
-        index,
-        duration: const Duration(milliseconds: 260),
-        curve: Curves.easeOutCubic,
-      );
+      _isProgrammaticNavigation = true;
+      try {
+        await controller.animateToPage(
+          index,
+          duration: const Duration(milliseconds: 260),
+          curve: Curves.easeOutCubic,
+        );
+      } finally {
+        _isProgrammaticNavigation = false;
+      }
       return;
     }
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -280,7 +286,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                 ? const NeverScrollableScrollPhysics()
                 : const PageScrollPhysics(),
             onPageChanged: (index) {
-              _applyTabChange(index);
+              if (!_isProgrammaticNavigation) {
+                _applyTabChange(index);
+              }
             },
             children: _buildTabPages()
                 .map((page) => RepaintBoundary(child: page))
