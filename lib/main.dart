@@ -46,8 +46,14 @@ void main() async {
   final fontService = FontService();
   await fontService.load();
 
-  await NotificationService.instance.init();
-  await NotificationService.instance.restoreIfNeeded();
+  try {
+    await NotificationService.instance.init()
+        .timeout(const Duration(seconds: 5));
+    await NotificationService.instance.restoreIfNeeded()
+        .timeout(const Duration(seconds: 3));
+  } catch (e) {
+    debugPrint("NotificationService startup error: $e");
+  }
 
   await AnalyticsService.instance.init();
   final pm = PreferencesManager(prefs);
@@ -59,7 +65,7 @@ void main() async {
       platform: defaultTargetPlatform.name,
     );
   } catch (_) {}
-  await AnalyticsService.instance.logAppOpen();
+  // app_open логируется Firebase автоматически — ручной вызов не нужен.
 
   await ScheduleBackgroundWorker.ensureRegisteredIfNeeded(prefs: pm);
   await AppUpdateBackgroundWorker.ensureRegistered(prefs: pm);
@@ -72,7 +78,19 @@ void main() async {
 
   WidgetsBinding.instance.addPostFrameCallback((_) async {
     // Запрашиваем разрешение после runApp — Activity гарантированно готова.
-    await NotificationService.instance.requestPermissionsOnStartup();
+    // Если разрешение только что выдано — перепланируем уведомления,
+    // потому что restoreIfNeeded() выше пропустил их (permission был denied).
+    // try-catch: исключения из async postFrameCallback уходят в
+    // platformDispatcher.onError → Crashlytics как fatal, что вводит в заблуждение.
+    try {
+      final newlyGranted =
+          await NotificationService.instance.requestPermissionsOnStartup();
+      if (newlyGranted) {
+        await NotificationService.instance.restoreIfNeeded();
+      }
+    } catch (e) {
+      debugPrint("Notification startup (postFrame) error: $e");
+    }
     await HomeWidgetService.init();
     StorageCleanup.runPeriodicCleanup(prefs);
   });
