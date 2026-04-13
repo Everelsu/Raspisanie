@@ -30,12 +30,6 @@ class AnalyticsService {
     await a.setUserProperty(name: name, value: value);
   }
 
-  Future<void> logAppOpen() async {
-    final a = _analytics;
-    if (a == null || !_enabled) return;
-    await a.logAppOpen();
-  }
-
   Future<void> logAppStart({
     required String appVersion,
     required String platform,
@@ -53,8 +47,6 @@ class AnalyticsService {
     final a = _analytics;
     if (a == null || !_enabled) return;
     await a.logScreenView(screenName: name);
-    // DebugView often doesn't show screenName inline; duplicate as explicit event.
-    await a.logEvent(name: "screen_open", parameters: {"screen": name});
   }
 
   Future<void> logThemeChanged(String themeKey) async {
