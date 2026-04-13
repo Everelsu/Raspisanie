@@ -4,6 +4,7 @@ import "dart:convert";
 import "dart:io";
 
 import "package:flutter/foundation.dart";
+import "package:flutter/services.dart";
 import "package:flutter_local_notifications/flutter_local_notifications.dart";
 import "package:shared_preferences/shared_preferences.dart";
 import "package:timezone/data/latest_all.dart" as tz_data;
@@ -123,8 +124,9 @@ class NotificationService {
 
     if (Platform.isAndroid) {
       final ap = _androidPlugin;
-      await ap?.requestNotificationsPermission();
-      await ap?.requestExactAlarmsPermission();
+      // Каналы создаём всегда — они нужны для планирования уведомлений.
+      // Запрос разрешений выносим в requestPermissionsOnStartup(), который
+      // вызывается после runApp() когда Activity уже полностью готова.
       await ap?.createNotificationChannel(const AndroidNotificationChannel(
         _channel,
         "Напоминания о парах",
@@ -258,6 +260,19 @@ class NotificationService {
 
   // ─── Разрешения ─────────────────────────────────────────────────────────────
 
+  /// Запросить базовые разрешения при первом запуске.
+  ///
+  /// Вызывать **после** `runApp()` (через `addPostFrameCallback`), чтобы
+  /// Activity была полностью готова к показу системного диалога.
+  /// Запрашивает только `POST_NOTIFICATIONS` — exact alarms не трогаем,
+  /// пользователь может выдать их через карточку разрешений.
+  Future<void> requestPermissionsOnStartup() async {
+    await _ensureInit();
+    if (Platform.isAndroid) {
+      await _androidPlugin?.requestNotificationsPermission();
+    }
+  }
+
   /// Проверить, разрешены ли уведомления (Android 13+, API 33+).
   Future<bool> areNotificationsEnabled() async {
     await _ensureInit();
@@ -290,6 +305,18 @@ class NotificationService {
     await _ensureInit();
     if (Platform.isAndroid) {
       await _androidPlugin?.requestExactAlarmsPermission();
+    }
+  }
+
+  /// Открыть системные настройки уведомлений для этого приложения.
+  /// Используется когда пользователь уже отказал в разрешении и повторный
+  /// вызов [requestNotificationPermission] не показывает диалог.
+  Future<void> openNotificationSettings() async {
+    if (Platform.isAndroid) {
+      try {
+        await const MethodChannel('com.example.raspiflutter/system_settings')
+            .invokeMethod<void>('openNotificationSettings');
+      } catch (_) {}
     }
   }
 
