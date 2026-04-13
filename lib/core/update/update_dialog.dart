@@ -13,60 +13,52 @@ class UpdateDialog extends StatelessWidget {
     super.key,
     required this.release,
     required this.currentVersion,
-    required this.theme,
   });
   final GitHubReleaseInfo release;
   final String currentVersion;
-  final ThemeData theme;
 
   static const String releasesUrl = "https://github.com/Everelsu/Raspisanie/releases";
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return AlertDialog(
-      backgroundColor: theme.cardTheme.color ?? theme.colorScheme.surface,
       title: Row(
         children: [
           Icon(Icons.system_update_rounded, color: theme.colorScheme.primary),
           const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              "Доступно обновление",
-              overflow: TextOverflow.ellipsis,
-              maxLines: 2,
-            ),
+          const Expanded(
+            child: Text("Доступно обновление"),
           ),
         ],
       ),
-      content: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              "Версия ${release.version} (у вас $currentVersion)",
-              style: theme.textTheme.titleSmall,
-            ),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            "Версия ${release.version} (у вас $currentVersion)",
+            style: theme.textTheme.titleSmall,
+          ),
+          if (release.releaseNotes.isNotEmpty) ...[
             const SizedBox(height: 12),
-            if (release.releaseNotes.isNotEmpty) ...[
-              Text("Что нового:", style: theme.textTheme.labelLarge),
-              const SizedBox(height: 6),
-              SizedBox(
-                height: 180,
-                child: SingleChildScrollView(
-                  child: MarkdownBody(
-                    data: release.releaseNotes,
-                    selectable: true,
-                    styleSheet: MarkdownStyleSheet.fromTheme(theme).copyWith(
-                      p: theme.textTheme.bodySmall,
-                      listBullet: theme.textTheme.bodySmall,
-                    ),
+            Text("Что нового:", style: theme.textTheme.labelLarge),
+            const SizedBox(height: 6),
+            SizedBox(
+              height: 180,
+              child: SingleChildScrollView(
+                child: MarkdownBody(
+                  data: release.releaseNotes,
+                  selectable: true,
+                  styleSheet: MarkdownStyleSheet.fromTheme(theme).copyWith(
+                    p: theme.textTheme.bodySmall,
+                    listBullet: theme.textTheme.bodySmall,
                   ),
                 ),
               ),
-            ],
+            ),
           ],
-        ),
+        ],
       ),
       actions: [
         TextButton(
@@ -181,17 +173,17 @@ class _DownloadProgressDialogState extends State<_DownloadProgressDialog> {
                   fontWeight: FontWeight.w600,
                 ),
               ),
-            ],
-            const SizedBox(height: 12),
-            LinearProgressIndicator(
-              value: _done ? 1.0 : _progress,
-              minHeight: 8,
-              borderRadius: BorderRadius.circular(4),
-              backgroundColor: theme.colorScheme.surfaceContainerHighest,
-              valueColor: AlwaysStoppedAnimation<Color>(
-                theme.colorScheme.primary,
+              const SizedBox(height: 12),
+              LinearProgressIndicator(
+                value: _progress,
+                minHeight: 8,
+                borderRadius: BorderRadius.circular(4),
+                backgroundColor: theme.colorScheme.surfaceContainerHighest,
+                valueColor: AlwaysStoppedAnimation<Color>(
+                  theme.colorScheme.primary,
+                ),
               ),
-            ),
+            ],
           ],
         ],
       ),
