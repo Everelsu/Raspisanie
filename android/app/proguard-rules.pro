@@ -7,7 +7,21 @@
 
 -keep class com.example.raspiflutter.** { *; }
 
-# Оставляем один экземпляр плагинов при обфускации (уменьшает размер APK)
+# flutter_local_notifications — ресиверы и сервисы объявлены в манифесте,
+# но R8 может их удалить если нет явного keep.
+-keep class com.dexterous.flutterlocalnotifications.** { *; }
+-keep class * extends android.content.BroadcastReceiver { *; }
+-keep class * extends android.app.Service { *; }
+
+# WorkManager / workmanager plugin
+-keep class androidx.work.** { *; }
+-keep class be.tramckrijte.workmanager.** { *; }
+
+# Firebase — сохранить стек-трейсы в Crashlytics
+-keepattributes SourceFile,LineNumberTable
+-keep public class * extends java.lang.Exception
+
+# Прочие атрибуты
 -keepattributes *Annotation*
 -keepattributes Signature
 -keepattributes InnerClasses
