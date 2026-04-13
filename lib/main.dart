@@ -71,6 +71,8 @@ void main() async {
   runApp(RaspiFlutterApp(prefs: prefs, fontService: fontService));
 
   WidgetsBinding.instance.addPostFrameCallback((_) async {
+    // Запрашиваем разрешение после runApp — Activity гарантированно готова.
+    await NotificationService.instance.requestPermissionsOnStartup();
     await HomeWidgetService.init();
     StorageCleanup.runPeriodicCleanup(prefs);
   });
