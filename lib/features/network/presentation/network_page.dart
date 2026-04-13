@@ -27,6 +27,7 @@ class NetworkPage extends StatefulWidget {
     super.key,
     required this.scheduleController,
     required this.parentImmersiveNotifier,
+    this.isActive = false,
     this.onImmersiveChanged,
   });
 
@@ -36,6 +37,11 @@ class NetworkPage extends StatefulWidget {
 
   /// Parent sets `false` when leaving the tab to exit fullscreen.
   final ValueNotifier<bool> parentImmersiveNotifier;
+
+  /// True while this tab is the active page. First time it becomes true,
+  /// the WebView fires its initial [loadRequest].
+  final bool isActive;
+
   final ValueChanged<bool>? onImmersiveChanged;
 
   static final Uri initialUri = Uri.parse(
@@ -56,6 +62,7 @@ class _NetworkPageState extends State<NetworkPage>
   final GlobalKey _moreMenuButtonKey = GlobalKey();
 
   WebViewController? _controller;
+  bool _initialLoadDone = false;
   int _progress = 0;
   bool _canGoBack = false;
   bool _canGoForward = false;
@@ -142,8 +149,22 @@ class _NetworkPageState extends State<NetworkPage>
               );
             },
           ),
-        )
-        ..loadRequest(_resolvedStartUri);
+        );
+      if (widget.isActive) _triggerInitialLoad();
+    }
+  }
+
+  void _triggerInitialLoad() {
+    if (_initialLoadDone) return;
+    _initialLoadDone = true;
+    _controller?.loadRequest(_resolvedStartUri);
+  }
+
+  @override
+  void didUpdateWidget(NetworkPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!oldWidget.isActive && widget.isActive) {
+      _triggerInitialLoad();
     }
   }
 
