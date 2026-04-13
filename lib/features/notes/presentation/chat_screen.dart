@@ -259,7 +259,7 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
-  void _togglePauseRecord() async {
+  Future<void> _togglePauseRecord() async {
     if (_recordPaused) {
       await _audioRecorder.resume();
       if (mounted) setState(() => _recordPaused = false);
@@ -883,7 +883,7 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
-  void _onMessageSend(String? text) async {
+  Future<void> _onMessageSend(String? text) async {
     final t = text?.trim() ?? '';
     if (_editingMessage != null) {
       final ourId = ourMessageIdFromFlyer(_editingMessage!);
@@ -937,7 +937,7 @@ class _ChatScreenState extends State<ChatScreen> {
     await _chatController.updateMessage(oldMsg, updated);
   }
 
-  void _onAttachmentTap() async {
+  Future<void> _onAttachmentTap() async {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final picker = ImagePicker();
@@ -1096,7 +1096,7 @@ class _ChatScreenState extends State<ChatScreen> {
     return false;
   }
 
-  void _onMessageLongPress(BuildContext context, Message message, {required int index, required LongPressStartDetails details}) async {
+  Future<void> _onMessageLongPress(BuildContext context, Message message, {required int index, required LongPressStartDetails details}) async {
     final ourId = ourMessageIdFromFlyer(message);
     final screenSize = MediaQuery.sizeOf(context);
     final state = context.read<ChatBloc>().state;
@@ -1732,6 +1732,7 @@ class _PinnedMessageBar extends StatefulWidget {
 
 class _PinnedMessageBarState extends State<_PinnedMessageBar> with SingleTickerProviderStateMixin {
   late AnimationController _anim;
+  late CurvedAnimation _curve;
   late Animation<Offset> _slide;
   late Animation<double> _fade;
 
@@ -1739,17 +1740,19 @@ class _PinnedMessageBarState extends State<_PinnedMessageBar> with SingleTickerP
   void initState() {
     super.initState();
     _anim = AnimationController(vsync: this, duration: const Duration(milliseconds: 280));
-    _slide = Tween<Offset>(begin: Offset.zero, end: const Offset(0, -1)).animate(CurvedAnimation(parent: _anim, curve: Curves.easeIn));
-    _fade = Tween<double>(begin: 1, end: 0).animate(CurvedAnimation(parent: _anim, curve: Curves.easeIn));
+    _curve = CurvedAnimation(parent: _anim, curve: Curves.easeIn);
+    _slide = Tween<Offset>(begin: Offset.zero, end: const Offset(0, -1)).animate(_curve);
+    _fade = Tween<double>(begin: 1, end: 0).animate(_curve);
   }
 
   @override
   void dispose() {
+    _curve.dispose();
     _anim.dispose();
     super.dispose();
   }
 
-  void _hide() async {
+  Future<void> _hide() async {
     await _anim.forward();
     if (mounted) widget.onClose();
   }

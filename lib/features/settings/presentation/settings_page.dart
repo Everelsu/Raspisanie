@@ -12,7 +12,7 @@ import "package:share_plus/share_plus.dart";
 import "package:url_launcher/url_launcher.dart";
 
 import "../../../app/theme.dart"
-    show AppThemeColors, AppThemes, contentTopUnderAppBar;
+    show AppThemeColors, AppThemes, contentBottomPadding, contentTopUnderAppBar;
 import "../../../core/database/schedule_database.dart";
 import "../../../core/widgets/app_icon_image.dart";
 import "../../../core/services/analytics_service.dart";
@@ -71,14 +71,6 @@ class SettingsPage extends StatefulWidget {
 }
 
 class _SettingsPageState extends State<SettingsPage> {
-  static const String _kDefaultNetworkStartUrl =
-      "https://poo.zabedu.ru/security/#/login";
-  static const List<(String, String)> _kNetworkStartPresets = [
-    ("ПОУ вход", "https://poo.zabedu.ru/security/#/login"),
-    ("Google", "https://www.google.com"),
-    ("Дневник", "https://poo.zabedu.ru/"),
-  ];
-
   ScheduleController get ctrl => widget.controller;
   PreferencesManager get prefs => ctrl.prefs;
   bool _loadingGroups = false;
@@ -144,7 +136,7 @@ class _SettingsPageState extends State<SettingsPage> {
             16,
             contentTopUnderAppBar(context),
             16,
-            116,
+            contentBottomPadding(context),
           ),
           children: [
             _section(theme, "ОСНОВНОЕ"),
@@ -2466,7 +2458,7 @@ class _SettingsPageState extends State<SettingsPage> {
                     child: SizedBox(
                       width: double.infinity,
                       child: FilledButton.icon(
-                        onPressed: () => _checkForUpdate(theme),
+                        onPressed: () => _checkForUpdate(),
                         icon: const Icon(Icons.system_update_rounded, size: 20),
                         label: const Text("Проверить обновления"),
                       ),
@@ -2846,7 +2838,7 @@ class _SettingsPageState extends State<SettingsPage> {
     }
   }
 
-  Future<void> _checkForUpdate(ThemeData theme) async {
+  Future<void> _checkForUpdate() async {
     final release = await checkForUpdate();
     if (!mounted) return;
     if (release != null) {
@@ -2859,14 +2851,12 @@ class _SettingsPageState extends State<SettingsPage> {
         builder: (ctx) => UpdateDialog(
           release: release,
           currentVersion: info.version,
-          theme: theme,
         ),
       );
     } else {
       showDialog(
         context: context,
         builder: (ctx) => AlertDialog(
-          backgroundColor: theme.cardTheme.color,
           title: const Text("Обновления"),
           content: const Text("У вас установлена последняя версия."),
           actions: [

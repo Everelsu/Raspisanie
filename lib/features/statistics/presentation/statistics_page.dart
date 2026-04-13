@@ -147,7 +147,7 @@ class _StatisticsPageState extends State<StatisticsPage> {
             SliverPadding(padding: EdgeInsets.only(top: appBarTop)),
             const HeaderLocator.sliver(),
             SliverPadding(
-              padding: EdgeInsets.fromLTRB(16, 0, 16, 116),
+              padding: EdgeInsets.fromLTRB(16, 0, 16, contentBottomPadding(context)),
               sliver: SliverList(
                 delegate: SliverChildBuilderDelegate(
                   itemBuilder,

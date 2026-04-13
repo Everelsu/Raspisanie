@@ -7,6 +7,7 @@ import "package:flutter/services.dart";
 import "package:url_launcher/url_launcher.dart";
 import "package:webview_flutter/webview_flutter.dart";
 
+import "../../../app/theme.dart" show contentBottomPadding;
 import "../../../core/widgets/animated_app_bar.dart";
 import "../../schedule/presentation/schedule_controller.dart";
 
@@ -1086,7 +1087,7 @@ class _UnsupportedBrowserView extends StatelessWidget {
       physics: const AlwaysScrollableScrollPhysics(
         parent: BouncingScrollPhysics(),
       ),
-      padding: EdgeInsets.fromLTRB(20, topPadding, 20, 116),
+      padding: EdgeInsets.fromLTRB(20, topPadding, 20, contentBottomPadding(context)),
       children: [
         ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 560),

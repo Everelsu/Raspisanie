@@ -504,3 +504,18 @@ double contentTopUnderAppBar(BuildContext context) {
   }
   return v + kToolbarHeight - tuck + gapBelowBar;
 }
+
+/// Высота нижнего бара (без safe area).
+const double kBottomBarHeight = 64.0;
+
+/// Нижний отступ для контента под [BottomBarWithSheet].
+///
+/// Учитывает safe area устройства и масштаб текста, поэтому правильно
+/// работает на устройствах как с жестовой навигацией (safeBottom ≈ 34px),
+/// так и без неё (safeBottom = 0).
+double contentBottomPadding(BuildContext context) {
+  final safeBottom = MediaQuery.paddingOf(context).bottom;
+  final scale = MediaQuery.textScalerOf(context).scale(1);
+  final barH = scale <= 1.15 ? kBottomBarHeight : (kBottomBarHeight + 8).clamp(kBottomBarHeight, kBottomBarHeight + 14);
+  return safeBottom + barH + 16;
+}

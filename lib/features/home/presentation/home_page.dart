@@ -175,7 +175,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     if (!mounted || _appUpdateDialogOpen) return;
     _appUpdateDialogOpen = true;
     try {
-      final theme = Theme.of(context);
       final info = await PackageInfo.fromPlatform();
       if (!mounted) return;
       await showDialog<void>(
@@ -183,7 +182,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         builder: (ctx) => UpdateDialog(
           release: release,
           currentVersion: info.version,
-          theme: theme,
         ),
       );
     } finally {
