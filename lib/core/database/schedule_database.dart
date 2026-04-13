@@ -604,6 +604,111 @@ class ScheduleDatabase {
     await db.delete("notes");
   }
 
+  /// Объединяет данные из внешнего файла БД с текущей.
+  ///
+  /// Расписание и снапшоты — INSERT OR REPLACE (побеждают более новые данные).
+  /// Заметки — INSERT OR REPLACE по id (побеждает импортируемая версия).
+  /// Настройки db_settings и sync_log — не трогаем.
+  /// Возвращает количество объединённых строк.
+  Future<int> mergeDatabaseFromFile(String sourcePath) async {
+    final source = File(sourcePath);
+    if (!await source.exists()) {
+      throw const FileSystemException("Файл базы данных не найден");
+    }
+    final sourceDb = await openReadOnlyDatabase(sourcePath);
+    final db = await database;
+    var merged = 0;
+    try {
+      // schedule_days
+      final days = await sourceDb.query("schedule_days");
+      if (days.isNotEmpty) {
+        await db.transaction((txn) async {
+          for (final row in days) {
+            await txn.insert(
+              "schedule_days",
+              Map<String, dynamic>.from(row),
+              conflictAlgorithm: ConflictAlgorithm.replace,
+            );
+            merged++;
+          }
+        });
+      }
+
+      // schedule_snapshots — добавляем только отсутствующие (по fetched_at + group_file)
+      final snapshots = await sourceDb.query("schedule_snapshots");
+      if (snapshots.isNotEmpty) {
+        await db.transaction((txn) async {
+          for (final row in snapshots) {
+            await txn.insert(
+              "schedule_snapshots",
+              Map<String, dynamic>.from(row)..remove("id"),
+              conflictAlgorithm: ConflictAlgorithm.ignore,
+            );
+            merged++;
+          }
+        });
+      }
+
+      // notes (по id, побеждает импортируемая версия)
+      final notes = await _safeQueryTable(sourceDb, "notes");
+      final tags = await _safeQueryTable(sourceDb, "note_tags");
+      final links = await _safeQueryTable(sourceDb, "note_tag_links");
+      if (notes.isNotEmpty || tags.isNotEmpty) {
+        await db.transaction((txn) async {
+          for (final row in notes) {
+            await txn.insert(
+              "notes",
+              Map<String, dynamic>.from(row),
+              conflictAlgorithm: ConflictAlgorithm.replace,
+            );
+            merged++;
+          }
+          for (final row in tags) {
+            await txn.insert(
+              "note_tags",
+              Map<String, dynamic>.from(row),
+              conflictAlgorithm: ConflictAlgorithm.replace,
+            );
+          }
+          for (final row in links) {
+            await txn.insert(
+              "note_tag_links",
+              Map<String, dynamic>.from(row),
+              conflictAlgorithm: ConflictAlgorithm.replace,
+            );
+          }
+        });
+      }
+
+      // chat_messages
+      final msgs = await _safeQueryTable(sourceDb, "chat_messages");
+      if (msgs.isNotEmpty) {
+        await db.transaction((txn) async {
+          for (final row in msgs) {
+            await txn.insert(
+              "chat_messages",
+              Map<String, dynamic>.from(row),
+              conflictAlgorithm: ConflictAlgorithm.ignore,
+            );
+            merged++;
+          }
+        });
+      }
+    } finally {
+      await sourceDb.close();
+    }
+    return merged;
+  }
+
+  Future<List<Map<String, dynamic>>> _safeQueryTable(
+      Database db, String table) async {
+    try {
+      return await db.query(table);
+    } catch (_) {
+      return const [];
+    }
+  }
+
   Future<void> replaceDatabaseFromFile(String sourcePath) async {
     if (_database != null) {
       await _database!.close();
