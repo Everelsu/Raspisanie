@@ -104,11 +104,31 @@ class _SubScheduleContentState extends State<_SubScheduleContent> {
         return;
       }
       setState(() {
-        _error = e.toString();
+        _error = _toHumanError(e);
         _loading = false;
         _isOfflineSnapshot = false;
       });
     }
+  }
+
+  static String _toHumanError(Object e) {
+    final s = e.toString();
+    if (s.contains("SocketException") ||
+        s.contains("NetworkException") ||
+        s.contains("Connection refused") ||
+        s.contains("Failed host lookup")) {
+      return "Нет подключения к интернету";
+    }
+    if (s.contains("TimeoutException") || s.contains("timed out")) {
+      return "Сервер не отвечает. Попробуйте позже";
+    }
+    if (s.contains("HTTP 5") || s.contains("500") || s.contains("503")) {
+      return "Ошибка сервера. Попробуйте позже";
+    }
+    if (s.contains("HTTP 4") || s.contains("404")) {
+      return "Данные не найдены";
+    }
+    return "Не удалось загрузить данные";
   }
 
   @override
