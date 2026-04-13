@@ -477,8 +477,6 @@ class AppThemes {
     Color(0xFFFF9F1C), // orange
     Color(0xFFFF453A), // red
     Color(0xFFE8E37A), // soft yellow
-    Color(0xFF00BCD4), // cyan
-    Color(0xFF8B5CF6), // violet
     Color(0xFF1FA37A), // mint
   ];
 }
