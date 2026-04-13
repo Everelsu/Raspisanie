@@ -125,6 +125,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       NetworkPage(
         key: const ValueKey<Object>("network_browser_v2"),
         scheduleController: widget.controller,
+        isActive: _currentIndex == 2,
         parentImmersiveNotifier: _networkImmersiveNotifier,
         onImmersiveChanged: (v) {
           setState(() {
@@ -239,9 +240,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       _sheetOpen = false;
     });
     AnalyticsService.instance.logScreen(_screenIds[index]);
-    if (index == 1) {
-      widget.controller.loadStatistics();
-    }
   }
 
   double _homeBarVisibility() {
