@@ -256,6 +256,43 @@ class NotificationService {
     );
   }
 
+  // ─── Разрешения ─────────────────────────────────────────────────────────────
+
+  /// Проверить, разрешены ли уведомления (Android 13+, API 33+).
+  Future<bool> areNotificationsEnabled() async {
+    await _ensureInit();
+    if (Platform.isAndroid) {
+      return await _androidPlugin?.areNotificationsEnabled() ?? false;
+    }
+    return true;
+  }
+
+  /// Проверить, доступны ли точные будильники (Android 12+, API 31+).
+  Future<bool> canScheduleExactAlarms() async {
+    await _ensureInit();
+    if (Platform.isAndroid) {
+      return await _androidPlugin?.canScheduleExactNotifications() ?? false;
+    }
+    return true;
+  }
+
+  /// Запросить разрешение на показ уведомлений. Возвращает true если выдано.
+  Future<bool> requestNotificationPermission() async {
+    await _ensureInit();
+    if (Platform.isAndroid) {
+      return await _androidPlugin?.requestNotificationsPermission() ?? false;
+    }
+    return true;
+  }
+
+  /// Открыть системный экран разрешения точных будильников (Android 12+).
+  Future<void> requestExactAlarmPermission() async {
+    await _ensureInit();
+    if (Platform.isAndroid) {
+      await _androidPlugin?.requestExactAlarmsPermission();
+    }
+  }
+
   /// Отменить все уведомления.
   Future<void> cancelAll() async {
     await _ensureInit();
