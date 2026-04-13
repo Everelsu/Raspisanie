@@ -27,15 +27,28 @@ class BottomBarWithSheet extends StatefulWidget {
   /// Длинное нажатие на вкладку с индексом [i]. Используется для скрытых фич.
   final void Function(int i)? onNavItemLongPress;
 
+  static const double barHeight = 64.0;
+
   @override
   State<BottomBarWithSheet> createState() => _BottomBarWithSheetState();
+
+  /// Нижний отступ для контента который не должен перекрываться баром.
+  /// Учитывает safe area устройства и масштаб текста.
+  static double contentBottomPadding(BuildContext context) {
+    final safeBottom = MediaQuery.paddingOf(context).bottom;
+    final scale = MediaQuery.textScalerOf(context).scale(1);
+    final barH = scale <= 1.15
+        ? barHeight
+        : (barHeight + 8).clamp(barHeight, barHeight + 14);
+    return safeBottom + barH + 16;
+  }
 }
 
 class _BottomBarWithSheetState extends State<BottomBarWithSheet>
     with TickerProviderStateMixin {
   // ─── Константы ──────────────────────────────────────────────────────────────
   static const _sheetMax = 420.0;
-  static const _barH = 64.0;
+  static const _barH = BottomBarWithSheet.barHeight;
   static const _dur = Duration(milliseconds: 320);
   static const _curve = Curves.easeOutCubic;
   static const _sheetMinContentH = 250.0;

@@ -88,7 +88,7 @@ class SchedulePage extends StatelessWidget {
             12,
             contentTopUnderAppBar(context),
             12,
-            116,
+            contentBottomPadding(context),
           );
           Widget buildDayItem(int index) {
             final card = _DayCard(

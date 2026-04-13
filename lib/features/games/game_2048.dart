@@ -61,7 +61,9 @@ class _Game2048PageState extends State<Game2048Page> {
       }
       i++;
     }
-    while (tiles.length < _size) tiles.add(0);
+    while (tiles.length < _size) {
+      tiles.add(0);
+    }
     return (tiles, pts);
   }
 
@@ -84,7 +86,9 @@ class _Game2048PageState extends State<Game2048Page> {
         final (slid, p) = _slideRow(col);
         pts += p;
         final result = dr == 1 ? slid.reversed.toList() : slid;
-        for (var r = 0; r < _size; r++) _grid[r][c] = result[r];
+        for (var r = 0; r < _size; r++) {
+          _grid[r][c] = result[r];
+        }
       }
     }
 
