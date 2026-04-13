@@ -738,6 +738,9 @@ class _NotificationPermissionCardState
     extends State<_NotificationPermissionCard> with WidgetsBindingObserver {
   bool? _notifEnabled;
   bool? _exactEnabled;
+  // true после того как пользователь нажал «Разрешить» и диалог не показался
+  // (Android: повторный запрос после отказа молча возвращает false).
+  bool _notifPermanentlyDenied = false;
 
   @override
   void initState() {
@@ -796,11 +799,21 @@ class _NotificationPermissionCardState
                   theme: theme,
                   icon: Icons.notifications_off_outlined,
                   title: "Уведомления отключены",
-                  subtitle: "Приложению нужно ваше разрешение",
-                  buttonLabel: "Разрешить",
+                  subtitle: _notifPermanentlyDenied
+                      ? "Выдайте разрешение в настройках приложения"
+                      : "Приложению нужно ваше разрешение",
+                  buttonLabel: _notifPermanentlyDenied ? "Настройки" : "Разрешить",
                   onTap: () async {
-                    await NotificationService.instance
+                    if (_notifPermanentlyDenied) {
+                      await NotificationService.instance
+                          .openNotificationSettings();
+                      return;
+                    }
+                    final granted = await NotificationService.instance
                         .requestNotificationPermission();
+                    if (!granted && mounted) {
+                      setState(() => _notifPermanentlyDenied = true);
+                    }
                     await _refresh();
                     widget.onPermissionsChanged();
                   },
