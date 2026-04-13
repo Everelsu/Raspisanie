@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Явно запрещаем resource shrinker удалять ресурсы, на которые ссылается
+  flutter_local_notifications через getIdentifier() с динамической строкой.
+  Без этого файла ic_stat_notify вырезается при release-сборке (isMinifyEnabled=true
+  + isShrinkResources=true), getIdentifier() возвращает 0, setSmallIcon(0) →
+  уведомление не публикуется.
+-->
+<resources xmlns:tools="http://schemas.android.com/tools"
+    tools:keep="@drawable/ic_stat_notify" />
