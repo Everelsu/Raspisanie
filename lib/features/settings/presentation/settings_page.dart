@@ -2986,21 +2986,19 @@ class _SettingsPageState extends State<SettingsPage> {
         ),
         actions: [
           TextButton(
-          onPressed: () => Navigator.pop(ctx),
-          child: const Text("Отмена"),
-        ),
-        const SizedBox(width: 8),
-        OutlinedButton.icon(
-          onPressed: () => Navigator.pop(ctx, false),
-          icon: const Icon(Icons.swap_horiz_rounded, size: 18),
-          label: const Text("Заменить"),
-        ),
-        const SizedBox(width: 8),
-        FilledButton.icon(
-          onPressed: () => Navigator.pop(ctx, true),
-          icon: const Icon(Icons.merge_rounded, size: 18),
-          label: const Text("Объединить"),
-        ),
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text("Отмена"),
+          ),
+          OutlinedButton.icon(
+            onPressed: () => Navigator.pop(ctx, false),
+            icon: const Icon(Icons.swap_horiz_rounded, size: 18),
+            label: const Text("Заменить"),
+          ),
+          FilledButton.icon(
+            onPressed: () => Navigator.pop(ctx, true),
+            icon: const Icon(Icons.merge_rounded, size: 18),
+            label: const Text("Объединить"),
+          ),
         ],
       ),
     );
