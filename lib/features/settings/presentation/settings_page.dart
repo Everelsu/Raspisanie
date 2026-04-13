@@ -133,13 +133,15 @@ class _SettingsPageState extends State<SettingsPage> {
               Icon(Icons.touch_app_outlined, size: 16, color: Colors.white),
               SizedBox(width: 8),
               Expanded(
-                child: Text("Удержи карточку темы — откроется выбор акцентного цвета"),
+                child: Text(
+                    "Удержи карточку темы — откроется выбор акцентного цвета"),
               ),
             ],
           ),
           duration: const Duration(seconds: 5),
           behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           margin: const EdgeInsets.fromLTRB(16, 0, 16, 12),
         ),
       );
@@ -1796,7 +1798,8 @@ class _SettingsPageState extends State<SettingsPage> {
         children: [
           // ── Заголовок — всегда виден, тап сворачивает/разворачивает ──
           InkWell(
-            onTap: () => setState(() => _lessonTimesExpanded = !_lessonTimesExpanded),
+            onTap: () =>
+                setState(() => _lessonTimesExpanded = !_lessonTimesExpanded),
             child: Padding(
               padding: const EdgeInsets.fromLTRB(16, 14, 12, 14),
               child: Row(
@@ -1807,8 +1810,9 @@ class _SettingsPageState extends State<SettingsPage> {
                       children: [
                         Row(
                           children: [
-                            Text("Время пар", style: theme.textTheme.bodyLarge
-                                ?.copyWith(fontWeight: FontWeight.w600)),
+                            Text("Время пар",
+                                style: theme.textTheme.bodyLarge
+                                    ?.copyWith(fontWeight: FontWeight.w600)),
                             const SizedBox(width: 8),
                             Container(
                               padding: const EdgeInsets.symmetric(
@@ -1828,8 +1832,7 @@ class _SettingsPageState extends State<SettingsPage> {
                                 width: 7,
                                 height: 7,
                                 decoration: BoxDecoration(
-                                    shape: BoxShape.circle,
-                                    color: cs.primary),
+                                    shape: BoxShape.circle, color: cs.primary),
                               ),
                             ],
                           ],
@@ -1837,8 +1840,8 @@ class _SettingsPageState extends State<SettingsPage> {
                         if (syncText != null) ...[
                           const SizedBox(height: 2),
                           Text(syncText,
-                              style: theme.textTheme.bodySmall?.copyWith(
-                                  color: cs.onSurfaceVariant)),
+                              style: theme.textTheme.bodySmall
+                                  ?.copyWith(color: cs.onSurfaceVariant)),
                         ],
                       ],
                     ),
@@ -1867,8 +1870,8 @@ class _SettingsPageState extends State<SettingsPage> {
                         const SizedBox(height: 12),
                         Text(
                           "Нажми на время, чтобы изменить.",
-                          style: theme.textTheme.bodySmall?.copyWith(
-                              color: cs.onSurfaceVariant),
+                          style: theme.textTheme.bodySmall
+                              ?.copyWith(color: cs.onSurfaceVariant),
                         ),
                         const SizedBox(height: 10),
                         ...entries.map((entry) {
@@ -1895,8 +1898,8 @@ class _SettingsPageState extends State<SettingsPage> {
                                   ),
                                 ),
                                 Padding(
-                                  padding: const EdgeInsets.symmetric(
-                                      horizontal: 6),
+                                  padding:
+                                      const EdgeInsets.symmetric(horizontal: 6),
                                   child: Text("—",
                                       style: theme.textTheme.bodyMedium),
                                 ),
@@ -2478,7 +2481,8 @@ class _SettingsPageState extends State<SettingsPage> {
     const authorAvatarUrl =
         "https://raw.githubusercontent.com/Everelsu/RelsevLink/main/avatar.png";
     const betaTesterLink = "https://www.youtube.com/watch?v=dQw4w9WgXcQ";
-    const betaTesterTelegramDeepLink = "https://www.youtube.com/watch?v=dQw4w9WgXcQ";
+    const betaTesterTelegramDeepLink =
+        "https://www.youtube.com/watch?v=dQw4w9WgXcQ";
     const betaTesterAvatarUrl =
         "https://raw.githubusercontent.com/Everelsu/RelsevLink/6b2647524fe3ade73d931079e77f8225ccffd2f5/scromny.jpg";
     return Card(
@@ -2727,6 +2731,40 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 
+  Future<bool> _confirmDelete(String title, String message) async {
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(title),
+        content: Text(message),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text("Отмена"),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: Colors.red,
+            ),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text("Удалить"),
+          ),
+        ],
+      ),
+    );
+
+    return result ?? false;
+  }
+
+  int _snapRetention(int value) {
+    const presets = [14, 30, 90, 180, 365];
+
+    for (final p in presets) {
+      if ((value - p).abs() <= 5) return p; // магнит в радиусе 5 дней
+    }
+    return value;
+  }
+
   Widget _dbSettingsCard(ThemeData theme) {
     final cs = theme.colorScheme;
     final lastDbBackupText = _lastDbBackupAt == null
@@ -2778,11 +2816,61 @@ class _SettingsPageState extends State<SettingsPage> {
                     Column(
                       crossAxisAlignment: CrossAxisAlignment.end,
                       children: [
-                        Text(
-                          "$_dbRetentionDays дн.",
-                          style: theme.textTheme.bodyLarge?.copyWith(
-                            color: cs.primary,
-                            fontWeight: FontWeight.w600,
+                        InkWell(
+                          borderRadius: BorderRadius.circular(8),
+                          onTap: () async {
+                            final controller = TextEditingController(
+                              text: _dbRetentionDays.toString(),
+                            );
+
+                            final result = await showDialog<int>(
+                              context: context,
+                              builder: (ctx) => AlertDialog(
+                                title: const Text("Введите количество дней"),
+                                content: TextField(
+                                  controller: controller,
+                                  keyboardType: TextInputType.number,
+                                  autofocus: true,
+                                  decoration: const InputDecoration(
+                                    suffixText: "дн.",
+                                  ),
+                                ),
+                                actions: [
+                                  TextButton(
+                                    onPressed: () => Navigator.pop(ctx),
+                                    child: const Text("Отмена"),
+                                  ),
+                                  FilledButton(
+                                    onPressed: () {
+                                      final value =
+                                          int.tryParse(controller.text);
+                                      if (value != null &&
+                                          value >= 14 &&
+                                          value <= 365) {
+                                        Navigator.pop(ctx, value);
+                                      }
+                                    },
+                                    child: const Text("OK"),
+                                  ),
+                                ],
+                              ),
+                            );
+
+                            if (result != null) {
+                              setState(() => _dbRetentionDays = result);
+                              await ScheduleDatabase.instance
+                                  .saveDatabaseSetting(
+                                "retention_days",
+                                result.toString(),
+                              );
+                            }
+                          },
+                          child: Text(
+                            "$_dbRetentionDays дн.",
+                            style: theme.textTheme.bodyLarge?.copyWith(
+                              color: cs.primary,
+                              fontWeight: FontWeight.w600,
+                            ),
                           ),
                         ),
                         Container(
@@ -2807,7 +2895,10 @@ class _SettingsPageState extends State<SettingsPage> {
                   min: 14,
                   max: 365,
                   divisions: 351,
-                  onChanged: (v) => setState(() => _dbRetentionDays = v.round()),
+                  onChanged: (v) {
+                    setState(
+                        () => _dbRetentionDays = _snapRetention(v.round()));
+                  },
                   onChangeEnd: (v) async {
                     await ScheduleDatabase.instance.saveDatabaseSetting(
                         "retention_days", v.round().toString());
@@ -2859,8 +2950,8 @@ class _SettingsPageState extends State<SettingsPage> {
                 const SizedBox(height: 6),
                 Row(
                   children: [
-                    Icon(Icons.history, size: 14,
-                        color: cs.onSurfaceVariant.withAlpha(160)),
+                    Icon(Icons.history,
+                        size: 14, color: cs.onSurfaceVariant.withAlpha(160)),
                     const SizedBox(width: 4),
                     Text(
                       "Последний экспорт: $lastDbBackupText",
@@ -2889,6 +2980,13 @@ class _SettingsPageState extends State<SettingsPage> {
                         onPressed: _dbBusy
                             ? null
                             : () async {
+                                final confirmed = await _confirmDelete(
+                                  "Удалить базу данных?",
+                                  "Все данные будут безвозвратно удалены.",
+                                );
+
+                                if (!confirmed) return;
+
                                 setState(() => _dbBusy = true);
                                 await ScheduleDatabase.instance.clearAll();
                                 await _loadDbSettings();
@@ -2901,9 +2999,17 @@ class _SettingsPageState extends State<SettingsPage> {
                     const SizedBox(width: 8),
                     Expanded(
                       child: OutlinedButton.icon(
-                        onPressed: () {
+                        onPressed: () async {
+                          final confirmed = await _confirmDelete(
+                            "Очистить кэш?",
+                            "Кэш расписания будет удалён.",
+                          );
+
+                          if (!confirmed) return;
+
                           StorageCleanup.clearAllPrefsCache(
                               prefs.sharedPreferences);
+
                           if (mounted) {
                             ScaffoldMessenger.of(context).showSnackBar(
                               const SnackBar(
@@ -2922,7 +3028,15 @@ class _SettingsPageState extends State<SettingsPage> {
                   width: double.infinity,
                   child: OutlinedButton.icon(
                     onPressed: () async {
+                      final confirmed = await _confirmDelete(
+                        "Удалить временные файлы?",
+                        "Все временные файлы будут удалены.",
+                      );
+
+                      if (!confirmed) return;
+
                       await StorageCleanup.clearTempDirectory();
+
                       if (mounted) {
                         ScaffoldMessenger.of(context).showSnackBar(
                           const SnackBar(
