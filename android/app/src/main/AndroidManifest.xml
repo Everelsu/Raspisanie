@@ -32,6 +32,14 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+        <!--
+          Явная XML-ссылка на иконку уведомлений — resource shrinker всегда
+          отслеживает android:resource= и НЕ удалит ic_stat_notify.
+          Одновременно задаёт иконку для FCM push-уведомлений.
+        -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_icon"
+            android:resource="@drawable/ic_stat_notify" />
         <receiver
             android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationReceiver"
             android:exported="false" />
