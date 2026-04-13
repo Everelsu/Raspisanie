@@ -496,6 +496,11 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                         ],
                       ),
                     ),
+                    _NotificationPermissionCard(
+                      onPermissionsChanged: () {
+                        setSheetState(() {});
+                      },
+                    ),
                     if (!kReleaseMode) ...[
                       const SizedBox(height: 16),
                       Text(
@@ -710,6 +715,182 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
             ),
           ),
           Switch(value: value, onChanged: onChanged),
+        ],
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Карточка разрешений для уведомлений
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _NotificationPermissionCard extends StatefulWidget {
+  const _NotificationPermissionCard({required this.onPermissionsChanged});
+  final VoidCallback onPermissionsChanged;
+
+  @override
+  State<_NotificationPermissionCard> createState() =>
+      _NotificationPermissionCardState();
+}
+
+class _NotificationPermissionCardState
+    extends State<_NotificationPermissionCard> with WidgetsBindingObserver {
+  bool? _notifEnabled;
+  bool? _exactEnabled;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _refresh();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) _refresh();
+  }
+
+  Future<void> _refresh() async {
+    final results = await Future.wait([
+      NotificationService.instance.areNotificationsEnabled(),
+      NotificationService.instance.canScheduleExactAlarms(),
+    ]);
+    if (!mounted) return;
+    setState(() {
+      _notifEnabled = results[0];
+      _exactEnabled = results[1];
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!Platform.isAndroid) return const SizedBox.shrink();
+
+    final notifOk = _notifEnabled ?? true;
+    final exactOk = _exactEnabled ?? true;
+    if (notifOk && exactOk) return const SizedBox.shrink();
+
+    final theme = Theme.of(context);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const SizedBox(height: 16),
+        Text("Разрешения", style: theme.textTheme.bodySmall),
+        const SizedBox(height: 8),
+        Card(
+          clipBehavior: Clip.antiAlias,
+          margin: EdgeInsets.zero,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (!notifOk) ...[
+                _PermissionRow(
+                  theme: theme,
+                  icon: Icons.notifications_off_outlined,
+                  title: "Уведомления отключены",
+                  subtitle: "Приложению нужно ваше разрешение",
+                  buttonLabel: "Разрешить",
+                  onTap: () async {
+                    await NotificationService.instance
+                        .requestNotificationPermission();
+                    await _refresh();
+                    widget.onPermissionsChanged();
+                  },
+                ),
+              ],
+              if (!notifOk && !exactOk)
+                Divider(
+                  height: 1,
+                  indent: 16,
+                  endIndent: 16,
+                  color: theme.dividerTheme.color,
+                ),
+              if (!exactOk) ...[
+                _PermissionRow(
+                  theme: theme,
+                  icon: Icons.alarm_off_outlined,
+                  title: "Точные будильники недоступны",
+                  subtitle: "Уведомления могут приходить с задержкой",
+                  buttonLabel: "Настройки",
+                  onTap: () async {
+                    await NotificationService.instance
+                        .requestExactAlarmPermission();
+                    await _refresh();
+                    widget.onPermissionsChanged();
+                  },
+                ),
+              ],
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _PermissionRow extends StatelessWidget {
+  const _PermissionRow({
+    required this.theme,
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.buttonLabel,
+    required this.onTap,
+  });
+
+  final ThemeData theme;
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final String buttonLabel;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = theme.colorScheme;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 12, 12),
+      child: Row(
+        children: [
+          Icon(icon, size: 20, color: cs.error),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                Text(
+                  subtitle,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: cs.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          FilledButton.tonal(
+            onPressed: onTap,
+            style: FilledButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              minimumSize: Size.zero,
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+            child: Text(buttonLabel, style: theme.textTheme.labelMedium),
+          ),
         ],
       ),
     );
