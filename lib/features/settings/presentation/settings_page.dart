@@ -81,6 +81,7 @@ class _SettingsPageState extends State<SettingsPage> {
   int? _lastDbBackupAt;
   Map<int, LessonTime> _editingLessonTimes = {};
   bool _lessonTimesDirty = false;
+  bool _lessonTimesExpanded = false;
   String _appVersion = "…";
 
   void _dismissKeyboard() {
@@ -114,6 +115,34 @@ class _SettingsPageState extends State<SettingsPage> {
     _loadLessonTimesForSelectedCollege();
     PackageInfo.fromPlatform().then((info) {
       if (mounted) setState(() => _appVersion = info.version);
+    });
+    _maybeShowAccentHint();
+  }
+
+  void _maybeShowAccentHint() {
+    final shown =
+        prefs.sharedPreferences.getBool("hint_accent_longpress") ?? false;
+    if (shown) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      prefs.sharedPreferences.setBool("hint_accent_longpress", true);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Row(
+            children: [
+              Icon(Icons.touch_app_outlined, size: 16, color: Colors.white),
+              SizedBox(width: 8),
+              Expanded(
+                child: Text("Удержи карточку темы — откроется выбор акцентного цвета"),
+              ),
+            ],
+          ),
+          duration: const Duration(seconds: 5),
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          margin: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+        ),
+      );
     });
   }
 
@@ -1754,88 +1783,161 @@ class _SettingsPageState extends State<SettingsPage> {
       ..sort((a, b) => a.key.compareTo(b.key));
     final collegeName =
         ctrl.college == PreferencesManager.collegeZabgc ? "ЗабГК" : "ЧТОТиБ";
+    final cs = theme.colorScheme;
+    final syncedAt = prefs.lessonTimesRemoteSyncedAt;
+    final syncText = syncedAt != null
+        ? "Обновлено: ${_formatFriendlySyncTime(DateTime.fromMillisecondsSinceEpoch(syncedAt))}"
+        : null;
+
     return Card(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text("Время пар", style: theme.textTheme.bodyLarge),
-            const SizedBox(height: 4),
-            Text(
-              "Для: $collegeName. Нажми на время, чтобы изменить.",
-              style: theme.textTheme.bodySmall,
-            ),
-            const SizedBox(height: 4),
-            Text(
-              prefs.lessonTimesRemoteSyncedAt != null
-                  ? "С GitHub: ${DateFormat('dd.MM.yyyy HH:mm').format(DateTime.fromMillisecondsSinceEpoch(prefs.lessonTimesRemoteSyncedAt!))} · авто-проверка каждые ${prefs.lessonTimesMinIntervalHours} ч"
-                  : "Время пар с репозитория подтянется при запуске / по кнопке «Сбросить».",
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // ── Заголовок — всегда виден, тап сворачивает/разворачивает ──
+          InkWell(
+            onTap: () => setState(() => _lessonTimesExpanded = !_lessonTimesExpanded),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 14, 12, 14),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Text("Время пар", style: theme.textTheme.bodyLarge
+                                ?.copyWith(fontWeight: FontWeight.w600)),
+                            const SizedBox(width: 8),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 7, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: cs.primary.withAlpha(20),
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: Text(collegeName,
+                                  style: theme.textTheme.labelSmall?.copyWith(
+                                      color: cs.primary,
+                                      fontWeight: FontWeight.w600)),
+                            ),
+                            if (_lessonTimesDirty) ...[
+                              const SizedBox(width: 6),
+                              Container(
+                                width: 7,
+                                height: 7,
+                                decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    color: cs.primary),
+                              ),
+                            ],
+                          ],
+                        ),
+                        if (syncText != null) ...[
+                          const SizedBox(height: 2),
+                          Text(syncText,
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                  color: cs.onSurfaceVariant)),
+                        ],
+                      ],
+                    ),
+                  ),
+                  AnimatedRotation(
+                    turns: _lessonTimesExpanded ? 0.5 : 0,
+                    duration: const Duration(milliseconds: 200),
+                    child: Icon(Icons.expand_more_rounded,
+                        color: cs.onSurfaceVariant),
+                  ),
+                ],
               ),
             ),
-            const SizedBox(height: 6),
-            const SizedBox(height: 10),
-            ...entries.map((entry) {
-              final lesson = entry.value;
-              return Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: Row(
-                  children: [
-                    SizedBox(
-                      width: 58,
-                      child: Text(
-                        "${entry.key} пара",
-                        style: theme.textTheme.bodyMedium
-                            ?.copyWith(fontWeight: FontWeight.w600),
-                      ),
-                    ),
-                    Expanded(
-                      child: OutlinedButton(
-                        onPressed: () => _pickLessonTime(
-                          lessonNumber: entry.key,
-                          start: true,
+          ),
+          // ── Разворачиваемое тело ──
+          AnimatedSize(
+            duration: const Duration(milliseconds: 280),
+            curve: Curves.easeOutCubic,
+            child: _lessonTimesExpanded
+                ? Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        const Divider(height: 1),
+                        const SizedBox(height: 12),
+                        Text(
+                          "Нажми на время, чтобы изменить.",
+                          style: theme.textTheme.bodySmall?.copyWith(
+                              color: cs.onSurfaceVariant),
                         ),
-                        child: Text(lesson.startTime),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Text("—", style: theme.textTheme.bodyMedium),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: OutlinedButton(
-                        onPressed: () => _pickLessonTime(
-                          lessonNumber: entry.key,
-                          start: false,
+                        const SizedBox(height: 10),
+                        ...entries.map((entry) {
+                          final lesson = entry.value;
+                          return Padding(
+                            padding: const EdgeInsets.only(bottom: 8),
+                            child: Row(
+                              children: [
+                                SizedBox(
+                                  width: 60,
+                                  child: Text(
+                                    "${entry.key} пара",
+                                    style: theme.textTheme.bodyMedium
+                                        ?.copyWith(fontWeight: FontWeight.w600),
+                                  ),
+                                ),
+                                Expanded(
+                                  child: OutlinedButton(
+                                    onPressed: () => _pickLessonTime(
+                                        lessonNumber: entry.key, start: true),
+                                    style: OutlinedButton.styleFrom(
+                                        padding: EdgeInsets.zero),
+                                    child: Text(lesson.startTime),
+                                  ),
+                                ),
+                                Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 6),
+                                  child: Text("—",
+                                      style: theme.textTheme.bodyMedium),
+                                ),
+                                Expanded(
+                                  child: OutlinedButton(
+                                    onPressed: () => _pickLessonTime(
+                                        lessonNumber: entry.key, start: false),
+                                    style: OutlinedButton.styleFrom(
+                                        padding: EdgeInsets.zero),
+                                    child: Text(lesson.endTime),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          );
+                        }),
+                        const SizedBox(height: 6),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: FilledButton(
+                                onPressed:
+                                    _lessonTimesDirty ? _saveLessonTimes : null,
+                                child: const Text("Сохранить"),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: FilledButton.tonal(
+                                onPressed: _resetLessonTimes,
+                                child: const Text("Сбросить"),
+                              ),
+                            ),
+                          ],
                         ),
-                        child: Text(lesson.endTime),
-                      ),
+                      ],
                     ),
-                  ],
-                ),
-              );
-            }),
-            const SizedBox(height: 4),
-            Row(
-              children: [
-                Expanded(
-                  child: FilledButton(
-                    onPressed: _lessonTimesDirty ? _saveLessonTimes : null,
-                    child: const Text("Сохранить"),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: FilledButton.tonal(
-                    onPressed: _resetLessonTimes,
-                    child: const Text("Сбросить"),
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
+                  )
+                : const SizedBox.shrink(),
+          ),
+        ],
       ),
     );
   }
@@ -2099,9 +2201,10 @@ class _SettingsPageState extends State<SettingsPage> {
                       ),
                       const SizedBox(height: 16),
                       Wrap(
-                        spacing: 12,
-                        runSpacing: 12,
+                        spacing: 10,
+                        runSpacing: 10,
                         children: [
+                          // «По умолчанию» — сброс акцента
                           GestureDetector(
                             onTap: () {
                               prefs.setAccentColorForTheme(
@@ -2116,22 +2219,24 @@ class _SettingsPageState extends State<SettingsPage> {
                               if (ctx.mounted) Navigator.of(ctx).pop();
                             },
                             child: Container(
-                              width: 44,
-                              height: 44,
+                              width: 52,
+                              height: 52,
                               decoration: BoxDecoration(
+                                shape: BoxShape.circle,
                                 color: theme.scaffoldBackgroundColor,
-                                borderRadius: BorderRadius.circular(12),
                                 border: Border.all(
                                   color: accentValue == null
                                       ? theme.colorScheme.primary
                                       : theme.colorScheme.onSurface
-                                          .withValues(alpha: 0.2),
-                                  width: accentValue == null ? 2 : 1,
+                                          .withValues(alpha: 0.18),
+                                  width: accentValue == null ? 2.5 : 1,
                                 ),
                               ),
                               child: Icon(
                                 Icons.palette_outlined,
-                                color: theme.colorScheme.onSurfaceVariant,
+                                color: accentValue == null
+                                    ? theme.colorScheme.primary
+                                    : theme.colorScheme.onSurfaceVariant,
                                 size: 22,
                               ),
                             ),
@@ -2153,32 +2258,31 @@ class _SettingsPageState extends State<SettingsPage> {
                                 if (ctx.mounted) Navigator.of(ctx).pop();
                               },
                               child: Container(
-                                width: 44,
-                                height: 44,
+                                width: 52,
+                                height: 52,
                                 decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
                                   color: color,
-                                  borderRadius: BorderRadius.circular(12),
                                   border: Border.all(
                                     color: isSelected
                                         ? theme.colorScheme.onSurface
                                         : theme.colorScheme.onSurface
-                                            .withValues(alpha: 0.25),
-                                    width: isSelected ? 2.5 : 1,
+                                            .withValues(alpha: 0.15),
+                                    width: isSelected ? 3 : 1,
                                   ),
-                                  boxShadow: isSelected
-                                      ? [
-                                          BoxShadow(
-                                            color: color.withValues(alpha: 0.4),
-                                            blurRadius: 8,
-                                            offset: const Offset(0, 2),
-                                          ),
-                                        ]
-                                      : null,
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: color.withValues(
+                                          alpha: isSelected ? 0.5 : 0.25),
+                                      blurRadius: isSelected ? 10 : 4,
+                                      offset: const Offset(0, 2),
+                                    ),
+                                  ],
                                 ),
                                 child: isSelected
                                     ? Icon(
-                                        Icons.check,
-                                        size: 22,
+                                        Icons.check_rounded,
+                                        size: 24,
                                         color: color.computeLuminance() > 0.5
                                             ? Colors.black87
                                             : Colors.white,
@@ -2624,134 +2728,216 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   Widget _dbSettingsCard(ThemeData theme) {
+    final cs = theme.colorScheme;
     final lastDbBackupText = _lastDbBackupAt == null
-        ? "не выполнялся"
-        : DateTime.fromMillisecondsSinceEpoch(_lastDbBackupAt!).toString();
+        ? "Не выполнялся"
+        : _formatFriendlySyncTime(
+            DateTime.fromMillisecondsSinceEpoch(_lastDbBackupAt!));
+
+    Widget sectionLabel(String text) => Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: Text(
+            text,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: cs.primary,
+              fontWeight: FontWeight.w600,
+              letterSpacing: 0.4,
+            ),
+          ),
+        );
+
     return Card(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // ── Хранение ──────────────────────────────────────────────────
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Expanded(
-                  child: Text(
-                    "История хранения: $_dbRetentionDays дней",
-                    style: theme.textTheme.bodyLarge,
-                  ),
+                sectionLabel("ХРАНЕНИЕ"),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text("История расписания",
+                              style: theme.textTheme.bodyLarge),
+                          Text(
+                            "Глубина хранения записей в базе данных",
+                            style: theme.textTheme.bodySmall,
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Text(
+                          "$_dbRetentionDays дн.",
+                          style: theme.textTheme.bodyLarge?.copyWith(
+                            color: cs.primary,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: cs.onSurface.withAlpha(10),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(
+                            "$_dbRecords записей",
+                            style: theme.textTheme.bodySmall
+                                ?.copyWith(fontSize: 11),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
                 ),
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: theme.colorScheme.onSurface.withAlpha(10),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Text(
-                    "$_dbRecords записей",
-                    style: theme.textTheme.bodySmall?.copyWith(fontSize: 11),
-                  ),
+                Slider(
+                  value: _dbRetentionDays.toDouble(),
+                  min: 14,
+                  max: 365,
+                  divisions: 351,
+                  onChanged: (v) => setState(() => _dbRetentionDays = v.round()),
+                  onChangeEnd: (v) async {
+                    await ScheduleDatabase.instance.saveDatabaseSetting(
+                        "retention_days", v.round().toString());
+                  },
+                ),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text("2 нед.",
+                        style: theme.textTheme.bodySmall
+                            ?.copyWith(color: cs.onSurfaceVariant)),
+                    Text("1 год",
+                        style: theme.textTheme.bodySmall
+                            ?.copyWith(color: cs.onSurfaceVariant)),
+                  ],
                 ),
               ],
             ),
-            const SizedBox(height: 6),
-            Text(
-              "Сколько дневных записей сохранять для истории расписания.",
-              style: theme.textTheme.bodySmall,
-            ),
-            const SizedBox(height: 4),
-            Text(
-              "Последний экспорт БД: $lastDbBackupText",
-              style: theme.textTheme.bodySmall,
-            ),
-            Slider(
-              value: _dbRetentionDays.toDouble(),
-              min: 14,
-              max: 365,
-              divisions: 351,
-              onChanged: (v) {
-                setState(() => _dbRetentionDays = v.round());
-              },
-              onChangeEnd: (v) async {
-                await ScheduleDatabase.instance.saveDatabaseSetting(
-                    "retention_days", v.round().toString());
-              },
-            ),
-            const SizedBox(height: 4),
-            Row(
+          ),
+
+          _divider(theme),
+
+          // ── Резервное копирование ──────────────────────────────────────
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Expanded(
-                  child: FilledButton.tonalIcon(
-                    onPressed: _dbTransferBusy ? null : _exportDatabase,
-                    icon: const Icon(Icons.upload_file_outlined, size: 18),
-                    label: const Text("Экспорт БД"),
-                  ),
+                sectionLabel("РЕЗЕРВНОЕ КОПИРОВАНИЕ"),
+                Row(
+                  children: [
+                    Expanded(
+                      child: FilledButton.tonalIcon(
+                        onPressed: _dbTransferBusy ? null : _exportDatabase,
+                        icon: const Icon(Icons.upload_file_outlined, size: 18),
+                        label: const Text("Экспорт"),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: FilledButton.tonalIcon(
+                        onPressed: _dbTransferBusy ? null : _importDatabase,
+                        icon: const Icon(Icons.download_outlined, size: 18),
+                        label: const Text("Импорт"),
+                      ),
+                    ),
+                  ],
                 ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: FilledButton.tonalIcon(
-                    onPressed: _dbTransferBusy ? null : _importDatabase,
-                    icon: const Icon(Icons.download_outlined, size: 18),
-                    label: const Text("Импорт БД"),
-                  ),
+                const SizedBox(height: 6),
+                Row(
+                  children: [
+                    Icon(Icons.history, size: 14,
+                        color: cs.onSurfaceVariant.withAlpha(160)),
+                    const SizedBox(width: 4),
+                    Text(
+                      "Последний экспорт: $lastDbBackupText",
+                      style: theme.textTheme.bodySmall
+                          ?.copyWith(color: cs.onSurfaceVariant),
+                    ),
+                  ],
                 ),
               ],
             ),
-            const SizedBox(height: 8),
-            Row(
+          ),
+
+          _divider(theme),
+
+          // ── Очистка ────────────────────────────────────────────────────
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Expanded(
-                  child: FilledButton.tonalIcon(
-                    onPressed: _dbBusy
-                        ? null
-                        : () async {
-                            setState(() => _dbBusy = true);
-                            await ScheduleDatabase.instance.clearAll();
-                            await _loadDbSettings();
-                            if (mounted) setState(() => _dbBusy = false);
-                          },
-                    icon: const Icon(Icons.delete_outline, size: 18),
-                    label: const Text("Очистить БД"),
-                  ),
+                sectionLabel("ОЧИСТКА"),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: _dbBusy
+                            ? null
+                            : () async {
+                                setState(() => _dbBusy = true);
+                                await ScheduleDatabase.instance.clearAll();
+                                await _loadDbSettings();
+                                if (mounted) setState(() => _dbBusy = false);
+                              },
+                        icon: const Icon(Icons.delete_outline, size: 18),
+                        label: const Text("База данных"),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: () {
+                          StorageCleanup.clearAllPrefsCache(
+                              prefs.sharedPreferences);
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                  content: Text("Кэш расписания очищен")),
+                            );
+                          }
+                        },
+                        icon: const Icon(Icons.cached_outlined, size: 18),
+                        label: const Text("Кэш"),
+                      ),
+                    ),
+                  ],
                 ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: FilledButton.tonalIcon(
-                    onPressed: () {
-                      StorageCleanup.clearAllPrefsCache(
-                          prefs.sharedPreferences);
+                const SizedBox(height: 8),
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: () async {
+                      await StorageCleanup.clearTempDirectory();
                       if (mounted) {
                         ScaffoldMessenger.of(context).showSnackBar(
                           const SnackBar(
-                              content: Text("Кэш расписания очищен")),
+                              content: Text("Временные файлы удалены")),
                         );
                       }
                     },
-                    icon: const Icon(Icons.cached_outlined, size: 18),
-                    label: const Text("Кэш"),
+                    icon: const Icon(Icons.folder_off_outlined, size: 18),
+                    label: const Text("Временные файлы"),
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 6),
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton.icon(
-                onPressed: () async {
-                  await StorageCleanup.clearTempDirectory();
-                  if (mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text("Временные файлы удалены")),
-                    );
-                  }
-                },
-                icon: const Icon(Icons.folder_off_outlined, size: 18),
-                label: const Text("Очистить временные файлы"),
-              ),
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -2788,28 +2974,37 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   Future<void> _importDatabase() async {
-    final approved = await showDialog<bool>(
-          context: context,
-          builder: (ctx) => AlertDialog(
-            title: const Text("Импорт БД"),
-            content: const Text(
-              "Импорт заменит текущую базу данных целиком.\n\n"
-              "Продолжить?",
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(ctx, false),
-                child: const Text("Отмена"),
-              ),
-              FilledButton(
-                onPressed: () => Navigator.pop(ctx, true),
-                child: const Text("Импорт"),
-              ),
-            ],
-          ),
-        ) ??
-        false;
-    if (!approved) return;
+    // Спрашиваем режим: null = отмена, true = объединить, false = заменить
+    final merge = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text("Импорт БД"),
+        content: const Text(
+          "Выберите режим импорта:\n\n"
+          "• Объединить — добавит данные из файла к текущим (записи с одинаковым ключом будут заменены).\n\n"
+          "• Заменить — полностью перезапишет текущую базу данных.",
+        ),
+        actions: [
+          TextButton(
+          onPressed: () => Navigator.pop(ctx),
+          child: const Text("Отмена"),
+        ),
+        const SizedBox(width: 8),
+        OutlinedButton.icon(
+          onPressed: () => Navigator.pop(ctx, false),
+          icon: const Icon(Icons.swap_horiz_rounded, size: 18),
+          label: const Text("Заменить"),
+        ),
+        const SizedBox(width: 8),
+        FilledButton.icon(
+          onPressed: () => Navigator.pop(ctx, true),
+          icon: const Icon(Icons.merge_rounded, size: 18),
+          label: const Text("Объединить"),
+        ),
+        ],
+      ),
+    );
+    if (merge == null) return;
 
     final picked = await FilePicker.platform.pickFiles(
       type: FileType.custom,
@@ -2822,20 +3017,41 @@ class _SettingsPageState extends State<SettingsPage> {
 
     setState(() => _dbTransferBusy = true);
     try {
-      await ScheduleDatabase.instance.replaceDatabaseFromFile(path);
-      await _loadDbSettings();
+      if (merge) {
+        final count =
+            await ScheduleDatabase.instance.mergeDatabaseFromFile(path);
+        await _loadDbSettings();
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Объединено: $count записей")),
+        );
+      } else {
+        await ScheduleDatabase.instance.replaceDatabaseFromFile(path);
+        await _loadDbSettings();
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("База данных заменена")),
+        );
+      }
+    } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Импорт базы данных завершен")),
-      );
-    } catch (_) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Не удалось импортировать базу данных")),
+        SnackBar(content: Text("Ошибка импорта: ${_dbErrorText(e)}")),
       );
     } finally {
       if (mounted) setState(() => _dbTransferBusy = false);
     }
+  }
+
+  static String _dbErrorText(Object e) {
+    final s = e.toString();
+    if (s.contains("не найден") || s.contains("not found")) {
+      return "файл не найден";
+    }
+    if (s.contains("DatabaseException") || s.contains("SqliteException")) {
+      return "повреждённый файл БД";
+    }
+    return "неизвестная ошибка";
   }
 
   Future<void> _checkForUpdate() async {
