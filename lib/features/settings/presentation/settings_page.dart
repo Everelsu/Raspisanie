@@ -2450,14 +2450,28 @@ class _SettingsPageState extends State<SettingsPage> {
             ],
             const SizedBox(height: 12),
             Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text("Размер шрифта в виджете",
-                    style: theme.textTheme.bodyLarge),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text("Размер шрифта в виджете",
+                          style: theme.textTheme.bodyLarge),
+                      Text(
+                        "Масштаб текста на экране телефона",
+                        style: theme.textTheme.bodySmall,
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
                 Text(
                   "${(prefs.widgetFontScale * 100).round()}%",
-                  style: theme.textTheme.bodySmall
-                      ?.copyWith(color: theme.colorScheme.primary),
+                  style: theme.textTheme.bodyLarge?.copyWith(
+                    color: theme.colorScheme.primary,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
               ],
             ),
@@ -2468,6 +2482,17 @@ class _SettingsPageState extends State<SettingsPage> {
               divisions: 9,
               onChanged: (v) => setState(() => prefs.widgetFontScale = v),
               onChangeEnd: (_) => ctrl.refreshHomeWidgetTheme(),
+            ),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text("90%",
+                    style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant)),
+                Text("135%",
+                    style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant)),
+              ],
             ),
           ],
         ),
@@ -2900,8 +2925,12 @@ class _SettingsPageState extends State<SettingsPage> {
                         () => _dbRetentionDays = _snapRetention(v.round()));
                   },
                   onChangeEnd: (v) async {
+                    final snapped = _snapRetention(v.round());
+                    if (snapped != _dbRetentionDays) {
+                      setState(() => _dbRetentionDays = snapped);
+                    }
                     await ScheduleDatabase.instance.saveDatabaseSetting(
-                        "retention_days", v.round().toString());
+                        "retention_days", snapped.toString());
                   },
                 ),
                 Row(
