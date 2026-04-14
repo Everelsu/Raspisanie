@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class Game2048Page extends StatefulWidget {
   const Game2048Page({super.key});
@@ -12,6 +13,7 @@ class Game2048Page extends StatefulWidget {
 
 class _Game2048PageState extends State<Game2048Page> {
   static const _size = 4;
+  static const _kBestKey = 'game_2048_best';
 
   late List<List<int>> _grid;
   int _score = 0;
@@ -24,7 +26,18 @@ class _Game2048PageState extends State<Game2048Page> {
   @override
   void initState() {
     super.initState();
-    _newGame();
+    _newGame(); // инициализация сетки синхронно — build не упадёт с LateInitializationError
+    _loadBest(); // рекорд подтянется асинхронно
+  }
+
+  Future<void> _loadBest() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (mounted) setState(() => _best = prefs.getInt(_kBestKey) ?? 0);
+  }
+
+  Future<void> _saveBest(int value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_kBestKey, value);
   }
 
   void _newGame() {
@@ -61,9 +74,7 @@ class _Game2048PageState extends State<Game2048Page> {
       }
       i++;
     }
-    while (tiles.length < _size) {
-      tiles.add(0);
-    }
+    while (tiles.length < _size) { tiles.add(0); }
     return (tiles, pts);
   }
 
@@ -86,9 +97,7 @@ class _Game2048PageState extends State<Game2048Page> {
         final (slid, p) = _slideRow(col);
         pts += p;
         final result = dr == 1 ? slid.reversed.toList() : slid;
-        for (var r = 0; r < _size; r++) {
-          _grid[r][c] = result[r];
-        }
+        for (var r = 0; r < _size; r++) { _grid[r][c] = result[r]; }
       }
     }
 
@@ -102,7 +111,10 @@ class _Game2048PageState extends State<Game2048Page> {
     if (!changed) return false;
 
     _score += pts;
-    if (_score > _best) _best = _score;
+    if (_score > _best) {
+      _best = _score;
+      _saveBest(_best);
+    }
     _addTile();
 
     if (!_won && !_continueAfterWin) {
@@ -120,9 +132,9 @@ class _Game2048PageState extends State<Game2048Page> {
   bool _isGameOver() {
     for (var r = 0; r < _size; r++) {
       for (var c = 0; c < _size; c++) {
-        if (_grid[r][c] == 0) return false;
-        if (r + 1 < _size && _grid[r][c] == _grid[r + 1][c]) return false;
-        if (c + 1 < _size && _grid[r][c] == _grid[r][c + 1]) return false;
+        if (_grid[r][c] == 0) { return false; }
+        if (r + 1 < _size && _grid[r][c] == _grid[r + 1][c]) { return false; }
+        if (c + 1 < _size && _grid[r][c] == _grid[r][c + 1]) { return false; }
       }
     }
     return true;
@@ -141,23 +153,28 @@ class _Game2048PageState extends State<Game2048Page> {
     HapticFeedback.selectionClick();
   }
 
+  void _tap(int dr, int dc) {
+    setState(() => _move(dr, dc));
+    HapticFeedback.selectionClick();
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final accent = theme.colorScheme.primary;
+    final cs = theme.colorScheme;
 
     return Scaffold(
       appBar: AppBar(
-        title: Row(
-          children: [
-            const Text('🎮 2048'),
-            const Spacer(),
-            _ScoreBadge(label: 'СЧЁТ', value: _score, accent: accent, theme: theme),
-            const SizedBox(width: 8),
-            _ScoreBadge(label: 'РЕКОРД', value: _best, accent: accent, theme: theme),
-          ],
-        ),
+        title: const Text('🎮 2048'),
+        centerTitle: false,
         actions: [
+          // Score badges
+          _ScoreBadge(
+              label: 'СЧЁТ', value: _score, accent: cs.primary, theme: theme),
+          const SizedBox(width: 8),
+          _ScoreBadge(
+              label: 'РЕКОРД', value: _best, accent: cs.primary, theme: theme),
+          const SizedBox(width: 4),
           IconButton(
             icon: const Icon(Icons.refresh_rounded),
             tooltip: 'Новая игра',
@@ -169,54 +186,149 @@ class _Game2048PageState extends State<Game2048Page> {
         ],
       ),
       body: SafeArea(
-        child: Stack(
+        child: Column(
           children: [
-            Center(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: GestureDetector(
-                  onPanEnd: _onPanEnd,
-                  child: AspectRatio(
-                    aspectRatio: 1,
-                    child: _GridWidget(grid: _grid, theme: theme),
+            // Board
+            Expanded(
+              child: Stack(
+                children: [
+                  Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: GestureDetector(
+                        onPanEnd: _onPanEnd,
+                        child: AspectRatio(
+                          aspectRatio: 1,
+                          child: _GridWidget(grid: _grid, theme: theme),
+                        ),
+                      ),
+                    ),
                   ),
-                ),
+                  if (_won && !_continueAfterWin)
+                    _Overlay(
+                      emoji: '🏆',
+                      title: 'Победа!',
+                      subtitle: 'Ты достиг 2048!',
+                      actions: [
+                        OutlinedButton(
+                          onPressed: () =>
+                              setState(() => _continueAfterWin = true),
+                          child: const Text('Продолжить'),
+                        ),
+                        const SizedBox(width: 8),
+                        FilledButton.icon(
+                          onPressed: () {
+                            HapticFeedback.mediumImpact();
+                            setState(_newGame);
+                          },
+                          icon: const Icon(Icons.refresh_rounded, size: 18),
+                          label: const Text('Заново'),
+                        ),
+                      ],
+                    ),
+                  if (_over && !(_won && !_continueAfterWin))
+                    _Overlay(
+                      emoji: '😵',
+                      title: 'Игра окончена',
+                      subtitle: 'Счёт: $_score',
+                      actions: [
+                        FilledButton.icon(
+                          onPressed: () {
+                            HapticFeedback.mediumImpact();
+                            setState(_newGame);
+                          },
+                          icon: const Icon(Icons.refresh_rounded, size: 18),
+                          label: const Text('Заново'),
+                        ),
+                      ],
+                    ),
+                ],
               ),
             ),
-            if (_won && !_continueAfterWin)
-              _Overlay(
-                emoji: '🏆',
-                title: 'Победа!',
-                subtitle: 'Ты достиг 2048!',
-                actions: [
-                  TextButton(
-                    onPressed: () => setState(() => _continueAfterWin = true),
-                    child: const Text('Продолжить'),
-                  ),
-                  ElevatedButton(
-                    onPressed: () { HapticFeedback.mediumImpact(); setState(_newGame); },
-                    child: const Text('Заново'),
-                  ),
-                ],
-              ),
-            if (_over && !(_won && !_continueAfterWin))
-              _Overlay(
-                emoji: '😵',
-                title: 'Игра окончена',
-                subtitle: 'Счёт: $_score',
-                actions: [
-                  ElevatedButton(
-                    onPressed: () { HapticFeedback.mediumImpact(); setState(_newGame); },
-                    child: const Text('Заново'),
-                  ),
-                ],
-              ),
+            // Arrow buttons
+            _ArrowPad(onTap: _tap, theme: theme),
           ],
         ),
       ),
     );
   }
 }
+
+// ── Arrow pad ─────────────────────────────────────────────────────────────────
+
+class _ArrowPad extends StatelessWidget {
+  const _ArrowPad({required this.onTap, required this.theme});
+  final void Function(int dr, int dc) onTap;
+  final ThemeData theme;
+
+  @override
+  Widget build(BuildContext context) {
+    const double s = 48.0;
+    return Container(
+      color: theme.colorScheme.surface,
+      padding: EdgeInsets.only(
+        top: 8,
+        bottom: MediaQuery.paddingOf(context).bottom + 8,
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _ABtn(icon: Icons.keyboard_arrow_up, onTap: () => onTap(-1, 0), size: s, theme: theme),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _ABtn(icon: Icons.keyboard_arrow_left, onTap: () => onTap(0, -1), size: s, theme: theme),
+                  SizedBox(width: s + 6),
+                  _ABtn(icon: Icons.keyboard_arrow_right, onTap: () => onTap(0, 1), size: s, theme: theme),
+                ],
+              ),
+              _ABtn(icon: Icons.keyboard_arrow_down, onTap: () => onTap(1, 0), size: s, theme: theme),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ABtn extends StatelessWidget {
+  const _ABtn({
+    required this.icon,
+    required this.onTap,
+    required this.size,
+    required this.theme,
+  });
+  final IconData icon;
+  final VoidCallback onTap;
+  final double size;
+  final ThemeData theme;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: size,
+        height: size,
+        margin: const EdgeInsets.all(3),
+        decoration: BoxDecoration(
+          color: theme.colorScheme.primary.withAlpha(22),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: theme.colorScheme.primary.withAlpha(60),
+            width: 1.5,
+          ),
+        ),
+        child: Icon(icon, color: theme.colorScheme.primary, size: 26),
+      ),
+    );
+  }
+}
+
+// ── Grid ──────────────────────────────────────────────────────────────────────
 
 class _GridWidget extends StatelessWidget {
   const _GridWidget({required this.grid, required this.theme});
@@ -228,7 +340,8 @@ class _GridWidget extends StatelessWidget {
     final isDark = theme.brightness == Brightness.dark;
     final bg = isDark ? const Color(0xFF2C2C2E) : const Color(0xFFBBADA0);
     return Container(
-      decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(12)),
+      decoration:
+          BoxDecoration(color: bg, borderRadius: BorderRadius.circular(14)),
       padding: const EdgeInsets.all(8),
       child: Column(
         children: [
@@ -257,20 +370,22 @@ class _Tile extends StatelessWidget {
   final bool isDark;
 
   static Color _bg(int v, bool dark) {
-    if (v == 0) return dark ? const Color(0xFF3A3A3C) : const Color(0xFFCDC1B4);
+    if (v == 0) {
+      return dark ? const Color(0xFF3A3A3C) : const Color(0xFFCDC1B4);
+    }
     return switch (v) {
-      2    => dark ? const Color(0xFF4A4A4C) : const Color(0xFFEEE4DA),
-      4    => dark ? const Color(0xFF5A4A3C) : const Color(0xFFEDE0C8),
-      8    => const Color(0xFFF2B179),
-      16   => const Color(0xFFF59563),
-      32   => const Color(0xFFF67C5F),
-      64   => const Color(0xFFF65E3B),
-      128  => const Color(0xFFEDCF72),
-      256  => const Color(0xFFEDCC61),
-      512  => const Color(0xFFEDC850),
+      2 => dark ? const Color(0xFF4A4A4C) : const Color(0xFFEEE4DA),
+      4 => dark ? const Color(0xFF5A4A3C) : const Color(0xFFEDE0C8),
+      8 => const Color(0xFFF2B179),
+      16 => const Color(0xFFF59563),
+      32 => const Color(0xFFF67C5F),
+      64 => const Color(0xFFF65E3B),
+      128 => const Color(0xFFEDCF72),
+      256 => const Color(0xFFEDCC61),
+      512 => const Color(0xFFEDC850),
       1024 => const Color(0xFF4CAF50),
       2048 => const Color(0xFF9C27B0),
-      _    => const Color(0xFF212121),
+      _ => const Color(0xFF212121),
     };
   }
 
@@ -306,8 +421,15 @@ class _Tile extends StatelessWidget {
   }
 }
 
+// ── Score badge ───────────────────────────────────────────────────────────────
+
 class _ScoreBadge extends StatelessWidget {
-  const _ScoreBadge({required this.label, required this.value, required this.accent, required this.theme});
+  const _ScoreBadge({
+    required this.label,
+    required this.value,
+    required this.accent,
+    required this.theme,
+  });
   final String label;
   final int value;
   final Color accent;
@@ -324,16 +446,25 @@ class _ScoreBadge extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text(label, style: theme.textTheme.labelSmall?.copyWith(fontSize: 9)),
-          Text('$value', style: TextStyle(fontWeight: FontWeight.bold, color: accent)),
+          Text(label,
+              style: theme.textTheme.labelSmall?.copyWith(fontSize: 9)),
+          Text('$value',
+              style: TextStyle(fontWeight: FontWeight.bold, color: accent)),
         ],
       ),
     );
   }
 }
 
+// ── Game over / win overlay ───────────────────────────────────────────────────
+
 class _Overlay extends StatelessWidget {
-  const _Overlay({required this.emoji, required this.title, required this.subtitle, required this.actions});
+  const _Overlay({
+    required this.emoji,
+    required this.title,
+    required this.subtitle,
+    required this.actions,
+  });
   final String emoji;
   final String title;
   final String subtitle;
@@ -351,24 +482,30 @@ class _Overlay extends StatelessWidget {
           decoration: BoxDecoration(
             color: theme.colorScheme.surface,
             borderRadius: BorderRadius.circular(20),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withAlpha(80),
+                blurRadius: 24,
+                offset: const Offset(0, 6),
+              ),
+            ],
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text(emoji, style: const TextStyle(fontSize: 48)),
+              Text(emoji, style: const TextStyle(fontSize: 52)),
               const SizedBox(height: 12),
-              Text(title, style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold)),
+              Text(title,
+                  style: theme.textTheme.titleLarge
+                      ?.copyWith(fontWeight: FontWeight.bold)),
               const SizedBox(height: 6),
-              Text(subtitle, style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+              Text(subtitle,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant)),
               const SizedBox(height: 20),
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  for (var i = 0; i < actions.length; i++) ...[
-                    if (i > 0) const SizedBox(width: 8),
-                    actions[i],
-                  ],
-                ],
+                children: actions,
               ),
             ],
           ),
