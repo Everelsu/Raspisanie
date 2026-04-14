@@ -32,8 +32,14 @@ android {
     }
 
     buildTypes {
+        debug {
+            // В debug-режиме Crashlytics отключён на уровне манифеста —
+            // иначе SDK инициализирует сессию и падает с ENOENT в logcat.
+            manifestPlaceholders["firebaseCrashlyticsEnabled"] = false
+        }
         release {
             signingConfig = signingConfigs.getByName("debug")
+            manifestPlaceholders["firebaseCrashlyticsEnabled"] = true
             // Минификация + сжатие ресурсов уменьшают размер APK. Если R8 выдаст duplicate class —
             // поставь isMinifyEnabled = false (isShrinkResources оставь true).
             isMinifyEnabled = true
