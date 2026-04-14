@@ -31,15 +31,23 @@ void main() async {
   }
   try {
     await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
-    await FirebaseCrashlytics.instance
-        .setCrashlyticsCollectionEnabled(kReleaseMode);
-    FlutterError.onError = (details) {
-      FirebaseCrashlytics.instance.recordFlutterFatalError(details);
-    };
-    WidgetsBinding.instance.platformDispatcher.onError = (error, stack) {
-      FirebaseCrashlytics.instance.recordError(error, stack, fatal: true);
-      return true;
-    };
+    if (kReleaseMode) {
+      FlutterError.onError = (details) {
+        FirebaseCrashlytics.instance.recordFlutterFatalError(details);
+      };
+      WidgetsBinding.instance.platformDispatcher.onError = (error, stack) {
+        FirebaseCrashlytics.instance.recordError(error, stack, fatal: true);
+        return true;
+      };
+    } else {
+      // Debug: даём SDK создать session-директорию (setCustomKey ставится в очередь
+      // Crashlytics-executor ПОСЛЕ openSession, поэтому await гарантирует что
+      // директория уже существует к моменту когда Firebase Analytics вызовет log()).
+      // Без этого Analytics вызывает log() в гонке с созданием директории → ENOENT.
+      await FirebaseCrashlytics.instance.setCustomKey('build_type', 'debug');
+      await FirebaseCrashlytics.instance.setCrashlyticsCollectionEnabled(false);
+      FlutterError.onError = FlutterError.presentError;
+    }
   } catch (_) {}
   await initializeDateFormatting("ru_RU", null);
   final prefs = await SharedPreferences.getInstance();

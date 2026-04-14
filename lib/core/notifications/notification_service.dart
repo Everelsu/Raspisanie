@@ -577,6 +577,7 @@ class NotificationService {
               ? "Изменения расписания"
               : "Напоминания о парах",
           channelDescription: "Уведомления расписания",
+          icon: _androidIcon,
           importance: Importance.max,
           priority: Priority.max,
           playSound: true,
@@ -598,6 +599,7 @@ class NotificationService {
         _channel,
         "Напоминания о парах",
         channelDescription: "За N минут до начала пары",
+        icon: _androidIcon,
         importance: Importance.max,
         priority: Priority.high,
         playSound: true,
