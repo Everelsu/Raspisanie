@@ -8,19 +8,23 @@ import android.content.Intent
 import android.content.SharedPreferences
 import android.graphics.Color
 import android.util.TypedValue
+import android.appwidget.AppWidgetProvider
 import android.widget.RemoteViews
-import es.antonborri.home_widget.HomeWidgetProvider
 
-class ScheduleWidgetProvider : HomeWidgetProvider() {
+// Расширяем AppWidgetProvider напрямую, не через HomeWidgetProvider,
+// чтобы не зависеть от бинарной совместимости native-кода home_widget пакета.
+// Данные читаем из тех же SharedPreferences что пишет HomeWidget Dart-сторона.
+class ScheduleWidgetProvider : AppWidgetProvider() {
 
     override fun onUpdate(
         context: Context,
         appWidgetManager: AppWidgetManager,
-        appWidgetIds: IntArray,
-        widgetData: SharedPreferences
+        appWidgetIds: IntArray
     ) {
+        super.onUpdate(context, appWidgetManager, appWidgetIds)
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         for (appWidgetId in appWidgetIds) {
-            updateWidget(context, appWidgetManager, appWidgetId, widgetData)
+            updateWidget(context, appWidgetManager, appWidgetId, prefs)
         }
     }
 

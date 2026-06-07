@@ -3147,10 +3147,9 @@ class _SettingsPageState extends State<SettingsPage> {
     );
     if (merge == null) return;
 
-    final picked = await FilePicker.platform.pickFiles(
+    final picked = await FilePicker.pickFiles(
       type: FileType.custom,
       allowedExtensions: ["db", "sqlite", "sqlite3"],
-      withData: false,
     );
     if (picked == null || picked.files.isEmpty) return;
     final path = picked.files.single.path;
