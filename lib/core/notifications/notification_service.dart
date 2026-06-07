@@ -50,11 +50,9 @@ class Lesson {
     return DateTime(now.year, now.month, now.day, h, m);
   }
 
-  /// Уникальный id: (YYYYMMDD * 100) + number. Нет коллизий между днями.
-  int notificationId() {
-    final d = DateTime.now();
-    return (d.year * 10000 + d.month * 100 + d.day) * 100 + number;
-  }
+  /// Уникальный id в пределах дня. cancelAll() вызывается перед каждым
+  /// планированием, поэтому дата в ID не нужна — достаточно number + subgroup.
+  int notificationId() => number * 10 + (subgroup ?? 0);
 
   Map<String, dynamic> toJson() => {
         "n": number,

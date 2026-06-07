@@ -1,0 +1,77 @@
+name: Release APK
+
+# Запускается при пуше тега вида v1.2.3 или вручную через UI.
+# Собирает release APK и создаёт GitHub Release с прикреплённым файлом.
+#
+# Требуемые секреты репозитория (Settings → Secrets → Actions):
+#   KEYSTORE_BASE64      — keystore в base64 (base64 -w 0 release.keystore)
+#   KEY_STORE_PASSWORD   — пароль от keystore
+#   KEY_PASSWORD         — пароль от ключа
+#   KEY_ALIAS            — alias ключа
+#
+# Если секреты не заданы — APK подписывается debug-ключом (только для тестов).
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Setup release keystore
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEY_STORE_PASSWORD: ${{ secrets.KEY_STORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "KEYSTORE_BASE64 not set — APK will use debug signing"
+            exit 0
+          fi
+          echo "$KEYSTORE_BASE64" | base64 -d > android/app/release.keystore
+          cat > android/key.properties << EOF
+          storePassword=$KEY_STORE_PASSWORD
+          keyPassword=$KEY_PASSWORD
+          keyAlias=$KEY_ALIAS
+          storeFile=release.keystore
+          EOF
+
+      - name: Build release APK
+        run: flutter build apk --release
+
+      - name: Rename APK
+        run: |
+          TAG=${GITHUB_REF#refs/tags/}
+          VERSION=${TAG#v}
+          cp build/app/outputs/flutter-apk/app-release.apk \
+             build/app/outputs/flutter-apk/raspisanie-${VERSION}.apk
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "Расписание ${{ github.ref_name }}"
+          files: build/app/outputs/flutter-apk/raspisanie-*.apk
+          generate_release_notes: true
+          fail_on_unmatched_files: true

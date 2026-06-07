@@ -202,6 +202,8 @@ class ScheduleController extends ChangeNotifier {
         useCache: false,
       );
       if (result.isEmpty) return;
+      // Отбрасываем результат если группа сменилась пока шёл запрос.
+      if (selectedGroup?.fileName != group.fileName) return;
       schedule = result;
       _lastScheduleRefreshAt = DateTime.now();
       _prefsManager.lastScheduleNetworkOkMs =
@@ -345,6 +347,7 @@ class ScheduleController extends ChangeNotifier {
 
   void selectGroup(Group? group) {
     selectedGroup = group;
+    _lastScheduleRefreshAt = null; // сбрасываем, чтобы onAppResumed обновил новую группу
     if (group != null) {
       _prefsManager.selectedGroupFile = group.fileName;
       _prefsManager.selectedGroupName = group.name;

@@ -1,4 +1,5 @@
 import java.io.File
+import java.util.Properties
 
 plugins {
     id("com.android.application")
@@ -22,6 +23,21 @@ android {
         jvmTarget = JavaVersion.VERSION_17.toString()
     }
 
+    signingConfigs {
+        // Если android/key.properties существует — используем релизный keystore.
+        // Иначе release-сборка подписывается debug-ключом (для локальной разработки).
+        val keyPropsFile = rootProject.file("key.properties")
+        if (keyPropsFile.exists()) {
+            val keyProps = Properties().also { it.load(keyPropsFile.inputStream()) }
+            create("release") {
+                keyAlias = keyProps["keyAlias"] as String
+                keyPassword = keyProps["keyPassword"] as String
+                storeFile = file(keyProps["storeFile"] as String)
+                storePassword = keyProps["storePassword"] as String
+            }
+        }
+    }
+
     defaultConfig {
         applicationId = "com.example.raspiflutter"
         minSdk = flutter.minSdkVersion
@@ -38,7 +54,9 @@ android {
             manifestPlaceholders["firebaseCrashlyticsEnabled"] = false
         }
         release {
-            signingConfig = signingConfigs.getByName("debug")
+            val hasReleaseKey = signingConfigs.findByName("release") != null
+            signingConfig = if (hasReleaseKey) signingConfigs.getByName("release")
+                           else signingConfigs.getByName("debug")
             manifestPlaceholders["firebaseCrashlyticsEnabled"] = true
             // Минификация + сжатие ресурсов уменьшают размер APK. Если R8 выдаст duplicate class —
             // поставь isMinifyEnabled = false (isShrinkResources оставь true).
