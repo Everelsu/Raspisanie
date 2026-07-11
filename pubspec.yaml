@@ -2,7 +2,7 @@ name: raspiflutter
 description: Express schedule parser for Android and iOS.
 publish_to: "none"
 
-version: 2.0.4+4
+version: 2.0.4
 
 environment:
   sdk: ">=3.6.0 <4.0.0"

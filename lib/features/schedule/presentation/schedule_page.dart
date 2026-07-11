@@ -192,7 +192,7 @@ class SchedulePage extends StatelessWidget {
             AnalyticsService.instance.logEvent("schedule_refresh", {
               "college": controller.college,
               "group": group?.name,
-              "is_teacher_mode": prefs.isTeacherMode,
+              "is_teacher_mode": prefs.isTeacherMode.toString(),
             });
             await controller.refreshSchedule();
           },
