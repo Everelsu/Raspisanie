@@ -10,9 +10,8 @@ class ChangelogPage extends StatelessWidget {
   static String _stripPreamble(String markdown) {
     final firstEntry = markdown.indexOf(RegExp(r"^## ", multiLine: true));
     if (firstEntry <= 0) return markdown;
-    return "# Что нового\n\n${markdown.substring(firstEntry)}";
+    return markdown.substring(firstEntry);
   }
-
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
