@@ -245,6 +245,13 @@ class PreferencesManager {
       _prefs.getBool("auto_check_app_update") ?? true;
   set autoCheckAppUpdate(bool v) => _prefs.setBool("auto_check_app_update", v);
 
+  /// Автозагрузка APK обновления в фоне при подключении к Wi-Fi.
+  /// Тот же ключ читает AppUpdateController напрямую.
+  bool get autoDownloadAppUpdate =>
+      _prefs.getBool("auto_download_app_update") ?? true;
+  set autoDownloadAppUpdate(bool v) =>
+      _prefs.setBool("auto_download_app_update", v);
+
   /// Throttle проверки обновления при возврате приложения на передний план.
   int? get lastResumeAppUpdateCheckMs {
     final v = _prefs.getInt("last_resume_app_update_check_ms");

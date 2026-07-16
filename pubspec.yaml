@@ -2,7 +2,9 @@ name: raspiflutter
 description: Express schedule parser for Android and iOS.
 publish_to: "none"
 
-version: 2.0.4
+# Версия — единственный источник истины для релиза (workflow читает её отсюда).
+# Build-номер после «+» становится versionCode Android: major*10000 + minor*100 + patch.
+version: 2.0.5+20005
 
 environment:
   sdk: ">=3.6.0 <4.0.0"
@@ -51,6 +53,10 @@ dependencies:
   just_audio: ^0.9.40
   record: ^6.0.0
 
+  # Обновления приложения
+  connectivity_plus: ^6.1.0
+  crypto: ^3.0.6
+
   # Остальное
   equatable: ^2.0.5
   flutter_bloc: ^8.1.6
@@ -90,6 +96,7 @@ flutter:
 
   assets:
     - assets/icon/app_icon.png
+    - CHANGELOG.md
 
 flutter_launcher_icons:
   android: true

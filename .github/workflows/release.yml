@@ -1,7 +1,22 @@
 name: Release APK
 
-# Запускается при пуше тега вида v1.2.3 или вручную через UI.
-# Собирает release APK и создаёт GitHub Release с прикреплённым файлом.
+# Релизный пайплайн по образцу Noctrinth:
+#   1. Версия приложения живёт в pubspec.yaml (единственный источник истины —
+#      имя тега лишь метка) и должна иметь запись в CHANGELOG.md.
+#   2. Пуш тега v* собирает подписанный APK и публикует GitHub Release;
+#      описание релиза берётся из записи CHANGELOG.md для этой версии.
+#   3. Джоб finalize собирает манифест latest.json (версия, ссылка на APK,
+#      sha256, размер, заметки) и коммитит его в отдельную ветку `updater`.
+#      Приложение проверяет обновления по raw-ссылке на этот файл — без
+#      GitHub API и его лимитов:
+#        https://raw.githubusercontent.com/Everelsu/Raspisanie/updater/latest.json
+#      Релиз публикуется сразу (не draft): манифест коммитится последним,
+#      поэтому обновление становится видимым только когда APK уже доступен.
+#
+# Порядок релиза:
+#   1. Поднять версию в pubspec.yaml (и build-номер после «+»).
+#   2. Добавить запись в CHANGELOG.md для этой версии.
+#   3. git tag v2.0.5 && git push origin v2.0.5
 #
 # Требуемые секреты репозитория (Settings → Secrets → Actions):
 #   KEYSTORE_BASE64      — keystore в base64 (base64 -w 0 release.keystore)
@@ -16,15 +31,38 @@ on:
     tags:
       - 'v*'
   workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Тег релиза (например v2.0.5)'
+        required: true
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Read version from pubspec.yaml
+        id: version
+        run: |
+          VERSION=$(grep -m1 '^version:' pubspec.yaml | awk '{print $2}' | cut -d+ -f1)
+          TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "Version: $VERSION, tag: $TAG"
+          if [ "v$VERSION" != "$TAG" ]; then
+            echo "::warning::Тег $TAG не совпадает с версией pubspec.yaml ($VERSION) — собирается версия из pubspec"
+          fi
 
       - uses: actions/setup-java@v4
         with:
@@ -38,6 +76,16 @@ jobs:
 
       - name: Install dependencies
         run: flutter pub get
+
+      - name: Extract release notes from CHANGELOG.md
+        id: changelog
+        run: |
+          if dart run tool/extract_changelog.dart "${{ steps.version.outputs.version }}" RELEASE_BODY.md; then
+            echo "found=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::В CHANGELOG.md нет записи для ${{ steps.version.outputs.version }} — описание релиза будет сгенерировано автоматически"
+            echo "found=false" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Setup release keystore
         env:
@@ -63,15 +111,96 @@ jobs:
 
       - name: Rename APK
         run: |
-          TAG=${GITHUB_REF#refs/tags/}
-          VERSION=${TAG#v}
           cp build/app/outputs/flutter-apk/app-release.apk \
-             build/app/outputs/flutter-apk/raspisanie-${VERSION}.apk
+             "build/app/outputs/flutter-apk/raspisanie-${{ steps.version.outputs.version }}.apk"
 
-      - name: Create GitHub Release
+      - name: Create GitHub Release (with changelog notes)
+        if: steps.changelog.outputs.found == 'true'
         uses: softprops/action-gh-release@v2
         with:
-          name: "Расписание ${{ github.ref_name }}"
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: "Расписание v${{ steps.version.outputs.version }}"
+          body_path: RELEASE_BODY.md
           files: build/app/outputs/flutter-apk/raspisanie-*.apk
-          generate_release_notes: true
           fail_on_unmatched_files: true
+
+      - name: Create GitHub Release (auto notes fallback)
+        if: steps.changelog.outputs.found != 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: "Расписание v${{ steps.version.outputs.version }}"
+          generate_release_notes: true
+          files: build/app/outputs/flutter-apk/raspisanie-*.apk
+          fail_on_unmatched_files: true
+
+      - name: Upload release notes artifact
+        if: steps.changelog.outputs.found == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-notes
+          path: RELEASE_BODY.md
+
+  # Публикация манифеста обновления: latest.json коммитится в отдельную
+  # orphan-ветку `updater`, которую читает приложение. Выполняется после
+  # публикации релиза, чтобы манифест никогда не указывал на недоступный APK.
+  finalize:
+    name: Publish updater manifest
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      TAG: ${{ needs.build.outputs.tag }}
+      VERSION: ${{ needs.build.outputs.version }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download release notes artifact
+        uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: release-notes
+
+      - name: Build latest.json
+        run: |
+          set -euo pipefail
+          APK_NAME="raspisanie-${VERSION}.apk"
+          mkdir -p manifest
+          gh release download "$TAG" --pattern "$APK_NAME" --dir manifest
+
+          SHA256=$(sha256sum "manifest/$APK_NAME" | awk '{print $1}')
+          SIZE=$(stat -c %s "manifest/$APK_NAME")
+          URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/${APK_NAME}"
+          [ -f RELEASE_BODY.md ] || touch RELEASE_BODY.md
+
+          jq -n \
+            --arg version "$VERSION" \
+            --arg url "$URL" \
+            --arg sha256 "$SHA256" \
+            --argjson size "$SIZE" \
+            --rawfile notes RELEASE_BODY.md \
+            '{version: $version, date: (now | todate), apk: {url: $url, sha256: $sha256, size: $size}, notes: $notes}' \
+            > manifest/latest.json
+          cat manifest/latest.json
+
+      - name: Commit manifest to updater branch
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          if git ls-remote --exit-code --heads origin updater >/dev/null 2>&1; then
+            git fetch origin updater
+            git checkout updater
+          else
+            git checkout --orphan updater
+            git rm -rf . >/dev/null 2>&1 || true
+          fi
+
+          cp manifest/latest.json latest.json
+          git add latest.json
+          git commit -m "updater: $TAG" || echo "Manifest unchanged"
+          git push origin updater

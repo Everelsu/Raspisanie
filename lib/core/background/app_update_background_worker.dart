@@ -6,7 +6,7 @@ import "package:shared_preferences/shared_preferences.dart";
 import "package:workmanager/workmanager.dart";
 
 import "../../features/schedule/data/preferences_manager.dart";
-import "../update/github_update_service.dart";
+import "../update/update_manifest.dart";
 import "../update/version_utils.dart";
 
 class AppUpdateBackgroundWorker {
@@ -39,13 +39,15 @@ Future<bool> runAppUpdateBackgroundTask() async {
   final pm = PreferencesManager(sp);
   if (!pm.autoCheckAppUpdate) return true;
   try {
-    final release = await getLatestGitHubRelease();
-    if (release == null) return true;
+    final manifest = await fetchUpdateManifest();
+    if (manifest == null) return true;
     final info = await PackageInfo.fromPlatform();
-    if (compareVersions(info.version, release.version) >= 0) return true;
-    await sp.setString("pending_app_update_ver", release.version);
-    await sp.setString("pending_app_update_apk", release.apkUrl);
-    await sp.setString("pending_app_update_notes", release.releaseNotes);
+    if (compareVersions(info.version, manifest.version) >= 0) return true;
+    // Полное состояние обновления пересоберёт AppUpdateController при
+    // следующем открытии приложения — здесь только помечаем находку.
+    await sp.setString("pending_app_update_ver", manifest.version);
+    await sp.setString("pending_app_update_apk", manifest.apkUrl);
+    await sp.setString("pending_app_update_notes", manifest.notes);
   } catch (e, st) {
     if (kDebugMode) {
       debugPrint("Background app update check: $e");
