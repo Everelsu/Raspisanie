@@ -51,6 +51,7 @@
                 android:src="@drawable/widget_badge" />
 
             <TextView
+                android:fontFamily="@font/space_grotesk"
                 android:id="@+id/widget_item_num"
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
@@ -70,6 +71,7 @@
             android:orientation="vertical">
 
             <TextView
+                android:fontFamily="@font/space_grotesk"
                 android:id="@+id/widget_item_time"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -80,6 +82,7 @@
                 android:textSize="11sp" />
 
             <TextView
+                android:fontFamily="@font/space_grotesk"
                 android:id="@+id/widget_item_subject"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -91,6 +94,7 @@
                 android:textStyle="bold" />
 
             <TextView
+                android:fontFamily="@font/space_grotesk"
                 android:id="@+id/widget_item_details"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"

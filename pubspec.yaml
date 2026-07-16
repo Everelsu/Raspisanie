@@ -2,7 +2,9 @@ name: raspiflutter
 description: Express schedule parser for Android and iOS.
 publish_to: "none"
 
-version: 2.0.4
+# Версия — единственный источник истины для релиза (workflow читает её отсюда).
+# Build-номер после «+» становится versionCode Android: major*10000 + minor*100 + patch.
+version: 2.0.5+20005
 
 environment:
   sdk: ">=3.6.0 <4.0.0"
@@ -38,27 +40,19 @@ dependencies:
   flutter_staggered_animations: ^1.1.1
   animations: ^2.1.2
 
-  # Чат и медиа
-  flyer_chat_file_message: ^2.3.1
-  flyer_chat_image_message: ^2.3.0
-  flyer_chat_text_message: ^2.6.0
-  flutter_chat_core: ^2.9.0
-  flutter_chat_ui: ^2.11.1
+  # Markdown (ченджлог, release-ноты) и файлы
   flutter_markdown_plus: ^1.0.7
-  photo_view: ^0.15.0
   file_picker: ^11.0.0
-  image_picker: ^1.0.7
-  just_audio: ^0.9.40
-  record: ^6.0.0
+
+  # Обновления приложения
+  connectivity_plus: ^6.1.0
+  crypto: ^3.0.6
 
   # Остальное
-  equatable: ^2.0.5
-  flutter_bloc: ^8.1.6
   package_info_plus: ^8.3.1
   share_plus: ^12.0.2
   url_launcher: ^6.3.2
   webview_flutter: ^4.10.0
-  uuid: ^4.5.1
   firebase_analytics: ^12.4.2
   workmanager: ^0.9.0
   easy_refresh: ^3.5.0
@@ -90,6 +84,7 @@ flutter:
 
   assets:
     - assets/icon/app_icon.png
+    - CHANGELOG.md
 
 flutter_launcher_icons:
   android: true

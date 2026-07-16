@@ -245,6 +245,24 @@ class PreferencesManager {
       _prefs.getBool("auto_check_app_update") ?? true;
   set autoCheckAppUpdate(bool v) => _prefs.setBool("auto_check_app_update", v);
 
+  /// Автозагрузка APK обновления в фоне при подключении к Wi-Fi.
+  /// Тот же ключ читает AppUpdateController напрямую.
+  bool get autoDownloadAppUpdate =>
+      _prefs.getBool("auto_download_app_update") ?? true;
+  set autoDownloadAppUpdate(bool v) =>
+      _prefs.setBool("auto_download_app_update", v);
+
+  /// Последняя версия, которую пользователь видел (для снекбара «Что нового»
+  /// после установки обновления).
+  String? get lastSeenAppVersion => _prefs.getString("last_seen_app_version");
+  set lastSeenAppVersion(String? v) {
+    if (v == null || v.isEmpty) {
+      _prefs.remove("last_seen_app_version");
+    } else {
+      _prefs.setString("last_seen_app_version", v);
+    }
+  }
+
   /// Throttle проверки обновления при возврате приложения на передний план.
   int? get lastResumeAppUpdateCheckMs {
     final v = _prefs.getInt("last_resume_app_update_check_ms");

@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Вертикальная полоска-индикатор текущей пары; красится через setColorFilter. -->
 <shape xmlns:android="http://schemas.android.com/apk/res/android"
     android:shape="rectangle">
-    <corners android:radius="999dp" />
+    <corners android:radius="2dp" />
     <solid android:color="#FFFFFF" />
 </shape>

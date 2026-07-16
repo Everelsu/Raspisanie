@@ -1,5 +1,7 @@
 import "package:home_widget/home_widget.dart";
+import "package:shared_preferences/shared_preferences.dart";
 
+import "../../features/schedule/data/lesson_times.dart";
 import "../../features/schedule/domain/models.dart";
 
 class HomeWidgetService {
@@ -9,6 +11,7 @@ class HomeWidgetService {
   static const _iosWidgetKind = "ScheduleWidget";
   static const _appGroupId = "group.com.example.raspiflutter";
   static const _itemSeparator = "\u241E";
+  static const _fieldSeparator = "\u241F";
 
   static Future<void> init() async {
     try {
@@ -21,6 +24,7 @@ class HomeWidgetService {
     required String groupName,
     required String themeKey,
     required double fontScale,
+    String college = "chtotib",
     int? accentColorValue,
   }) async {
     try {
@@ -37,6 +41,18 @@ class HomeWidgetService {
       DaySchedule? displayDay;
       displayDay =
           _firstWhereOrNull(sortedDays, (d) => d.date == today && d.items.isNotEmpty);
+      // Пары на сегодня уже закончились — полезнее показать следующий
+      // учебный день, чем список целиком «прошедших» пар.
+      if (displayDay != null && _dayIsOver(displayDay, college, now)) {
+        final startOfToday = DateTime(now.year, now.month, now.day);
+        final upcoming = _firstWhereOrNull(sortedDays, (d) {
+          final date = _tryParseDate(d.date);
+          return date != null &&
+              date.isAfter(startOfToday) &&
+              d.items.isNotEmpty;
+        });
+        displayDay = upcoming ?? displayDay;
+      }
       displayDay ??= _firstWhereOrNull(sortedDays, (d) => d.items.isNotEmpty);
       displayDay ??= _firstWhereOrNull(sortedDays, (d) => d.date == today);
       displayDay = displayDay ?? (sortedDays.isEmpty ? null : sortedDays.first);
@@ -59,28 +75,35 @@ class HomeWidgetService {
           ? "На сегодня нет данных"
           : "${_capitalize(displayDay.day)}, ${displayDay.date}";
 
-      String primary = "Нет занятий";
-      String secondary = "Откройте приложение для обновления";
-      String footer = "Raspisanie";
+      String primary = "Нет пар";
+      String secondary = "Свободный день";
+      String countLabel = "";
       String dayItemsPayload = "";
+      if (displayDay == null) {
+        primary = "Нет данных";
+        secondary = "Откройте приложение для обновления";
+      }
 
       if (lessonNumbers.isNotEmpty) {
-        final firstBlock = grouped[lessonNumbers.first]!;
-        final firstSubject = (firstBlock.first.subject ?? "—").trim();
-        primary = "${firstBlock.first.lessonNumber}. $firstSubject";
-        secondary = _blockDetailsForWidget(firstBlock);
-        if (secondary.isEmpty) secondary = "Без деталей";
-        footer = "${lessonNumbers.length} ${_lessonWord(lessonNumbers.length)} • нажмите для открытия";
+        countLabel =
+            "${lessonNumbers.length} ${_lessonWord(lessonNumbers.length)}";
         dayItemsPayload = lessonNumbers
-            .map((n) => _blockLineForWidget(n, grouped[n]!))
+            .map((n) => _blockRowForWidget(n, grouped[n]!, college))
             .join(_itemSeparator);
       }
+
+      final now2 = DateTime.now();
+      final footer =
+          "Обновлено ${now2.hour.toString().padLeft(2, "0")}:${now2.minute.toString().padLeft(2, "0")}";
 
       await HomeWidget.saveWidgetData<String>("widget_title", title);
       await HomeWidget.saveWidgetData<String>("widget_subtitle", subtitle);
       await HomeWidget.saveWidgetData<String>("widget_primary", primary);
       await HomeWidget.saveWidgetData<String>("widget_secondary", secondary);
       await HomeWidget.saveWidgetData<String>("widget_footer", footer);
+      await HomeWidget.saveWidgetData<String>("widget_count_label", countLabel);
+      await HomeWidget.saveWidgetData<String>(
+          "widget_date", displayDay?.date ?? "");
       await HomeWidget.saveWidgetData<String>("widget_day_items", dayItemsPayload);
       await HomeWidget.saveWidgetData<String>("widget_theme", themeKey);
       if (accentColorValue != null) {
@@ -89,6 +112,7 @@ class HomeWidgetService {
         await HomeWidget.saveWidgetData<String>("widget_accent_color", "");
       }
       await _saveWidgetFontScale(fontScale);
+      await _saveWidgetFont();
       await _bumpWidgetRefreshToken();
       await _forceRefreshWidget();
     } catch (_) {}
@@ -111,9 +135,26 @@ class HomeWidgetService {
       await _saveWidgetFontScale(fontScale);
     } catch (_) {}
     try {
+      await _saveWidgetFont();
+    } catch (_) {}
+    try {
       await _bumpWidgetRefreshToken();
     } catch (_) {}
     await _forceRefreshWidget();
+  }
+
+  /// Передаёт виджету шрифт приложения. Виджет умеет только шрифты,
+  /// встроенные в APK как ресурсы (Space Grotesk, Ndot 77); шрифты из
+  /// Google Fonts качаются в рантайме — для них остаётся системный.
+  static Future<void> _saveWidgetFont() async {
+    final sp = await SharedPreferences.getInstance();
+    final selected = sp.getString("selected_font") ?? "";
+    final key = switch (selected) {
+      "spaceGrotesk" || "spaceGroteskLocal" => "grotesk",
+      "ndot77" => "ndot",
+      _ => "",
+    };
+    await HomeWidget.saveWidgetData<String>("widget_font", key);
   }
 
   static Future<void> _saveWidgetFontScale(double value) async {
@@ -194,39 +235,54 @@ class HomeWidgetService {
     return "пар";
   }
 
-  /// One block per lesson; text with newlines for readability.
-  static String _blockLineForWidget(int lessonNumber, List<ScheduleItem> block) {
+  /// Одна строка списка виджета: номер, время начала/конца, предмет и детали
+  /// через U+241F. Kotlin-сторона (ScheduleWidgetFactory) парсит эти поля и
+  /// сама подсвечивает текущую пару по времени.
+  static String _blockRowForWidget(
+    int lessonNumber,
+    List<ScheduleItem> block,
+    String college,
+  ) {
     final sorted = block.toList()
       ..sort((a, b) => (a.subgroup ?? 0).compareTo(b.subgroup ?? 0));
     final subject = (sorted.first.subject ?? "—").trim();
-    final lines = <String>["$lessonNumber. $subject"];
-    for (final item in sorted) {
-      final sg = item.subgroup;
-      final detailParts = <String>[
-        if (item.classroom?.isNotEmpty == true) "Ауд. ${item.classroom}",
-        if (item.teacher?.isNotEmpty == true) item.teacher!,
-      ];
-      final detailStr = detailParts.join(", ");
-      if (sg != null) {
-        lines.add("  $sg п/г: ${detailStr.isEmpty ? "—" : detailStr}");
-      } else if (detailStr.isNotEmpty) {
-        lines.add("  $detailStr");
-      }
+    final time = LessonTimes.getTime(lessonNumber, college: college);
+    final details = _blockDetailsForWidget(sorted);
+    return [
+      "$lessonNumber",
+      time?.startTime ?? "",
+      time?.endTime ?? "",
+      subject,
+      details,
+    ].map(_sanitizeField).join(_fieldSeparator);
+  }
+
+  /// Разделители полей/строк не должны встречаться в пользовательских данных.
+  static String _sanitizeField(String s) =>
+      s.replaceAll(_fieldSeparator, " ").replaceAll(_itemSeparator, " ");
+
+  /// Закончилась ли последняя пара дня (по временам пар колледжа).
+  static bool _dayIsOver(DaySchedule day, String college, DateTime now) {
+    var lastEndMinutes = -1;
+    for (final item in day.items) {
+      final t = LessonTimes.getTime(item.lessonNumber, college: college);
+      if (t == null) continue;
+      final end = LessonTimes.parseTimeToMinutes(t.endTime);
+      if (end > lastEndMinutes) lastEndMinutes = end;
     }
-    return lines.join("\n");
+    if (lastEndMinutes < 0) return false;
+    return now.hour * 60 + now.minute >= lastEndMinutes;
   }
 
   static String _blockDetailsForWidget(List<ScheduleItem> block) {
-    final sorted = block.toList()
-      ..sort((a, b) => (a.subgroup ?? 0).compareTo(b.subgroup ?? 0));
     final lines = <String>[];
-    for (final item in sorted) {
+    for (final item in block) {
       final sg = item.subgroup;
       final detailParts = <String>[
         if (item.classroom?.isNotEmpty == true) "Ауд. ${item.classroom}",
         if (item.teacher?.isNotEmpty == true) item.teacher!,
       ];
-      final detailStr = detailParts.join(", ");
+      final detailStr = detailParts.join(" · ");
       if (sg != null) {
         lines.add("$sg п/г: ${detailStr.isEmpty ? "—" : detailStr}");
       } else if (detailStr.isNotEmpty) {

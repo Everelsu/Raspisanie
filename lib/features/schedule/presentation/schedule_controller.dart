@@ -395,6 +395,7 @@ class ScheduleController extends ChangeNotifier {
       groupName: selectedGroup?.name ?? _prefsManager.selectedGroupName,
       themeKey: widgetTheme,
       fontScale: _prefsManager.widgetFontScale,
+      college: college,
       accentColorValue: _prefsManager.accentColorForTheme(widgetTheme),
     );
   }

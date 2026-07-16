@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Чип «N пар» в шапке — полупрозрачный серый, читается на любой теме. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <corners android:radius="8dp" />
+    <solid android:color="#1A7F7F7F" />
+</shape>

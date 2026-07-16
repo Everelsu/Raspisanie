@@ -16,7 +16,8 @@ import "../../../app/theme.dart"
 import "../../../core/database/schedule_database.dart";
 import "../../../core/widgets/app_icon_image.dart";
 import "../../../core/services/analytics_service.dart";
-import "../../../core/update/app_update_service.dart";
+import "../../../core/update/app_update_controller.dart";
+import "../../../core/update/changelog_page.dart";
 import "../../../core/update/github_http_client.dart";
 import "../../../core/update/github_urls.dart";
 import "../../../core/update/update_dialog.dart";
@@ -280,6 +281,8 @@ class _SettingsPageState extends State<SettingsPage> {
                             borderRadius: BorderRadius.circular(12),
                             onTap: () async {
                               await widget.fontService.setFont(font);
+                              // Виджет тоже перерисовываем выбранным шрифтом.
+                              widget.controller.refreshHomeWidgetTheme();
                               await AnalyticsService.instance.logFontChanged(
                                   widget.fontService.displayName(font));
                             },
@@ -2583,9 +2586,29 @@ class _SettingsPageState extends State<SettingsPage> {
                     },
                   ),
                   _divider(theme),
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+                  _switchTile(
+                    theme,
+                    "Автозагрузка по Wi-Fi",
+                    "Скачивать обновление заранее, чтобы установить в один тап",
+                    prefs.autoDownloadAppUpdate,
+                    (v) => setState(() => prefs.autoDownloadAppUpdate = v),
                   ),
+                  _divider(theme),
+                  ListTile(
+                    leading: Icon(
+                      Icons.history_edu_rounded,
+                      color: theme.colorScheme.primary,
+                    ),
+                    title: const Text("Что нового"),
+                    subtitle: const Text("Журнал изменений приложения"),
+                    trailing: const Icon(Icons.chevron_right_rounded),
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => const ChangelogPage(),
+                      ),
+                    ),
+                  ),
+                  _divider(theme),
                   Padding(
                     padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
                     child: SizedBox(
@@ -3195,20 +3218,16 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   Future<void> _checkForUpdate() async {
-    final release = await checkForUpdate();
+    final controller = AppUpdateController.instance;
+    final update = await controller.check();
     if (!mounted) return;
-    if (release != null) {
+    if (update != null) {
       final info = await PackageInfo.fromPlatform();
       if (!mounted) return;
       AnalyticsService.instance
-          .logEvent("update_dialog_shown", {"version": release.version});
-      showDialog(
-        context: context,
-        builder: (ctx) => UpdateDialog(
-          release: release,
-          currentVersion: info.version,
-        ),
-      );
+          .logEvent("update_dialog_shown", {"version": update.version});
+      // Ручная проверка показывает диалог всегда, минуя отсрочку «Позже».
+      await showAppUpdateDialog(context, currentVersion: info.version);
     } else {
       showDialog(
         context: context,

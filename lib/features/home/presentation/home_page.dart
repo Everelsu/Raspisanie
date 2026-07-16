@@ -8,8 +8,8 @@ import "package:package_info_plus/package_info_plus.dart";
 import "../../../core/notifications/notification_service.dart";
 import "../../../core/services/analytics_service.dart";
 import "../../../core/services/font_service.dart";
-import "../../../core/update/app_update_service.dart";
-import "../../../core/update/github_update_service.dart";
+import "../../../core/update/app_update_controller.dart";
+import "../../../core/update/changelog_page.dart";
 import "../../../core/update/update_dialog.dart";
 import "../../../core/update/version_utils.dart";
 import "../../../core/widgets/animated_app_bar.dart";
@@ -70,6 +70,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
     NotificationService.openScheduleOnTap.addListener(_onOpenScheduleRequested);
     AnalyticsService.instance.logScreen(_screenIds[_currentIndex]);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _maybeShowWhatsNewSnackbar();
+    });
     if (Platform.isAndroid && widget.controller.prefs.autoCheckAppUpdate) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _tryShowPendingBackgroundUpdate();
@@ -78,6 +81,37 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         });
       });
     }
+  }
+
+  /// После установки обновления показываем ненавязчивый снекбар со ссылкой
+  /// на журнал изменений. Для свежих установок просто запоминаем версию.
+  Future<void> _maybeShowWhatsNewSnackbar() async {
+    final prefs = widget.controller.prefs;
+    final info = await PackageInfo.fromPlatform();
+    final seen = prefs.lastSeenAppVersion;
+    if (seen == info.version) return;
+    prefs.lastSeenAppVersion = info.version;
+    if (seen == null || seen.isEmpty) return;
+    if (compareVersions(seen, info.version) >= 0) return;
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text("Приложение обновлено до ${info.version}"),
+        duration: const Duration(seconds: 6),
+        behavior: SnackBarBehavior.floating,
+        action: SnackBarAction(
+          label: "Что нового",
+          onPressed: () {
+            if (!mounted) return;
+            Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => const ChangelogPage(),
+              ),
+            );
+          },
+        ),
+      ),
+    );
   }
 
   @override
@@ -143,47 +177,41 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     ];
   }
 
+  /// Фоновый воркер нашёл обновление — сразу запускаем полную проверку
+  /// (без троттлинга): контроллер заново получит манифест и подготовит APK.
   Future<void> _tryShowPendingBackgroundUpdate() async {
     final p = widget.controller.prefs;
     final ver = p.pendingAppUpdateVersion;
-    final apk = p.pendingAppUpdateApkUrl;
-    if (ver == null || apk == null || ver.isEmpty || apk.isEmpty) return;
+    if (ver == null || ver.isEmpty) return;
+    p.clearPendingAppUpdate();
     if (!mounted || _appUpdateDialogOpen) return;
     final info = await PackageInfo.fromPlatform();
-    if (!mounted) return;
-    if (compareVersions(info.version, ver) >= 0) {
-      p.clearPendingAppUpdate();
-      return;
-    }
-    final notes = p.pendingAppUpdateNotes;
-    p.clearPendingAppUpdate();
-    await _showUpdateDialog(GitHubReleaseInfo(
-      version: ver,
-      apkUrl: apk,
-      releaseNotes: notes,
-    ));
+    if (!mounted || compareVersions(info.version, ver) >= 0) return;
+    await _checkForegroundAppUpdate();
   }
 
   Future<void> _checkForegroundAppUpdate() async {
     if (!mounted || _appUpdateDialogOpen) return;
-    final release = await checkForUpdate();
-    if (!mounted || release == null) return;
-    await _showUpdateDialog(release);
+    final controller = AppUpdateController.instance;
+    final update = await controller.check();
+    if (!mounted || update == null) return;
+    // Если APK уже качается — дождёмся: диалог сразу предложит «Установить».
+    if (controller.downloading) {
+      await controller.download();
+      if (!mounted || controller.available == null) return;
+    }
+    if (!await controller.shouldPrompt()) return;
+    if (!mounted) return;
+    await _showUpdateDialog();
   }
 
-  Future<void> _showUpdateDialog(GitHubReleaseInfo release) async {
+  Future<void> _showUpdateDialog() async {
     if (!mounted || _appUpdateDialogOpen) return;
     _appUpdateDialogOpen = true;
     try {
       final info = await PackageInfo.fromPlatform();
       if (!mounted) return;
-      await showDialog<void>(
-        context: context,
-        builder: (ctx) => UpdateDialog(
-          release: release,
-          currentVersion: info.version,
-        ),
-      );
+      await showAppUpdateDialog(context, currentVersion: info.version);
     } finally {
       _appUpdateDialogOpen = false;
     }
