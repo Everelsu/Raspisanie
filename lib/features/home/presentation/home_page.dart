@@ -9,6 +9,7 @@ import "../../../core/notifications/notification_service.dart";
 import "../../../core/services/analytics_service.dart";
 import "../../../core/services/font_service.dart";
 import "../../../core/update/app_update_controller.dart";
+import "../../../core/update/changelog_page.dart";
 import "../../../core/update/update_dialog.dart";
 import "../../../core/update/version_utils.dart";
 import "../../../core/widgets/animated_app_bar.dart";
@@ -69,6 +70,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
     NotificationService.openScheduleOnTap.addListener(_onOpenScheduleRequested);
     AnalyticsService.instance.logScreen(_screenIds[_currentIndex]);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _maybeShowWhatsNewSnackbar();
+    });
     if (Platform.isAndroid && widget.controller.prefs.autoCheckAppUpdate) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _tryShowPendingBackgroundUpdate();
@@ -77,6 +81,37 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         });
       });
     }
+  }
+
+  /// После установки обновления показываем ненавязчивый снекбар со ссылкой
+  /// на журнал изменений. Для свежих установок просто запоминаем версию.
+  Future<void> _maybeShowWhatsNewSnackbar() async {
+    final prefs = widget.controller.prefs;
+    final info = await PackageInfo.fromPlatform();
+    final seen = prefs.lastSeenAppVersion;
+    if (seen == info.version) return;
+    prefs.lastSeenAppVersion = info.version;
+    if (seen == null || seen.isEmpty) return;
+    if (compareVersions(seen, info.version) >= 0) return;
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text("Приложение обновлено до ${info.version}"),
+        duration: const Duration(seconds: 6),
+        behavior: SnackBarBehavior.floating,
+        action: SnackBarAction(
+          label: "Что нового",
+          onPressed: () {
+            if (!mounted) return;
+            Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => const ChangelogPage(),
+              ),
+            );
+          },
+        ),
+      ),
+    );
   }
 
   @override

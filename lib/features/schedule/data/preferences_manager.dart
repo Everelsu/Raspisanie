@@ -252,6 +252,17 @@ class PreferencesManager {
   set autoDownloadAppUpdate(bool v) =>
       _prefs.setBool("auto_download_app_update", v);
 
+  /// Последняя версия, которую пользователь видел (для снекбара «Что нового»
+  /// после установки обновления).
+  String? get lastSeenAppVersion => _prefs.getString("last_seen_app_version");
+  set lastSeenAppVersion(String? v) {
+    if (v == null || v.isEmpty) {
+      _prefs.remove("last_seen_app_version");
+    } else {
+      _prefs.setString("last_seen_app_version", v);
+    }
+  }
+
   /// Throttle проверки обновления при возврате приложения на передний план.
   int? get lastResumeAppUpdateCheckMs {
     final v = _prefs.getInt("last_resume_app_update_check_ms");

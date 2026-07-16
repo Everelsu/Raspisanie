@@ -57,10 +57,11 @@ class ScheduleWidgetProvider : AppWidgetProvider() {
             val title = prefs.getString("widget_title", "Расписание") ?: "Расписание"
             val subtitle = prefs.getString("widget_subtitle", "На сегодня нет данных")
                 ?: "На сегодня нет данных"
-            val primary = prefs.getString("widget_primary", "Нет занятий") ?: "Нет занятий"
+            val primary = prefs.getString("widget_primary", "Нет пар") ?: "Нет пар"
             val secondary = prefs.getString("widget_secondary", "Откройте приложение")
                 ?: "Откройте приложение"
             val footer = prefs.getString("widget_footer", "Raspisanie") ?: "Raspisanie"
+            val countLabel = prefs.getString("widget_count_label", "") ?: ""
             val dayItems = prefs.getString("widget_day_items", "") ?: ""
             val themeKey = prefs.getString("widget_theme", "dark") ?: "dark"
             val fontScale = readFontScale(prefs)
@@ -93,7 +94,9 @@ class ScheduleWidgetProvider : AppWidgetProvider() {
                 "dark" -> Color.parseColor("#FFFFFF")
                 else -> Color.parseColor("#FFFFFF")
             }
-            val titleColor = accentColor ?: themeTitleColor
+            // Как в карточке дня: заголовок — обычным цветом текста,
+            // акцент несут полоска слева и подсветка текущей пары.
+            val titleColor = themeTitleColor
             val subColor = when (themeKey) {
                 "light" -> Color.parseColor("#2F2F2F")
                 "green" -> Color.parseColor("#BBF7D0")
@@ -127,6 +130,8 @@ class ScheduleWidgetProvider : AppWidgetProvider() {
                 "setBackgroundResource",
                 bgRes
             )
+            // Акцентная полоска у названия группы — как в шапке карточки дня.
+            views.setInt(R.id.widget_title_bar, "setColorFilter", accentColor ?: themeTitleColor)
             views.setTextViewText(R.id.widget_title, title)
             views.setTextViewText(R.id.widget_subtitle, subtitle)
             views.setTextViewText(R.id.widget_primary, primary)
@@ -144,6 +149,15 @@ class ScheduleWidgetProvider : AppWidgetProvider() {
             views.setTextViewTextSize(R.id.widget_secondary, TypedValue.COMPLEX_UNIT_SP, 12f * fontScale)
             views.setTextViewTextSize(R.id.widget_empty, TypedValue.COMPLEX_UNIT_SP, 11f * fontScale)
             views.setTextViewTextSize(R.id.widget_footer, TypedValue.COMPLEX_UNIT_SP, 10f * fontScale)
+            // Чип количества пар справа от названия группы (акцентным цветом).
+            if (countLabel.isNotBlank()) {
+                views.setViewVisibility(R.id.widget_count, android.view.View.VISIBLE)
+                views.setTextViewText(R.id.widget_count, countLabel)
+                views.setTextColor(R.id.widget_count, subColor)
+                views.setTextViewTextSize(R.id.widget_count, TypedValue.COMPLEX_UNIT_SP, 11f * fontScale)
+            } else {
+                views.setViewVisibility(R.id.widget_count, android.view.View.GONE)
+            }
             val hasList = dayItems.isNotBlank()
             views.setViewVisibility(
                 R.id.widget_primary,
