@@ -1,4 +1,5 @@
 import "package:home_widget/home_widget.dart";
+import "package:shared_preferences/shared_preferences.dart";
 
 import "../../features/schedule/data/lesson_times.dart";
 import "../../features/schedule/domain/models.dart";
@@ -111,6 +112,7 @@ class HomeWidgetService {
         await HomeWidget.saveWidgetData<String>("widget_accent_color", "");
       }
       await _saveWidgetFontScale(fontScale);
+      await _saveWidgetFont();
       await _bumpWidgetRefreshToken();
       await _forceRefreshWidget();
     } catch (_) {}
@@ -133,9 +135,26 @@ class HomeWidgetService {
       await _saveWidgetFontScale(fontScale);
     } catch (_) {}
     try {
+      await _saveWidgetFont();
+    } catch (_) {}
+    try {
       await _bumpWidgetRefreshToken();
     } catch (_) {}
     await _forceRefreshWidget();
+  }
+
+  /// Передаёт виджету шрифт приложения. Виджет умеет только шрифты,
+  /// встроенные в APK как ресурсы (Space Grotesk, Ndot 77); шрифты из
+  /// Google Fonts качаются в рантайме — для них остаётся системный.
+  static Future<void> _saveWidgetFont() async {
+    final sp = await SharedPreferences.getInstance();
+    final selected = sp.getString("selected_font") ?? "";
+    final key = switch (selected) {
+      "spaceGrotesk" || "spaceGroteskLocal" => "grotesk",
+      "ndot77" => "ndot",
+      _ => "",
+    };
+    await HomeWidget.saveWidgetData<String>("widget_font", key);
   }
 
   static Future<void> _saveWidgetFontScale(double value) async {

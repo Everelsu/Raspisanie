@@ -47,6 +47,7 @@ private class ScheduleWidgetFactory(
     private var fontScale: Float = 1.0f
     private var accentColor: Int? = null
     private var isToday: Boolean = false
+    private var fontKey: String = ""
 
     override fun onCreate() {
         loadData()
@@ -76,7 +77,7 @@ private class ScheduleWidgetFactory(
         val secondColor = if (dim) withAlpha(subTextColor, 90) else subTextColor
         val timeColor = if (status == RowStatus.CURRENT) accent else secondColor
 
-        return RemoteViews(context.packageName, R.layout.schedule_widget_list_item).apply {
+        return RemoteViews(context.packageName, widgetItemLayoutRes(fontKey)).apply {
             // Фон карточки: у текущей пары — акцентная заливка, у остальных —
             // едва заметная подложка цветом текста (onSurface с малой альфой).
             if (status == RowStatus.CURRENT) {
@@ -190,6 +191,8 @@ private class ScheduleWidgetFactory(
             ?: intent.getStringExtra("widget_accent_color")?.trim()
             ?: prefs.getString("widget_accent_color", "")?.trim()
         accentColor = if (!accentStr.isNullOrEmpty()) accentStr.toIntOrNull() else null
+        fontKey = intent.data?.getQueryParameter("font")?.trim()
+            ?: prefs.getString("widget_font", "") ?: ""
         isToday = isDateToday(prefs.getString("widget_date", "") ?: "")
         textColor = when (themeKey) {
             "light" -> Color.parseColor("#111111")

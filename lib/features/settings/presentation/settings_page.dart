@@ -281,6 +281,8 @@ class _SettingsPageState extends State<SettingsPage> {
                             borderRadius: BorderRadius.circular(12),
                             onTap: () async {
                               await widget.fontService.setFont(font);
+                              // Виджет тоже перерисовываем выбранным шрифтом.
+                              widget.controller.refreshHomeWidgetTheme();
                               await AnalyticsService.instance.logFontChanged(
                                   widget.fontService.displayName(font));
                             },

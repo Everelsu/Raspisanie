@@ -11,6 +11,34 @@ import android.util.TypedValue
 import android.appwidget.AppWidgetProvider
 import android.widget.RemoteViews
 
+// Виджет использует шрифт приложения, когда выбран один из встроенных в APK
+// (Space Grotesk / Ndot 77): RemoteViews не умеет менять Typeface в рантайме,
+// поэтому под каждый шрифт есть свой вариант layout с android:fontFamily.
+// Шрифты из Google Fonts качаются приложением в рантайме и в ресурсы не
+// попадают — для них остаётся системный шрифт. До Android 8.0 (API 26)
+// font-ресурсы в RemoteViews не работают — используется базовый layout.
+internal fun widgetLayoutRes(fontKey: String?): Int {
+    if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.O) {
+        return R.layout.schedule_widget_layout
+    }
+    return when (fontKey) {
+        "grotesk" -> R.layout.schedule_widget_layout_grotesk
+        "ndot" -> R.layout.schedule_widget_layout_ndot
+        else -> R.layout.schedule_widget_layout
+    }
+}
+
+internal fun widgetItemLayoutRes(fontKey: String?): Int {
+    if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.O) {
+        return R.layout.schedule_widget_list_item
+    }
+    return when (fontKey) {
+        "grotesk" -> R.layout.schedule_widget_list_item_grotesk
+        "ndot" -> R.layout.schedule_widget_list_item_ndot
+        else -> R.layout.schedule_widget_list_item
+    }
+}
+
 // Расширяем AppWidgetProvider напрямую, не через HomeWidgetProvider,
 // чтобы не зависеть от бинарной совместимости native-кода home_widget пакета.
 // Данные читаем из тех же SharedPreferences что пишет HomeWidget Dart-сторона.
@@ -66,6 +94,7 @@ class ScheduleWidgetProvider : AppWidgetProvider() {
             val themeKey = prefs.getString("widget_theme", "dark") ?: "dark"
             val fontScale = readFontScale(prefs)
             val refreshToken = prefs.getString("widget_refresh_token", "0") ?: "0"
+            val fontKey = prefs.getString("widget_font", "") ?: ""
             val accentColorStr = prefs.getString("widget_accent_color", "")?.trim()
             val accentColor = if (!accentColorStr.isNullOrEmpty()) accentColorStr.toIntOrNull() else null
             val bgRes = when (themeKey) {
@@ -124,7 +153,7 @@ class ScheduleWidgetProvider : AppWidgetProvider() {
                 else -> Color.parseColor("#9A9A9A")
             }
 
-            val views = RemoteViews(context.packageName, R.layout.schedule_widget_layout)
+            val views = RemoteViews(context.packageName, widgetLayoutRes(fontKey))
             views.setInt(
                 R.id.widget_root,
                 "setBackgroundResource",
@@ -179,7 +208,7 @@ class ScheduleWidgetProvider : AppWidgetProvider() {
                 putExtra("widget_theme", themeKey)
                 putExtra("widget_accent_color", accentColorStr ?: "")
                 data = android.net.Uri.parse(
-                    "widget://${context.packageName}/schedule/$appWidgetId?rev=$refreshToken&theme=$themeKey&accent=${accentColorStr ?: ""}"
+                    "widget://${context.packageName}/schedule/$appWidgetId?rev=$refreshToken&theme=$themeKey&accent=${accentColorStr ?: ""}&font=$fontKey"
                 )
             }
             views.setRemoteAdapter(R.id.widget_list, listIntent)
