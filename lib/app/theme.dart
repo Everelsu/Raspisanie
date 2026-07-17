@@ -150,10 +150,13 @@ class AppThemes {
       splashFactory: InkSparkle.splashFactory,
       iconTheme: IconThemeData(color: c.onSurfaceSecondary, size: 24),
       primaryIconTheme: IconThemeData(color: primary, size: 24),
+      // iOS/macOS не переопределяем: дефолт PageTransitionsTheme уже
+      // использует Cupertino-переход там, и так не зависим от точного имени
+      // класса — оно менялось между версиями Flutter (см. падение CI на
+      // stable 3.44 из-за "Method not found: CupertinoPageTransitionsBuilder").
       pageTransitionsTheme: const PageTransitionsTheme(
         builders: {
           TargetPlatform.android: ZoomPageTransitionsBuilder(),
-          TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
         },
       ),
       appBarTheme: AppBarTheme(
