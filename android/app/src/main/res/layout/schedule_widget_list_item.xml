@@ -1,7 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Карточка пары — повторяет _LessonTile из приложения: круглый бейдж с
      номером, время над предметом, акцентная полоска и заливка у текущей пары.
-     Все цвета выставляет ScheduleWidgetRemoteService через setColorFilter. -->
+     Все цвета и текст (bitmap, кастомный шрифт) выставляет
+     ScheduleWidgetRemoteService через WidgetTextRenderer. -->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/widget_list_item_root"
     android:layout_width="match_parent"
@@ -15,18 +16,6 @@
         android:importantForAccessibility="no"
         android:scaleType="fitXY"
         android:src="@drawable/widget_card" />
-
-    <ImageView
-        android:id="@+id/widget_item_stripe"
-        android:layout_width="3dp"
-        android:layout_height="match_parent"
-        android:layout_gravity="start"
-        android:layout_marginTop="8dp"
-        android:layout_marginBottom="8dp"
-        android:layout_marginStart="4dp"
-        android:importantForAccessibility="no"
-        android:scaleType="fitXY"
-        android:src="@drawable/widget_stripe" />
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -50,16 +39,13 @@
                 android:scaleType="fitXY"
                 android:src="@drawable/widget_badge" />
 
-            <TextView
+            <ImageView
                 android:id="@+id/widget_item_num"
-                android:layout_width="match_parent"
-                android:layout_height="match_parent"
-                android:gravity="center"
-                android:maxLines="1"
-                android:text="1"
-                android:textColor="#FFFFFFFF"
-                android:textSize="14sp"
-                android:textStyle="bold" />
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center"
+                android:importantForAccessibility="no"
+                android:scaleType="matrix" />
         </FrameLayout>
 
         <LinearLayout
@@ -69,37 +55,28 @@
             android:layout_weight="1"
             android:orientation="vertical">
 
-            <TextView
+            <ImageView
                 android:id="@+id/widget_item_time"
-                android:layout_width="match_parent"
+                android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginBottom="1dp"
-                android:maxLines="1"
-                android:text="8:15–9:15"
-                android:textColor="#B3FFFFFF"
-                android:textSize="11sp" />
+                android:importantForAccessibility="no"
+                android:scaleType="matrix" />
 
-            <TextView
+            <ImageView
                 android:id="@+id/widget_item_subject"
-                android:layout_width="match_parent"
+                android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:ellipsize="end"
-                android:maxLines="2"
-                android:text="Математика"
-                android:textColor="#FFFFFFFF"
-                android:textSize="13sp"
-                android:textStyle="bold" />
+                android:importantForAccessibility="no"
+                android:scaleType="matrix" />
 
-            <TextView
+            <ImageView
                 android:id="@+id/widget_item_details"
-                android:layout_width="match_parent"
+                android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="1dp"
-                android:ellipsize="end"
-                android:maxLines="4"
-                android:text="Ауд. 101 · Иванов И.И."
-                android:textColor="#B3FFFFFF"
-                android:textSize="11sp" />
+                android:importantForAccessibility="no"
+                android:scaleType="matrix" />
         </LinearLayout>
 
     </LinearLayout>

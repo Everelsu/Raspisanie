@@ -15,7 +15,9 @@ import "../../../app/theme.dart"
     show AppThemeColors, AppThemes, contentBottomPadding, contentTopUnderAppBar;
 import "../../../core/database/schedule_database.dart";
 import "../../../core/widgets/app_icon_image.dart";
+import "../../../core/widgets/refresh_logo_mark.dart";
 import "../../../core/services/analytics_service.dart";
+import "../../../core/services/app_icon_service.dart";
 import "../../../core/update/app_update_controller.dart";
 import "../../../core/update/changelog_page.dart";
 import "../../../core/update/github_http_client.dart";
@@ -29,6 +31,7 @@ import "../../schedule/data/lesson_times.dart";
 import "../../schedule/data/preferences_manager.dart";
 import "../../schedule/domain/models.dart";
 import "../../schedule/presentation/schedule_controller.dart";
+import "widgets/settings_ui.dart";
 
 class _UrlProbeResult {
   const _UrlProbeResult({
@@ -82,7 +85,6 @@ class _SettingsPageState extends State<SettingsPage> {
   int? _lastDbBackupAt;
   Map<int, LessonTime> _editingLessonTimes = {};
   bool _lessonTimesDirty = false;
-  bool _lessonTimesExpanded = false;
   String _appVersion = "…";
 
   void _dismissKeyboard() {
@@ -171,33 +173,25 @@ class _SettingsPageState extends State<SettingsPage> {
             contentBottomPadding(context),
           ),
           children: [
-            _section(theme, "ОСНОВНОЕ"),
             _modeCard(theme),
             const SizedBox(height: 12),
             _collegeCard(theme),
             const SizedBox(height: 12),
             _groupCard(theme),
             const SizedBox(height: 20),
-            _section(theme, "РАСПИСАНИЕ"),
             _displayCard(theme),
-            const SizedBox(height: 12),
+            const SizedBox(height: 10),
             _lessonTimesCard(theme),
-            const SizedBox(height: 20),
-            _section(theme, "ДАННЫЕ"),
+            const SizedBox(height: 10),
             _dbSettingsCard(theme),
+            const SizedBox(height: 10),
+            _appearanceCard(theme),
+            const SizedBox(height: 10),
+            _updatesCard(theme),
             const SizedBox(height: 20),
-            _section(theme, "ВИДЖЕТ"),
-            _widgetCard(theme),
-            const SizedBox(height: 20),
-            _section(theme, "ОФОРМЛЕНИЕ"),
-            _fontSettingsCard(theme),
+            _creditsCard(theme),
             const SizedBox(height: 12),
-            _themeGrid(theme),
-            const SizedBox(height: 12),
-            _section(theme, "О ПРИЛОЖЕНИИ"),
-            _privacyCard(theme),
-            const SizedBox(height: 20),
-            _appInfoCard(theme),
+            _appIdentityCard(theme),
             const SizedBox(height: 40),
           ],
         );
@@ -221,15 +215,7 @@ class _SettingsPageState extends State<SettingsPage> {
     });
   }
 
-  Widget _section(ThemeData theme, String text) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 10, top: 4),
-      child: Text(text,
-          style: theme.textTheme.titleSmall?.copyWith(letterSpacing: 1.0)),
-    );
-  }
-
-  Widget _fontSettingsCard(ThemeData theme) {
+  Widget _fontSection(ThemeData theme) {
     final cs = theme.colorScheme;
     const fontSizeKeys = [
       PreferencesManager.fontSizeSmall,
@@ -244,20 +230,14 @@ class _SettingsPageState extends State<SettingsPage> {
       listenable: widget.fontService,
       builder: (context, _) {
         final selectedFont = widget.fontService.current;
-        return Card(
-          child: Column(
+        return Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Padding(
-                padding: const EdgeInsets.fromLTRB(16, 16, 16, 10),
+                padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      "Шрифт приложения",
-                      style: theme.textTheme.bodySmall,
-                    ),
-                    const SizedBox(height: 10),
                     GridView.builder(
                       primary: false,
                       shrinkWrap: true,
@@ -280,6 +260,7 @@ class _SettingsPageState extends State<SettingsPage> {
                           child: InkWell(
                             borderRadius: BorderRadius.circular(12),
                             onTap: () async {
+                              HapticFeedback.lightImpact();
                               await widget.fontService.setFont(font);
                               // Виджет тоже перерисовываем выбранным шрифтом.
                               widget.controller.refreshHomeWidgetTheme();
@@ -356,6 +337,7 @@ class _SettingsPageState extends State<SettingsPage> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    const SettingsSubsectionLabel("Размер шрифта"),
                     Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -415,6 +397,63 @@ class _SettingsPageState extends State<SettingsPage> {
                     ),
                   ],
                 ),
+              ),
+            ],
+          );
+      },
+    );
+  }
+
+  Widget _appearanceCard(ThemeData theme) {
+    final themeName = AppThemes.allThemes[prefs.theme] ?? prefs.theme;
+    return ListenableBuilder(
+      listenable: widget.fontService,
+      builder: (context, _) {
+        final fontName =
+            widget.fontService.displayName(widget.fontService.current);
+        return SettingsCollapsibleCard(
+          icon: Icons.palette_rounded,
+          title: "Оформление",
+          subtitle: "$themeName • $fontName",
+          builder: (context) => Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              SettingsSubsectionExpander(
+                icon: Icons.color_lens_rounded,
+                title: "Тема",
+                subtitle: themeName,
+                initiallyExpanded: true,
+                builder: (context) => _themeSection(theme),
+              ),
+              _divider(theme),
+              if (Platform.isAndroid) ...[
+                SettingsSubsectionExpander(
+                  icon: Icons.apps_rounded,
+                  title: "Иконка приложения",
+                  subtitle: prefs.appIcon == "auto"
+                      ? "Как тема"
+                      : AppThemes.allThemes[prefs.appIcon] ?? prefs.appIcon,
+                  builder: (context) => _appIconSection(theme),
+                ),
+                _divider(theme),
+              ],
+              SettingsSubsectionExpander(
+                icon: Icons.text_fields_rounded,
+                title: "Шрифт",
+                subtitle: fontName,
+                builder: (context) => _fontSection(theme),
+              ),
+              _divider(theme),
+              SettingsSubsectionExpander(
+                icon: Icons.auto_awesome_rounded,
+                title: "Эффекты",
+                builder: (context) => _effectsSection(theme),
+              ),
+              _divider(theme),
+              SettingsSubsectionExpander(
+                icon: Icons.widgets_rounded,
+                title: "Виджет на главном экране",
+                builder: (context) => _widgetSection(theme),
               ),
             ],
           ),
@@ -592,334 +631,378 @@ class _SettingsPageState extends State<SettingsPage> {
           builder: (ctx, setSheetState) {
             final sources = prefs.allCollegeSources;
             final syncedAt = prefs.syncedCollegeSourcesCheckedAt;
-            final currentFont = widget.fontService.current;
+            final cs = theme.colorScheme;
             return SafeArea(
               child: SizedBox(
-                height: MediaQuery.of(ctx).size.height * 0.52,
+                height: MediaQuery.of(ctx).size.height * 0.62,
                 child: Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+                  padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
                   child: Column(
                     mainAxisSize: MainAxisSize.max,
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      Material(
-                        color:
-                            theme.cardTheme.color ?? theme.colorScheme.surface,
-                        borderRadius: BorderRadius.circular(12),
-                        child: Padding(
-                          padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text("Источники",
-                                  style: theme.textTheme.titleLarge),
-                              const SizedBox(height: 4),
-                              Text(
-                                "Можно добавить свой источник и выбрать его в списке.",
-                                style: theme.textTheme.bodySmall,
-                              ),
-                              const SizedBox(height: 10),
-                              SizedBox(
-                                width: double.infinity,
-                                child: FilledButton.tonalIcon(
-                                  onPressed: syncRunning
-                                      ? null
-                                      : () async {
-                                          setSheetState(() {
-                                            syncRunning = true;
-                                          });
-                                          final result =
-                                              await _syncCollegeSourcesFromRemote();
-                                          if (!mounted || !ctx.mounted) return;
-                                          setSheetState(() {
-                                            syncRunning = false;
-                                            lastSync = result;
-                                          });
-                                          setState(() {});
-                                          if (ctx.mounted) {
-                                            ScaffoldMessenger.of(ctx)
-                                                .showSnackBar(
-                                              SnackBar(
-                                                  content:
-                                                      Text(result.message)),
-                                            );
-                                          }
-                                        },
-                                  icon: syncRunning
-                                      ? const SizedBox(
-                                          width: 18,
-                                          height: 18,
-                                          child: CircularProgressIndicator(
-                                              strokeWidth: 2),
-                                        )
-                                      : const Icon(Icons.sync_rounded),
-                                  label: Text(
-                                    syncRunning
-                                        ? "Синхронизация..."
-                                        : "Синхронизировать ссылки",
-                                  ),
-                                ),
-                              ),
-                              if (lastSync != null || syncedAt != null) ...[
-                                const SizedBox(height: 6),
-                                Text(
-                                  lastSync != null
-                                      ? "Синхронизировано: ${_formatFriendlySyncTime(lastSync!.checkedAt)} • ${lastSync!.message}"
-                                      : "Синхронизировано: ${_formatFriendlySyncTime(syncedAt!)}",
-                                  style: widget.fontService.previewStyle(
-                                    currentFont,
-                                    color: theme.colorScheme.onSurfaceVariant,
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                                  maxLines: 2,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ],
-                            ],
+                      Center(
+                        child: Container(
+                          width: 36,
+                          height: 4,
+                          decoration: BoxDecoration(
+                            color: cs.onSurface.withAlpha(60),
+                            borderRadius: BorderRadius.circular(2),
                           ),
                         ),
                       ),
                       const SizedBox(height: 14),
-                      Expanded(
-                        child: ListView.separated(
-                          padding: const EdgeInsets.only(top: 2, bottom: 10),
-                          itemCount: sources.length,
-                          separatorBuilder: (_, __) =>
-                              const SizedBox(height: 6),
-                          itemBuilder: (_, i) {
-                            final s = sources[i];
-                            final selected = ctrl.college == s.id;
-                            final isRunning = runningIds.contains(s.id);
-                            final probe = pingById[s.id];
-                            final probeColor = probe == null
-                                ? theme.colorScheme.onSurfaceVariant
-                                : (probe.ok
-                                    ? theme.colorScheme.primary
-                                    : theme.colorScheme.error);
-                            return ListTile(
-                              dense: true,
-                              contentPadding:
-                                  const EdgeInsets.fromLTRB(12, 6, 8, 6),
-                              horizontalTitleGap: 10,
-                              minLeadingWidth: 18,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
-                                side: BorderSide(
-                                  color: selected
-                                      ? theme.colorScheme.primary
-                                      : theme.colorScheme.outlineVariant,
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  "Техникум",
+                                  style: theme.textTheme.titleLarge
+                                      ?.copyWith(fontWeight: FontWeight.w600),
                                 ),
-                              ),
-                              title: Text(s.name),
-                              subtitle: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Text(
-                                    s.baseUrl,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                  if (isRunning)
-                                    Text(
-                                      'Проверяю...',
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style:
-                                          theme.textTheme.labelSmall?.copyWith(
-                                        color:
-                                            theme.colorScheme.onSurfaceVariant,
-                                      ),
-                                    )
-                                  else if (probe != null)
-                                    Text(
-                                      _formatProbeCaption(probe),
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: widget.fontService.previewStyle(
-                                        currentFont,
-                                        color: probeColor,
-                                        fontSize: 11,
-                                        fontWeight: FontWeight.w500,
-                                      ),
-                                    ),
-                                ],
-                              ),
-                              leading: Icon(
-                                s.builtIn
-                                    ? Icons.lock_outline_rounded
-                                    : Icons.link_rounded,
-                                size: 18,
-                                color: s.builtIn
-                                    ? theme.colorScheme.onSurfaceVariant
-                                    : theme.colorScheme.primary,
-                              ),
-                              trailing: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  IconButton(
-                                    tooltip: "Копировать URL",
-                                    visualDensity: VisualDensity.compact,
-                                    padding: EdgeInsets.zero,
-                                    constraints: const BoxConstraints.tightFor(
-                                      width: 32,
-                                      height: 32,
-                                    ),
-                                    onPressed: () async {
-                                      await Clipboard.setData(
-                                          ClipboardData(text: s.baseUrl));
-                                      if (ctx.mounted) {
-                                        ScaffoldMessenger.of(ctx).showSnackBar(
-                                          const SnackBar(
-                                            content: Text("Ссылка скопирована"),
-                                          ),
-                                        );
-                                      }
-                                    },
-                                    icon: const Icon(Icons.content_copy_rounded,
-                                        size: 20),
-                                  ),
-                                  if (isRunning)
-                                    const SizedBox(
-                                      width: 20,
-                                      height: 20,
-                                      child: Padding(
-                                        padding: EdgeInsets.all(2),
-                                        child: CircularProgressIndicator(
-                                          strokeWidth: 2,
-                                        ),
-                                      ),
-                                    )
-                                  else
-                                    IconButton(
-                                      tooltip: "Пинг",
-                                      visualDensity: VisualDensity.compact,
-                                      padding: EdgeInsets.zero,
-                                      constraints:
-                                          const BoxConstraints.tightFor(
-                                        width: 32,
-                                        height: 32,
-                                      ),
-                                      onPressed: () async {
-                                        setSheetState(() {
-                                          runningIds.add(s.id);
-                                        });
-                                        final result =
-                                            await _probeCollegeSourceUrl(
-                                          s.baseUrl,
-                                        );
-                                        if (!ctx.mounted || !mounted) return;
-                                        setSheetState(() {
-                                          runningIds.remove(s.id);
-                                          pingById[s.id] = result;
-                                        });
-                                      },
-                                      icon: const Icon(
-                                          Icons.wifi_tethering_rounded,
-                                          size: 20),
-                                    ),
-                                  if (!s.builtIn)
-                                    PopupMenuButton<String>(
-                                      tooltip: "Действия",
-                                      padding: EdgeInsets.zero,
-                                      iconSize: 20,
-                                      splashRadius: 18,
-                                      icon: const Icon(Icons.more_horiz_rounded,
-                                          size: 20),
-                                      itemBuilder: (_) => const [
-                                        PopupMenuItem<String>(
-                                          value: "edit",
-                                          child: Row(
-                                            children: [
-                                              Icon(Icons.edit_outlined,
-                                                  size: 18),
-                                              SizedBox(width: 8),
-                                              Text("Изменить"),
-                                            ],
-                                          ),
-                                        ),
-                                        PopupMenuItem<String>(
-                                          value: "delete",
-                                          child: Row(
-                                            children: [
-                                              Icon(Icons.delete_outline_rounded,
-                                                  size: 18),
-                                              SizedBox(width: 8),
-                                              Text("Удалить"),
-                                            ],
-                                          ),
-                                        ),
-                                      ],
-                                      onSelected: (value) async {
-                                        if (value == "edit") {
-                                          _dismissKeyboard();
-                                          final ok =
-                                              await _showEditCollegeSourceDialog(
-                                                  s);
-                                          if (!ok || !mounted || !ctx.mounted) {
-                                            return;
-                                          }
-                                          ctrl.refreshCollegeSources();
-                                          setSheetState(() {});
-                                          setState(() {});
-                                          return;
-                                        }
-                                        if (value == "delete") {
-                                          final updated = prefs
-                                              .customCollegeSources
-                                              .where((e) => e.id != s.id)
-                                              .toList();
-                                          prefs.saveCustomCollegeSources(
-                                              updated);
-                                          ctrl.refreshCollegeSources();
-                                          if (ctrl.college == s.id) {
-                                            ctrl.setCollege(PreferencesManager
-                                                .collegeDefault);
-                                            _loadGroupsAsync();
-                                          }
-                                          setSheetState(() {});
-                                          setState(() {});
-                                        }
-                                      },
-                                    ),
-                                ],
-                              ),
-                              onTap: () {
-                                ctrl.setCollege(s.id);
-                                _loadGroupsAsync();
-                                _loadLessonTimesForSelectedCollege();
-                                setSheetState(() {});
-                                setState(() {});
-                              },
-                              onLongPress: () async {
-                                final u = Uri.tryParse(s.baseUrl);
-                                if (u != null && await canLaunchUrl(u)) {
-                                  await launchUrl(u,
-                                      mode: LaunchMode.externalApplication);
-                                }
-                              },
-                            );
-                          },
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      SafeArea(
-                        top: false,
-                        child: SizedBox(
-                          width: double.infinity,
-                          child: FilledButton.tonalIcon(
+                                const SizedBox(height: 2),
+                                Text(
+                                  lastSync != null
+                                      ? "${lastSync!.message} • ${_formatFriendlySyncTime(lastSync!.checkedAt)}"
+                                      : (syncedAt != null
+                                          ? "Синхронизировано: ${_formatFriendlySyncTime(syncedAt)}"
+                                          : "Выбери источник расписания"),
+                                  style: theme.textTheme.bodySmall
+                                      ?.copyWith(color: cs.onSurfaceVariant),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ],
+                            ),
+                          ),
+                          IconButton(
+                            tooltip: "Синхронизировать список",
+                            onPressed: syncRunning
+                                ? null
+                                : () async {
+                                    setSheetState(() {
+                                      syncRunning = true;
+                                    });
+                                    final result =
+                                        await _syncCollegeSourcesFromRemote();
+                                    if (!mounted || !ctx.mounted) return;
+                                    setSheetState(() {
+                                      syncRunning = false;
+                                      lastSync = result;
+                                    });
+                                    setState(() {});
+                                  },
+                            icon: syncRunning
+                                ? const SizedBox(
+                                    width: 20,
+                                    height: 20,
+                                    child: CircularProgressIndicator(
+                                        strokeWidth: 2),
+                                  )
+                                : const Icon(Icons.sync_rounded),
+                          ),
+                          IconButton.filledTonal(
+                            tooltip: "Добавить источник",
                             onPressed: () async {
                               _dismissKeyboard();
-                              final added = await _showAddCollegeSourceDialog();
+                              final added =
+                                  await _showAddCollegeSourceDialog();
                               if (!added || !mounted || !ctx.mounted) return;
                               ctrl.refreshCollegeSources();
                               setSheetState(() {});
                               setState(() {});
                             },
                             icon: const Icon(Icons.add_link_rounded),
-                            label: const Text("Добавить ссылку"),
                           ),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                      Expanded(
+                        child: ListView.separated(
+                          padding: const EdgeInsets.only(top: 2, bottom: 10),
+                          itemCount: sources.length,
+                          separatorBuilder: (_, __) =>
+                              const SizedBox(height: 8),
+                          itemBuilder: (_, i) {
+                            final s = sources[i];
+                            final selected = ctrl.college == s.id;
+                            final isRunning = runningIds.contains(s.id);
+                            final probe = pingById[s.id];
+                            final probeColor = probe == null
+                                ? cs.onSurfaceVariant
+                                : (probe.ok ? cs.primary : cs.error);
+                            return Material(
+                              color: Colors.transparent,
+                              child: InkWell(
+                                borderRadius: BorderRadius.circular(14),
+                                onTap: () {
+                                  HapticFeedback.lightImpact();
+                                  ctrl.setCollege(s.id);
+                                  _loadGroupsAsync();
+                                  _loadLessonTimesForSelectedCollege();
+                                  setSheetState(() {});
+                                  setState(() {});
+                                },
+                                onLongPress: () async {
+                                  final u = Uri.tryParse(s.baseUrl);
+                                  if (u != null && await canLaunchUrl(u)) {
+                                    await launchUrl(u,
+                                        mode: LaunchMode.externalApplication);
+                                  }
+                                },
+                                child: AnimatedContainer(
+                                  duration: const Duration(milliseconds: 200),
+                                  padding:
+                                      const EdgeInsets.fromLTRB(12, 10, 4, 10),
+                                  decoration: BoxDecoration(
+                                    borderRadius: BorderRadius.circular(14),
+                                    color: selected
+                                        ? cs.primary.withAlpha(18)
+                                        : theme.scaffoldBackgroundColor,
+                                    border: Border.all(
+                                      color: selected
+                                          ? cs.primary
+                                          : cs.onSurface.withAlpha(25),
+                                      width: selected ? 1.5 : 1,
+                                    ),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Container(
+                                        width: 36,
+                                        height: 36,
+                                        alignment: Alignment.center,
+                                        decoration: BoxDecoration(
+                                          shape: BoxShape.circle,
+                                          color: cs.primary
+                                              .withAlpha(selected ? 35 : 14),
+                                        ),
+                                        child: Icon(
+                                          s.builtIn
+                                              ? Icons.school_rounded
+                                              : Icons.link_rounded,
+                                          size: 18,
+                                          color: selected
+                                              ? cs.primary
+                                              : cs.onSurfaceVariant,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 12),
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              s.name,
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: theme.textTheme.bodyLarge
+                                                  ?.copyWith(
+                                                fontWeight: selected
+                                                    ? FontWeight.w700
+                                                    : FontWeight.w500,
+                                              ),
+                                            ),
+                                            Text(
+                                              s.baseUrl,
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: theme.textTheme.bodySmall
+                                                  ?.copyWith(
+                                                      color:
+                                                          cs.onSurfaceVariant),
+                                            ),
+                                            if (isRunning)
+                                              Text(
+                                                "Проверяю...",
+                                                style: theme
+                                                    .textTheme.labelSmall
+                                                    ?.copyWith(
+                                                        color: cs
+                                                            .onSurfaceVariant),
+                                              )
+                                            else if (probe != null)
+                                              Text(
+                                                _formatProbeCaption(probe),
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                                style: theme
+                                                    .textTheme.labelSmall
+                                                    ?.copyWith(
+                                                  color: probeColor,
+                                                  fontWeight: FontWeight.w600,
+                                                ),
+                                              ),
+                                          ],
+                                        ),
+                                      ),
+                                      if (selected)
+                                        Icon(Icons.check_circle_rounded,
+                                            size: 20, color: cs.primary),
+                                      if (isRunning)
+                                        const Padding(
+                                          padding: EdgeInsets.all(10),
+                                          child: SizedBox(
+                                            width: 16,
+                                            height: 16,
+                                            child: CircularProgressIndicator(
+                                                strokeWidth: 2),
+                                          ),
+                                        )
+                                      else
+                                        PopupMenuButton<String>(
+                                          tooltip: "Действия",
+                                          iconSize: 20,
+                                          splashRadius: 18,
+                                          icon: Icon(Icons.more_vert_rounded,
+                                              size: 20,
+                                              color: cs.onSurfaceVariant),
+                                          itemBuilder: (_) => [
+                                            const PopupMenuItem<String>(
+                                              value: "ping",
+                                              child: Row(
+                                                children: [
+                                                  Icon(
+                                                      Icons
+                                                          .wifi_tethering_rounded,
+                                                      size: 18),
+                                                  SizedBox(width: 8),
+                                                  Text("Проверить доступность"),
+                                                ],
+                                              ),
+                                            ),
+                                            const PopupMenuItem<String>(
+                                              value: "copy",
+                                              child: Row(
+                                                children: [
+                                                  Icon(
+                                                      Icons
+                                                          .content_copy_rounded,
+                                                      size: 18),
+                                                  SizedBox(width: 8),
+                                                  Text("Копировать ссылку"),
+                                                ],
+                                              ),
+                                            ),
+                                            const PopupMenuItem<String>(
+                                              value: "open",
+                                              child: Row(
+                                                children: [
+                                                  Icon(
+                                                      Icons.open_in_new_rounded,
+                                                      size: 18),
+                                                  SizedBox(width: 8),
+                                                  Text("Открыть в браузере"),
+                                                ],
+                                              ),
+                                            ),
+                                            if (!s.builtIn) ...[
+                                              const PopupMenuItem<String>(
+                                                value: "edit",
+                                                child: Row(
+                                                  children: [
+                                                    Icon(Icons.edit_outlined,
+                                                        size: 18),
+                                                    SizedBox(width: 8),
+                                                    Text("Изменить"),
+                                                  ],
+                                                ),
+                                              ),
+                                              const PopupMenuItem<String>(
+                                                value: "delete",
+                                                child: Row(
+                                                  children: [
+                                                    Icon(
+                                                        Icons
+                                                            .delete_outline_rounded,
+                                                        size: 18),
+                                                    SizedBox(width: 8),
+                                                    Text("Удалить"),
+                                                  ],
+                                                ),
+                                              ),
+                                            ],
+                                          ],
+                                          onSelected: (value) async {
+                                            switch (value) {
+                                              case "ping":
+                                                setSheetState(() {
+                                                  runningIds.add(s.id);
+                                                });
+                                                final result =
+                                                    await _probeCollegeSourceUrl(
+                                                        s.baseUrl);
+                                                if (!ctx.mounted || !mounted) {
+                                                  return;
+                                                }
+                                                setSheetState(() {
+                                                  runningIds.remove(s.id);
+                                                  pingById[s.id] = result;
+                                                });
+                                              case "copy":
+                                                await Clipboard.setData(
+                                                    ClipboardData(
+                                                        text: s.baseUrl));
+                                                if (ctx.mounted) {
+                                                  ScaffoldMessenger.of(ctx)
+                                                      .showSnackBar(
+                                                    const SnackBar(
+                                                      content: Text(
+                                                          "Ссылка скопирована"),
+                                                    ),
+                                                  );
+                                                }
+                                              case "open":
+                                                final u =
+                                                    Uri.tryParse(s.baseUrl);
+                                                if (u != null &&
+                                                    await canLaunchUrl(u)) {
+                                                  await launchUrl(u,
+                                                      mode: LaunchMode
+                                                          .externalApplication);
+                                                }
+                                              case "edit":
+                                                _dismissKeyboard();
+                                                final ok =
+                                                    await _showEditCollegeSourceDialog(
+                                                        s);
+                                                if (!ok ||
+                                                    !mounted ||
+                                                    !ctx.mounted) {
+                                                  return;
+                                                }
+                                                ctrl.refreshCollegeSources();
+                                                setSheetState(() {});
+                                                setState(() {});
+                                              case "delete":
+                                                final updated = prefs
+                                                    .customCollegeSources
+                                                    .where((e) => e.id != s.id)
+                                                    .toList();
+                                                prefs.saveCustomCollegeSources(
+                                                    updated);
+                                                ctrl.refreshCollegeSources();
+                                                if (ctrl.college == s.id) {
+                                                  ctrl.setCollege(
+                                                      PreferencesManager
+                                                          .collegeDefault);
+                                                  _loadGroupsAsync();
+                                                }
+                                                setSheetState(() {});
+                                                setState(() {});
+                                            }
+                                          },
+                                        ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            );
+                          },
                         ),
                       ),
                     ],
@@ -1565,9 +1648,19 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   Widget _displayCard(ThemeData theme) {
-    return Card(
-      child: Column(
+    return SettingsCollapsibleCard(
+      icon: Icons.calendar_month_rounded,
+      title: "Расписание",
+      subtitle: "Перемены, обеды, автообновление",
+      builder: (context) => Column(
         children: [
+          const Padding(
+            padding: EdgeInsets.fromLTRB(16, 14, 16, 2),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: SettingsSubsectionLabel("Элементы расписания"),
+            ),
+          ),
           _switchTile(theme, "Показывать перемены", "Перемены между парами",
               prefs.showBreaks, (v) {
             setState(() => prefs.showBreaks = v);
@@ -1588,7 +1681,13 @@ class _SettingsPageState extends State<SettingsPage> {
               "Выделять текущую и следующую", prefs.showLessonStatus, (v) {
             setState(() => prefs.showLessonStatus = v);
           }),
-          _divider(theme),
+          const Padding(
+            padding: EdgeInsets.fromLTRB(16, 14, 16, 2),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: SettingsSubsectionLabel("Синхронизация"),
+            ),
+          ),
           _switchTile(theme, "Кэширование",
               "Сохранять данные для работы офлайн", prefs.cacheEnabled, (v) {
             setState(() => prefs.cacheEnabled = v);
@@ -1615,62 +1714,10 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   Widget _switchTile(ThemeData theme, String title, String subtitle, bool value,
-      ValueChanged<bool> onChanged) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(title,
-                    style: theme.textTheme.bodyLarge,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis),
-                Text(subtitle,
-                    style: theme.textTheme.bodySmall,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis),
-              ],
-            ),
-          ),
-          Switch(value: value, onChanged: onChanged),
-        ],
-      ),
-    );
-  }
+          ValueChanged<bool> onChanged) =>
+      settingsSwitchTile(theme, title, subtitle, value, onChanged);
 
-  Widget _divider(ThemeData theme) {
-    return Divider(
-      height: 1,
-      indent: 16,
-      endIndent: 16,
-      color: theme.dividerTheme.color,
-    );
-  }
-
-  Widget _privacyCard(ThemeData theme) {
-    return Card(
-      child: Column(
-        children: [
-          _switchTile(
-            theme,
-            "Отправлять аналитику Firebase",
-            "Отправка анонимной аналитики",
-            prefs.analyticsEnabled,
-            (v) async {
-              setState(() => prefs.analyticsEnabled = v);
-              await AnalyticsService.instance.setEnabled(v);
-              AnalyticsService.instance
-                  .logEvent("analytics_toggled", {"enabled": v});
-            },
-          ),
-        ],
-      ),
-    );
-  }
+  Widget _divider(ThemeData theme) => settingsDivider(theme);
 
   void _loadLessonTimesForSelectedCollege() {
     final college = ctrl.college;
@@ -1794,156 +1841,84 @@ class _SettingsPageState extends State<SettingsPage> {
         ? "Обновлено: ${_formatFriendlySyncTime(DateTime.fromMillisecondsSinceEpoch(syncedAt))}"
         : null;
 
-    return Card(
-      clipBehavior: Clip.antiAlias,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          // ── Заголовок — всегда виден, тап сворачивает/разворачивает ──
-          InkWell(
-            onTap: () =>
-                setState(() => _lessonTimesExpanded = !_lessonTimesExpanded),
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 14, 12, 14),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            Text("Время пар",
-                                style: theme.textTheme.bodyLarge
-                                    ?.copyWith(fontWeight: FontWeight.w600)),
-                            const SizedBox(width: 8),
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 7, vertical: 2),
-                              decoration: BoxDecoration(
-                                color: cs.primary.withAlpha(20),
-                                borderRadius: BorderRadius.circular(6),
-                              ),
-                              child: Text(collegeName,
-                                  style: theme.textTheme.labelSmall?.copyWith(
-                                      color: cs.primary,
-                                      fontWeight: FontWeight.w600)),
-                            ),
-                            if (_lessonTimesDirty) ...[
-                              const SizedBox(width: 6),
-                              Container(
-                                width: 7,
-                                height: 7,
-                                decoration: BoxDecoration(
-                                    shape: BoxShape.circle, color: cs.primary),
-                              ),
-                            ],
-                          ],
-                        ),
-                        if (syncText != null) ...[
-                          const SizedBox(height: 2),
-                          Text(syncText,
-                              style: theme.textTheme.bodySmall
-                                  ?.copyWith(color: cs.onSurfaceVariant)),
-                        ],
-                      ],
-                    ),
-                  ),
-                  AnimatedRotation(
-                    turns: _lessonTimesExpanded ? 0.5 : 0,
-                    duration: const Duration(milliseconds: 200),
-                    child: Icon(Icons.expand_more_rounded,
-                        color: cs.onSurfaceVariant),
-                  ),
-                ],
-              ),
+    return SettingsCollapsibleCard(
+      icon: Icons.schedule_rounded,
+      title: "Время пар",
+      badge: collegeName,
+      subtitle: _lessonTimesDirty
+          ? "Есть несохранённые изменения"
+          : (syncText ?? "Начало и конец каждой пары"),
+      builder: (context) => Padding(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              "Нажми на время, чтобы изменить.",
+              style: theme.textTheme.bodySmall
+                  ?.copyWith(color: cs.onSurfaceVariant),
             ),
-          ),
-          // ── Разворачиваемое тело ──
-          AnimatedSize(
-            duration: const Duration(milliseconds: 280),
-            curve: Curves.easeOutCubic,
-            child: _lessonTimesExpanded
-                ? Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        const Divider(height: 1),
-                        const SizedBox(height: 12),
-                        Text(
-                          "Нажми на время, чтобы изменить.",
-                          style: theme.textTheme.bodySmall
-                              ?.copyWith(color: cs.onSurfaceVariant),
-                        ),
-                        const SizedBox(height: 10),
-                        ...entries.map((entry) {
-                          final lesson = entry.value;
-                          return Padding(
-                            padding: const EdgeInsets.only(bottom: 8),
-                            child: Row(
-                              children: [
-                                SizedBox(
-                                  width: 60,
-                                  child: Text(
-                                    "${entry.key} пара",
-                                    style: theme.textTheme.bodyMedium
-                                        ?.copyWith(fontWeight: FontWeight.w600),
-                                  ),
-                                ),
-                                Expanded(
-                                  child: OutlinedButton(
-                                    onPressed: () => _pickLessonTime(
-                                        lessonNumber: entry.key, start: true),
-                                    style: OutlinedButton.styleFrom(
-                                        padding: EdgeInsets.zero),
-                                    child: Text(lesson.startTime),
-                                  ),
-                                ),
-                                Padding(
-                                  padding:
-                                      const EdgeInsets.symmetric(horizontal: 6),
-                                  child: Text("—",
-                                      style: theme.textTheme.bodyMedium),
-                                ),
-                                Expanded(
-                                  child: OutlinedButton(
-                                    onPressed: () => _pickLessonTime(
-                                        lessonNumber: entry.key, start: false),
-                                    style: OutlinedButton.styleFrom(
-                                        padding: EdgeInsets.zero),
-                                    child: Text(lesson.endTime),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          );
-                        }),
-                        const SizedBox(height: 6),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: FilledButton(
-                                onPressed:
-                                    _lessonTimesDirty ? _saveLessonTimes : null,
-                                child: const Text("Сохранить"),
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: FilledButton.tonal(
-                                onPressed: _resetLessonTimes,
-                                child: const Text("Сбросить"),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
+            const SizedBox(height: 10),
+            ...entries.map((entry) {
+              final lesson = entry.value;
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Row(
+                  children: [
+                    SizedBox(
+                      width: 60,
+                      child: Text(
+                        "${entry.key} пара",
+                        style: theme.textTheme.bodyMedium
+                            ?.copyWith(fontWeight: FontWeight.w600),
+                      ),
                     ),
-                  )
-                : const SizedBox.shrink(),
-          ),
-        ],
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () => _pickLessonTime(
+                            lessonNumber: entry.key, start: true),
+                        style: OutlinedButton.styleFrom(
+                            padding: EdgeInsets.zero),
+                        child: Text(lesson.startTime),
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 6),
+                      child: Text("—", style: theme.textTheme.bodyMedium),
+                    ),
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () => _pickLessonTime(
+                            lessonNumber: entry.key, start: false),
+                        style: OutlinedButton.styleFrom(
+                            padding: EdgeInsets.zero),
+                        child: Text(lesson.endTime),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }),
+            const SizedBox(height: 6),
+            Row(
+              children: [
+                Expanded(
+                  child: FilledButton(
+                    onPressed: _lessonTimesDirty ? _saveLessonTimes : null,
+                    child: const Text("Сохранить"),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: FilledButton.tonal(
+                    onPressed: _resetLessonTimes,
+                    child: const Text("Сбросить"),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -1953,100 +1928,155 @@ class _SettingsPageState extends State<SettingsPage> {
     return v != null ? Color(v) : colors.primary;
   }
 
-  Widget _themeGrid(ThemeData theme) {
+  /// Ставит в лаунчере иконку, соответствующую настройке app_icon.
+  void _syncAppIcon() {
+    AppIconService.setIcon(prefs.effectiveAppIcon);
+  }
+
+  Widget _appIconSection(ThemeData theme) {
+    final selected = prefs.appIcon;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _themeSwatchRow(
+            theme,
+            selected: selected,
+            onSelect: (key) {
+              setState(() => prefs.appIcon = key);
+              _syncAppIcon();
+            },
+          ),
+          const SizedBox(height: 8),
+          Text(
+            selected == "auto"
+                ? "Иконка следует выбранной теме"
+                : "Иконка: ${AppThemes.allThemes[selected] ?? selected}",
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _themeSection(ThemeData theme) {
     final currentTheme = prefs.theme;
     final entries = AppThemes.allThemes.entries.toList();
 
-    return Wrap(
-      spacing: 10,
-      runSpacing: 10,
-      children: entries.map((entry) {
-        final isSelected = entry.key == currentTheme;
-        final colors = AppThemes.colorsFor(entry.key);
-        final primary = _effectivePrimaryForTheme(entry.key, colors);
-        final name = entry.value;
+    return Padding(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const SettingsSubsectionLabel("Удержи тему для выбора акцента"),
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final tileWidth = (constraints.maxWidth - 10) / 2;
+                return Wrap(
+                  spacing: 10,
+                  runSpacing: 10,
+                  children: entries.map((entry) {
+                    final isSelected = entry.key == currentTheme;
+                    final colors = AppThemes.colorsFor(entry.key);
+                    final primary = _effectivePrimaryForTheme(entry.key, colors);
+                    final name = entry.value;
 
-        return GestureDetector(
-          onTap: () {
-            HapticFeedback.lightImpact();
-            prefs.theme = entry.key;
-            widget.onThemeChanged();
-            ctrl.refreshHomeWidgetTheme();
-            AnalyticsService.instance.logThemeChanged(entry.key);
-          },
-          onLongPress: () {
-            HapticFeedback.mediumImpact();
-            _showThemeOptionsSheet(theme, entry.key, name, colors);
-          },
-          child: SizedBox(
-            width: (MediaQuery.of(context).size.width - 42) / 2,
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 200),
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: theme.cardTheme.color,
-                borderRadius: BorderRadius.circular(14),
-                border: isSelected
-                    ? Border.all(color: primary, width: 2)
-                    : Border.all(
-                        color: theme.colorScheme.onSurface.withAlpha(20)),
-              ),
-              child: Column(
-                children: [
-                  Container(
-                    height: 48,
-                    width: double.infinity,
-                    decoration: BoxDecoration(
-                      color: colors.surface,
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          flex: 3,
-                          child: Container(
-                            decoration: BoxDecoration(
-                              color: colors.surface,
-                              borderRadius: const BorderRadius.horizontal(
-                                  left: Radius.circular(10)),
-                            ),
+                    return GestureDetector(
+                      onTap: () {
+                        HapticFeedback.lightImpact();
+                        prefs.theme = entry.key;
+                        widget.onThemeChanged();
+                        ctrl.refreshHomeWidgetTheme();
+                        _syncAppIcon();
+                        AnalyticsService.instance.logThemeChanged(entry.key);
+                      },
+                      onLongPress: () {
+                        HapticFeedback.mediumImpact();
+                        _showThemeOptionsSheet(theme, entry.key, name, colors);
+                      },
+                      child: SizedBox(
+                        width: tileWidth,
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 200),
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            color: theme.cardTheme.color,
+                            borderRadius: BorderRadius.circular(14),
+                            border: isSelected
+                                ? Border.all(color: primary, width: 2)
+                                : Border.all(
+                                    color: theme.colorScheme.onSurface
+                                        .withAlpha(20)),
+                          ),
+                          child: Column(
+                            children: [
+                              Container(
+                                height: 48,
+                                width: double.infinity,
+                                decoration: BoxDecoration(
+                                  color: colors.surface,
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                child: Row(
+                                  children: [
+                                    Expanded(
+                                      flex: 3,
+                                      child: Container(
+                                        decoration: BoxDecoration(
+                                          color: colors.surface,
+                                          borderRadius:
+                                              const BorderRadius.horizontal(
+                                                  left: Radius.circular(10)),
+                                        ),
+                                      ),
+                                    ),
+                                    Expanded(
+                                      flex: 4,
+                                      child: Container(color: colors.card),
+                                    ),
+                                    Expanded(
+                                      flex: 3,
+                                      child: Container(
+                                        decoration: BoxDecoration(
+                                          color: primary,
+                                          borderRadius:
+                                              const BorderRadius.horizontal(
+                                                  right: Radius.circular(10)),
+                                        ),
+                                        child: isSelected
+                                            ? Icon(Icons.check,
+                                                size: 16,
+                                                color: primary
+                                                            .computeLuminance() >
+                                                        0.5
+                                                    ? Colors.black87
+                                                    : Colors.white)
+                                            : null,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              Text(name,
+                                  style: theme.textTheme.bodyMedium?.copyWith(
+                                      fontWeight: FontWeight.w600)),
+                            ],
                           ),
                         ),
-                        Expanded(
-                          flex: 4,
-                          child: Container(color: colors.card),
-                        ),
-                        Expanded(
-                          flex: 3,
-                          child: Container(
-                            decoration: BoxDecoration(
-                              color: primary,
-                              borderRadius: const BorderRadius.horizontal(
-                                  right: Radius.circular(10)),
-                            ),
-                            child: isSelected
-                                ? Icon(Icons.check,
-                                    size: 16,
-                                    color: primary.computeLuminance() > 0.5
-                                        ? Colors.black87
-                                        : Colors.white)
-                                : null,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(name,
-                      style: theme.textTheme.bodyMedium
-                          ?.copyWith(fontWeight: FontWeight.w600)),
-                ],
-              ),
+                      ),
+                    );
+                  }).toList(),
+                );
+              },
             ),
-          ),
-        );
-      }).toList(),
-    );
+          ],
+        ),
+      );
   }
 
   void _showThemeOptionsSheet(
@@ -2111,6 +2141,7 @@ class _SettingsPageState extends State<SettingsPage> {
                     prefs.theme = themeKey;
                     widget.onThemeChanged();
                     ctrl.refreshHomeWidgetTheme();
+                    _syncAppIcon();
                     AnalyticsService.instance.logThemeChanged(themeKey);
                     if (ctx.mounted) Navigator.of(ctx).pop();
                   },
@@ -2174,209 +2205,158 @@ class _SettingsPageState extends State<SettingsPage> {
       backgroundColor: theme.cardTheme.color,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
       builder: (ctx) {
         return StatefulBuilder(
           builder: (context, setSheetState) {
+            final cs = theme.colorScheme;
             // Flutter HSLColor.fromAHSL: hue 0–360°, saturation & lightness 0–1
             final hueDeg = (customHue.clamp(0.0, 1.0) * 360.0);
             final sat = customSaturation.clamp(0.0, 1.0);
             final light = customLightness.clamp(0.0, 1.0);
             final customColor =
                 HSLColor.fromAHSL(1, hueDeg, sat, light).toColor();
+
+            void apply(Color? color, String source) {
+              HapticFeedback.lightImpact();
+              prefs.setAccentColorForTheme(
+                  targetThemeKey, color?.toARGB32());
+              widget.onThemeChanged();
+              ctrl.refreshHomeWidgetTheme();
+              AnalyticsService.instance.logAccentChanged(
+                themeKey: targetThemeKey,
+                accentValue: color?.toARGB32(),
+                source: source,
+              );
+              if (ctx.mounted) Navigator.of(ctx).pop();
+            }
+
             return SafeArea(
               child: Padding(
                 padding: EdgeInsets.fromLTRB(
-                    20, 16, 20, 24 + MediaQuery.of(ctx).viewPadding.bottom),
+                    20, 10, 20, 20 + MediaQuery.of(ctx).viewPadding.bottom),
                 child: SingleChildScrollView(
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      Text(
-                        "Акцентный цвет",
-                        style: theme.textTheme.titleLarge?.copyWith(
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        "Для темы «${AppThemes.allThemes[targetThemeKey] ?? targetThemeKey}». По умолчанию — цвет темы.",
-                        style: theme.textTheme.bodySmall,
-                      ),
-                      const SizedBox(height: 16),
-                      Wrap(
-                        spacing: 10,
-                        runSpacing: 10,
-                        children: [
-                          // «По умолчанию» — сброс акцента
-                          GestureDetector(
-                            onTap: () {
-                              prefs.setAccentColorForTheme(
-                                  targetThemeKey, null);
-                              widget.onThemeChanged();
-                              ctrl.refreshHomeWidgetTheme();
-                              AnalyticsService.instance.logAccentChanged(
-                                themeKey: targetThemeKey,
-                                accentValue: null,
-                                source: "default",
-                              );
-                              if (ctx.mounted) Navigator.of(ctx).pop();
-                            },
-                            child: Container(
-                              width: 52,
-                              height: 52,
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                color: theme.scaffoldBackgroundColor,
-                                border: Border.all(
-                                  color: accentValue == null
-                                      ? theme.colorScheme.primary
-                                      : theme.colorScheme.onSurface
-                                          .withValues(alpha: 0.18),
-                                  width: accentValue == null ? 2.5 : 1,
-                                ),
-                              ),
-                              child: Icon(
-                                Icons.palette_outlined,
-                                color: accentValue == null
-                                    ? theme.colorScheme.primary
-                                    : theme.colorScheme.onSurfaceVariant,
-                                size: 22,
-                              ),
-                            ),
+                      Center(
+                        child: Container(
+                          width: 36,
+                          height: 4,
+                          decoration: BoxDecoration(
+                            color: cs.onSurface.withAlpha(60),
+                            borderRadius: BorderRadius.circular(2),
                           ),
-                          ...AppThemes.accentPalette.map((color) {
-                            final isSelected = accentValue == color.toARGB32();
-                            return GestureDetector(
-                              onTap: () {
-                                HapticFeedback.lightImpact();
-                                prefs.setAccentColorForTheme(
-                                    targetThemeKey, color.toARGB32());
-                                widget.onThemeChanged();
-                                ctrl.refreshHomeWidgetTheme();
-                                AnalyticsService.instance.logAccentChanged(
-                                  themeKey: targetThemeKey,
-                                  accentValue: color.toARGB32(),
-                                  source: "palette",
-                                );
-                                if (ctx.mounted) Navigator.of(ctx).pop();
-                              },
-                              child: Container(
-                                width: 52,
-                                height: 52,
-                                decoration: BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  color: color,
-                                  border: Border.all(
-                                    color: isSelected
-                                        ? theme.colorScheme.onSurface
-                                        : theme.colorScheme.onSurface
-                                            .withValues(alpha: 0.15),
-                                    width: isSelected ? 3 : 1,
-                                  ),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: color.withValues(
-                                          alpha: isSelected ? 0.5 : 0.25),
-                                      blurRadius: isSelected ? 10 : 4,
-                                      offset: const Offset(0, 2),
-                                    ),
-                                  ],
-                                ),
-                                child: isSelected
-                                    ? Icon(
-                                        Icons.check_rounded,
-                                        size: 24,
-                                        color: color.computeLuminance() > 0.5
-                                            ? Colors.black87
-                                            : Colors.white,
-                                      )
-                                    : null,
-                              ),
-                            );
-                          }),
-                        ],
-                      ),
-                      const SizedBox(height: 24),
-                      Text(
-                        "Свой цвет",
-                        style: theme.textTheme.titleSmall?.copyWith(
-                          fontWeight: FontWeight.w600,
                         ),
                       ),
-                      const SizedBox(height: 8),
+                      const SizedBox(height: 14),
                       Row(
                         children: [
                           Container(
-                            width: 48,
-                            height: 48,
+                            width: 40,
+                            height: 40,
+                            alignment: Alignment.center,
                             decoration: BoxDecoration(
+                              shape: BoxShape.circle,
                               color: customColor,
-                              borderRadius: BorderRadius.circular(12),
                               border: Border.all(
-                                color: theme.colorScheme.onSurface
-                                    .withValues(alpha: 0.2),
+                                color: cs.onSurface.withAlpha(35),
                               ),
                             ),
+                            child: accentValue == null
+                                ? Icon(Icons.palette_rounded,
+                                    size: 18,
+                                    color: customColor.computeLuminance() >
+                                            0.5
+                                        ? Colors.black87
+                                        : Colors.white)
+                                : null,
                           ),
-                          const SizedBox(width: 16),
+                          const SizedBox(width: 12),
                           Expanded(
                             child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text("Оттенок",
-                                    style: theme.textTheme.labelSmall),
-                                Slider(
-                                  value: customHue,
-                                  onChanged: (v) =>
-                                      setSheetState(() => customHue = v),
-                                  min: 0,
-                                  max: 1,
-                                  activeColor: customColor,
+                                Text(
+                                  "Акцентный цвет",
+                                  style: theme.textTheme.titleMedium
+                                      ?.copyWith(fontWeight: FontWeight.w700),
                                 ),
-                                Text("Насыщенность",
-                                    style: theme.textTheme.labelSmall),
-                                Slider(
-                                  value: customSaturation,
-                                  onChanged: (v) =>
-                                      setSheetState(() => customSaturation = v),
-                                  min: 0,
-                                  max: 1,
-                                  activeColor: customColor,
-                                ),
-                                Text("Яркость",
-                                    style: theme.textTheme.labelSmall),
-                                Slider(
-                                  value: customLightness,
-                                  onChanged: (v) =>
-                                      setSheetState(() => customLightness = v),
-                                  min: 0,
-                                  max: 1,
-                                  activeColor: customColor,
+                                const SizedBox(height: 2),
+                                Text(
+                                  "Тема «${AppThemes.allThemes[targetThemeKey] ?? targetThemeKey}»",
+                                  style: theme.textTheme.bodySmall
+                                      ?.copyWith(color: cs.onSurfaceVariant),
                                 ),
                               ],
                             ),
                           ),
+                          if (accentValue != null)
+                            IconButton(
+                              tooltip: "Сбросить акцент",
+                              onPressed: () => apply(null, "reset"),
+                              icon: Icon(Icons.restore_rounded,
+                                  color: cs.onSurfaceVariant),
+                            ),
                         ],
                       ),
-                      const SizedBox(height: 8),
+                      const SizedBox(height: 18),
+                      Wrap(
+                        spacing: 10,
+                        runSpacing: 10,
+                        children: [
+                          for (final color in AppThemes.accentPalette)
+                            _AccentSwatch(
+                              color: color,
+                              selected: accentValue == color.toARGB32(),
+                              onTap: () => apply(color, "palette"),
+                            ),
+                        ],
+                      ),
+                      const SizedBox(height: 20),
+                      Text(
+                        "Свой цвет",
+                        style: theme.textTheme.titleSmall
+                            ?.copyWith(fontWeight: FontWeight.w600),
+                      ),
+                      const SizedBox(height: 10),
+                      _AccentSlider(
+                        label: "Оттенок",
+                        value: customHue,
+                        trackGradient: LinearGradient(colors: [
+                          for (var i = 0; i <= 6; i++)
+                            HSLColor.fromAHSL(1, i * 60.0, sat, light)
+                                .toColor(),
+                        ]),
+                        onChanged: (v) => setSheetState(() => customHue = v),
+                      ),
+                      _AccentSlider(
+                        label: "Насыщенность",
+                        value: customSaturation,
+                        trackGradient: LinearGradient(colors: [
+                          HSLColor.fromAHSL(1, hueDeg, 0, light).toColor(),
+                          HSLColor.fromAHSL(1, hueDeg, 1, light).toColor(),
+                        ]),
+                        onChanged: (v) =>
+                            setSheetState(() => customSaturation = v),
+                      ),
+                      _AccentSlider(
+                        label: "Яркость",
+                        value: customLightness,
+                        trackGradient: LinearGradient(colors: [
+                          const Color(0xFF000000),
+                          HSLColor.fromAHSL(1, hueDeg, sat, 0.5).toColor(),
+                          const Color(0xFFFFFFFF),
+                        ]),
+                        onChanged: (v) =>
+                            setSheetState(() => customLightness = v),
+                      ),
+                      const SizedBox(height: 4),
                       FilledButton.icon(
-                        onPressed: () {
-                          HapticFeedback.lightImpact();
-                          prefs.setAccentColorForTheme(
-                              targetThemeKey, customColor.toARGB32());
-                          widget.onThemeChanged();
-                          ctrl.refreshHomeWidgetTheme();
-                          AnalyticsService.instance.logAccentChanged(
-                            themeKey: targetThemeKey,
-                            accentValue: customColor.toARGB32(),
-                            source: "custom",
-                          );
-                          if (ctx.mounted) Navigator.of(ctx).pop();
-                        },
-                        icon: const Icon(Icons.check, size: 20),
+                        onPressed: () => apply(customColor, "custom"),
+                        icon: const Icon(Icons.check_rounded, size: 20),
                         label: const Text("Применить свой цвет"),
                       ),
                     ],
@@ -2390,68 +2370,156 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 
-  Widget _widgetCard(ThemeData theme) {
-    const themeOptions = [
-      (PreferencesManager.themeDark, "Тёмная"),
-      (PreferencesManager.themeLight, "Светлая"),
-      (PreferencesManager.themeGreen, "Зелёная"),
-      (PreferencesManager.themePink, "Розовая"),
-      (PreferencesManager.themeBlue, "Синяя"),
-      (PreferencesManager.themeGray, "Серая"),
-      (PreferencesManager.themePurple, "Фиолетовая"),
-      (PreferencesManager.themeOrange, "Оранжевая"),
-      (PreferencesManager.themeRed, "Красная"),
-      (PreferencesManager.themeTeal, "Жёлтая"),
-    ];
+  /// Ряд кружков-свотчей тем: «Авто» + все темы. Общий для выбора
+  /// иконки приложения и темы виджета.
+  Widget _themeSwatchRow(
+    ThemeData theme, {
+    required String selected,
+    required ValueChanged<String> onSelect,
+  }) {
+    Widget tile(String key) {
+      final colors = AppThemes.colorsFor(key == "auto" ? prefs.theme : key);
+      final isSelected = selected == key;
+      return Tooltip(
+        message: key == "auto" ? "Как тема" : (AppThemes.allThemes[key] ?? key),
+        child: GestureDetector(
+          onTap: () {
+            HapticFeedback.lightImpact();
+            onSelect(key);
+          },
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 200),
+            width: 46,
+            height: 46,
+            decoration: BoxDecoration(
+              color: colors.surface,
+              shape: BoxShape.circle,
+              border: Border.all(
+                color: isSelected
+                    ? theme.colorScheme.primary
+                    : theme.colorScheme.onSurface.withAlpha(30),
+                width: isSelected ? 2 : 1,
+              ),
+            ),
+            child: Center(
+              child: key == "auto"
+                  ? Icon(Icons.autorenew_rounded,
+                      size: 20, color: colors.primary)
+                  : RefreshLogoMark(size: 20, color: colors.primary),
+            ),
+          ),
+        ),
+      );
+    }
 
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
+    return Wrap(
+      spacing: 10,
+      runSpacing: 10,
+      children: [
+        tile("auto"),
+        for (final key in AppIconService.themedIcons) tile(key),
+      ],
+    );
+  }
+
+  Widget _effectsSection(ThemeData theme) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _widgetToggleRow(
+            theme,
+            "Растворение контента у нижнего края",
+            prefs.contentEdgeFade,
+            (v) {
+              setState(() => prefs.contentEdgeFade = v);
+              // HomePage читает флаг в build — форсим пересборку дерева.
+              widget.onThemeChanged();
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _widgetToggleRow(
+    ThemeData theme,
+    String label,
+    bool value,
+    ValueChanged<bool> onChanged,
+  ) {
+    return Row(
+      children: [
+        Expanded(child: Text(label, style: theme.textTheme.bodyLarge)),
+        Switch(value: value, onChanged: onChanged),
+      ],
+    );
+  }
+
+  Widget _widgetSection(ThemeData theme) {
+    return Padding(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    "Синхронизировать тему виджета с приложением",
-                    style: theme.textTheme.bodyLarge,
-                  ),
-                ),
-                Switch(
-                  value: prefs.widgetUseAppTheme,
-                  onChanged: (v) {
-                    setState(() {
-                      prefs.widgetUseAppTheme = v;
-                    });
-                    ctrl.refreshHomeWidgetTheme();
-                  },
-                ),
-              ],
+            const SettingsSubsectionLabel("Тема виджета"),
+            _themeSwatchRow(
+              theme,
+              selected:
+                  prefs.widgetUseAppTheme ? "auto" : prefs.widgetTheme,
+              onSelect: (key) {
+                setState(() {
+                  if (key == "auto") {
+                    prefs.widgetUseAppTheme = true;
+                  } else {
+                    prefs.widgetUseAppTheme = false;
+                    prefs.widgetTheme = key;
+                  }
+                });
+                ctrl.refreshHomeWidgetTheme();
+              },
             ),
-            if (!prefs.widgetUseAppTheme) ...[
-              const SizedBox(height: 8),
-              DropdownButtonFormField<String>(
-                initialValue: prefs.widgetTheme,
-                decoration: const InputDecoration(
-                  labelText: "Тема виджета",
-                ),
-                items: themeOptions
-                    .map(
-                      (e) => DropdownMenuItem<String>(
-                        value: e.$1,
-                        child: Text(e.$2),
-                      ),
-                    )
-                    .toList(),
-                onChanged: (v) {
-                  if (v == null) return;
-                  setState(() => prefs.widgetTheme = v);
-                  ctrl.refreshHomeWidgetTheme();
-                },
+            const SizedBox(height: 8),
+            Text(
+              prefs.widgetUseAppTheme
+                  ? "Виджет следует выбранной теме"
+                  : "Тема виджета: ${AppThemes.allThemes[prefs.widgetTheme] ?? prefs.widgetTheme}",
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
               ),
-            ],
-            const SizedBox(height: 12),
+            ),
+            const SizedBox(height: 16),
+            const SettingsSubsectionLabel("Что показывать"),
+            _widgetToggleRow(
+              theme,
+              "Время пар",
+              prefs.widgetShowTime,
+              (v) {
+                setState(() => prefs.widgetShowTime = v);
+                ctrl.refreshHomeWidgetTheme();
+              },
+            ),
+            _widgetToggleRow(
+              theme,
+              "Аудитория и преподаватель",
+              prefs.widgetShowDetails,
+              (v) {
+                setState(() => prefs.widgetShowDetails = v);
+                ctrl.refreshHomeWidgetTheme();
+              },
+            ),
+            _widgetToggleRow(
+              theme,
+              "Строка «Обновлено»",
+              prefs.widgetShowFooter,
+              (v) {
+                setState(() => prefs.widgetShowFooter = v);
+                ctrl.refreshHomeWidgetTheme();
+              },
+            ),
+            const SizedBox(height: 16),
+            const SettingsSubsectionLabel("Размер текста"),
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -2499,11 +2567,121 @@ class _SettingsPageState extends State<SettingsPage> {
             ),
           ],
         ),
+      );
+  }
+
+  Widget _appIdentityCard(ThemeData theme) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Row(
+          children: [
+            DecoratedBox(
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: theme.colorScheme.outlineVariant.withAlpha(100),
+                  width: 1,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withAlpha(28),
+                    blurRadius: 12,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: AppIconImage(
+                size: 52,
+                colors: AppThemes.colorsFor(prefs.effectiveAppIcon),
+              ),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    "Raspisanie",
+                    style: theme.textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    "Версия $_appVersion",
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
 
-  Widget _appInfoCard(ThemeData theme) {
+  Widget _updatesCard(ThemeData theme) {
+    return SettingsCollapsibleCard(
+      icon: Icons.system_update_rounded,
+      title: "Обновления",
+      subtitle: "Автопроверка и журнал изменений",
+      builder: (context) => Column(
+        children: [
+          const SizedBox(height: 4),
+          _switchTile(
+            theme,
+            "Проверять при запуске",
+            "Показывать диалог обновления, если вышла новая версия",
+            prefs.autoCheckAppUpdate,
+            (v) async {
+              setState(() => prefs.autoCheckAppUpdate = v);
+              await AppUpdateBackgroundWorker.ensureRegistered(prefs: prefs);
+            },
+          ),
+          _divider(theme),
+          _switchTile(
+            theme,
+            "Автозагрузка по Wi-Fi",
+            "Скачивать обновление заранее, чтобы установить в один тап",
+            prefs.autoDownloadAppUpdate,
+            (v) => setState(() => prefs.autoDownloadAppUpdate = v),
+          ),
+          _divider(theme),
+          ListTile(
+            leading: Icon(
+              Icons.history_edu_rounded,
+              color: theme.colorScheme.primary,
+            ),
+            title: const Text("Что нового"),
+            subtitle: const Text("Журнал изменений приложения"),
+            trailing: const Icon(Icons.chevron_right_rounded),
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => const ChangelogPage(),
+              ),
+            ),
+          ),
+          _divider(theme),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
+            child: SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed: () => _checkForUpdate(),
+                icon: const Icon(Icons.system_update_rounded, size: 20),
+                label: const Text("Проверить обновления"),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _creditsCard(ThemeData theme) {
     const authorLink = "https://everelsu.github.io/RelsevLink/";
     const releasesLink = "https://github.com/Everelsu/Raspisanie/releases";
     const authorAvatarUrl =
@@ -2515,251 +2693,33 @@ class _SettingsPageState extends State<SettingsPage> {
         "https://raw.githubusercontent.com/Everelsu/RelsevLink/6b2647524fe3ade73d931079e77f8225ccffd2f5/scromny.jpg";
     return Card(
       child: Padding(
-        padding: const EdgeInsets.all(20),
+        padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              children: [
-                DecoratedBox(
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    border: Border.all(
-                      color: theme.colorScheme.outlineVariant.withAlpha(100),
-                      width: 1,
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withAlpha(28),
-                        blurRadius: 12,
-                        offset: const Offset(0, 4),
-                      ),
-                    ],
-                  ),
-                  child: const AppIconImage(size: 52),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        "Raspisanie",
-                        style: theme.textTheme.titleLarge?.copyWith(
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        "Версия $_appVersion",
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 24),
-            Text(
-              "Обновления приложения",
-              style: theme.textTheme.titleSmall?.copyWith(
-                color: theme.colorScheme.primary,
-                fontWeight: FontWeight.w600,
-              ),
+            const SettingsSubsectionLabel("Авторы"),
+            _creditPersonTile(
+              theme,
+              name: "@Re1sev",
+              role: "Автор",
+              roleIcon: Icons.code_rounded,
+              avatarUrl: authorAvatarUrl,
+              onTap: () => _openCreditLink(authorLink),
             ),
             const SizedBox(height: 10),
-            Card(
-              margin: EdgeInsets.zero,
-              child: Column(
-                children: [
-                  _switchTile(
-                    theme,
-                    "Проверять при запуске",
-                    "Показывать диалог обновления, если вышла новая версия",
-                    prefs.autoCheckAppUpdate,
-                    (v) async {
-                      setState(() => prefs.autoCheckAppUpdate = v);
-                      await AppUpdateBackgroundWorker.ensureRegistered(
-                          prefs: prefs);
-                    },
-                  ),
-                  _divider(theme),
-                  _switchTile(
-                    theme,
-                    "Автозагрузка по Wi-Fi",
-                    "Скачивать обновление заранее, чтобы установить в один тап",
-                    prefs.autoDownloadAppUpdate,
-                    (v) => setState(() => prefs.autoDownloadAppUpdate = v),
-                  ),
-                  _divider(theme),
-                  ListTile(
-                    leading: Icon(
-                      Icons.history_edu_rounded,
-                      color: theme.colorScheme.primary,
-                    ),
-                    title: const Text("Что нового"),
-                    subtitle: const Text("Журнал изменений приложения"),
-                    trailing: const Icon(Icons.chevron_right_rounded),
-                    onTap: () => Navigator.of(context).push(
-                      MaterialPageRoute<void>(
-                        builder: (_) => const ChangelogPage(),
-                      ),
-                    ),
-                  ),
-                  _divider(theme),
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
-                    child: SizedBox(
-                      width: double.infinity,
-                      child: FilledButton.icon(
-                        onPressed: () => _checkForUpdate(),
-                        icon: const Icon(Icons.system_update_rounded, size: 20),
-                        label: const Text("Проверить обновления"),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 20),
-            Text(
-              "Автор",
-              style: theme.textTheme.titleSmall?.copyWith(
-                color: theme.colorScheme.primary,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            const SizedBox(height: 10),
-            Material(
-              color: theme.colorScheme.surfaceContainerHighest.withAlpha(40),
-              borderRadius: BorderRadius.circular(12),
-              child: InkWell(
-                onTap: () async {
-                  final uri = Uri.parse(authorLink);
-                  final opened = await launchUrl(
-                    uri,
-                    mode: LaunchMode.externalApplication,
-                  );
-                  if (opened || !mounted) return;
-                  await Clipboard.setData(
-                      const ClipboardData(text: authorLink));
-                  if (!mounted) return;
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text("Ссылка скопирована"),
-                      duration: Duration(seconds: 1),
-                    ),
-                  );
-                },
-                borderRadius: BorderRadius.circular(12),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 10,
-                  ),
-                  child: Row(
-                    children: [
-                      _AuthorAvatar(avatarUrl: authorAvatarUrl, theme: theme),
-                      const SizedBox(width: 14),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              "@Re1sev",
-                              style: theme.textTheme.titleSmall?.copyWith(
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                            const SizedBox(height: 1),
-                            Text(
-                              "Автор",
-                              style: theme.textTheme.bodySmall?.copyWith(
-                                color: theme.colorScheme.onSurfaceVariant,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      Icon(
-                        Icons.open_in_new_rounded,
-                        size: 20,
-                        color: theme.colorScheme.primary,
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(height: 10),
-            Material(
-              color: theme.colorScheme.surfaceContainerHighest.withAlpha(40),
-              borderRadius: BorderRadius.circular(12),
-              child: InkWell(
-                onTap: () async {
-                  final telegramUri = Uri.parse(betaTesterTelegramDeepLink);
-                  final openedInTelegram = await launchUrl(
-                    telegramUri,
-                    mode: LaunchMode.externalApplication,
-                  );
-                  final opened = openedInTelegram ||
-                      await launchUrl(
-                        Uri.parse(betaTesterLink),
-                        mode: LaunchMode.externalApplication,
-                      );
-                  if (opened || !mounted) return;
-                  await Clipboard.setData(
-                      const ClipboardData(text: betaTesterLink));
-                  if (!mounted) return;
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text("Ссылка скопирована"),
-                      duration: Duration(seconds: 1),
-                    ),
-                  );
-                },
-                borderRadius: BorderRadius.circular(12),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 10,
-                  ),
-                  child: Row(
-                    children: [
-                      _AuthorAvatar(
-                          avatarUrl: betaTesterAvatarUrl, theme: theme),
-                      const SizedBox(width: 14),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              "@skromniyvadya",
-                              style: theme.textTheme.titleSmall?.copyWith(
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                            const SizedBox(height: 1),
-                            Text(
-                              "Бета‑тестер",
-                              style: theme.textTheme.bodySmall?.copyWith(
-                                color: theme.colorScheme.onSurfaceVariant,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      Icon(
-                        Icons.open_in_new_rounded,
-                        size: 20,
-                        color: theme.colorScheme.primary,
-                      ),
-                    ],
-                  ),
-                ),
-              ),
+            _creditPersonTile(
+              theme,
+              name: "@skromniyvadya",
+              role: "Бета‑тестер",
+              roleIcon: Icons.bug_report_rounded,
+              avatarUrl: betaTesterAvatarUrl,
+              onTap: () async {
+                final openedInTelegram = await launchUrl(
+                  Uri.parse(betaTesterTelegramDeepLink),
+                  mode: LaunchMode.externalApplication,
+                );
+                if (!openedInTelegram) await _openCreditLink(betaTesterLink);
+              },
             ),
             const SizedBox(height: 10),
             OutlinedButton.icon(
@@ -2774,6 +2734,104 @@ class _SettingsPageState extends State<SettingsPage> {
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  /// Открывает ссылку из карточки авторов; если не вышло — копирует в буфер.
+  Future<void> _openCreditLink(String link) async {
+    final opened = await launchUrl(
+      Uri.parse(link),
+      mode: LaunchMode.externalApplication,
+    );
+    if (opened || !mounted) return;
+    await Clipboard.setData(ClipboardData(text: link));
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text("Ссылка скопирована"),
+        duration: Duration(seconds: 1),
+      ),
+    );
+  }
+
+  Widget _creditPersonTile(
+    ThemeData theme, {
+    required String name,
+    required String role,
+    required IconData roleIcon,
+    required String avatarUrl,
+    required VoidCallback onTap,
+  }) {
+    final cs = theme.colorScheme;
+    return Material(
+      color: cs.surfaceContainerHighest.withAlpha(40),
+      borderRadius: BorderRadius.circular(14),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(14),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(2),
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: cs.primary.withAlpha(120),
+                    width: 1.5,
+                  ),
+                ),
+                child: _AuthorAvatar(avatarUrl: avatarUrl, theme: theme),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      name,
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 2,
+                      ),
+                      decoration: BoxDecoration(
+                        color: cs.primary.withAlpha(22),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(roleIcon, size: 12, color: cs.primary),
+                          const SizedBox(width: 4),
+                          Text(
+                            role,
+                            style: theme.textTheme.labelSmall?.copyWith(
+                              color: cs.primary,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Icon(
+                Icons.open_in_new_rounded,
+                size: 20,
+                color: cs.primary,
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -2832,14 +2890,16 @@ class _SettingsPageState extends State<SettingsPage> {
           ),
         );
 
-    return Card(
-      clipBehavior: Clip.antiAlias,
-      child: Column(
+    return SettingsCollapsibleCard(
+      icon: Icons.storage_rounded,
+      title: "Данные и хранение",
+      subtitle: "$_dbRecords записей • хранение $_dbRetentionDays дн.",
+      builder: (context) => Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           // ── Хранение ──────────────────────────────────────────────────
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -2919,19 +2979,6 @@ class _SettingsPageState extends State<SettingsPage> {
                               color: cs.primary,
                               fontWeight: FontWeight.w600,
                             ),
-                          ),
-                        ),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 8, vertical: 3),
-                          decoration: BoxDecoration(
-                            color: cs.onSurface.withAlpha(10),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Text(
-                            "$_dbRecords записей",
-                            style: theme.textTheme.bodySmall
-                                ?.copyWith(fontSize: 11),
                           ),
                         ),
                       ],
@@ -3103,6 +3150,27 @@ class _SettingsPageState extends State<SettingsPage> {
               ],
             ),
           ),
+
+          _divider(theme),
+
+          // ── Приватность ────────────────────────────────────────────────
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+            child: sectionLabel("ПРИВАТНОСТЬ"),
+          ),
+          _switchTile(
+            theme,
+            "Отправлять аналитику Firebase",
+            "Анонимная статистика использования",
+            prefs.analyticsEnabled,
+            (v) async {
+              setState(() => prefs.analyticsEnabled = v);
+              await AnalyticsService.instance.setEnabled(v);
+              AnalyticsService.instance
+                  .logEvent("analytics_toggled", {"enabled": v});
+            },
+          ),
+          const SizedBox(height: 4),
         ],
       ),
     );
@@ -3386,57 +3454,191 @@ class _GroupSelectorSheetState extends State<_GroupSelectorSheet> {
   }
 
   Widget _groupTile(ThemeData theme, Group g, bool isFav) {
+    final cs = theme.colorScheme;
     final isSelected = widget.selected?.id == g.id;
-    final leadingIcon =
-        widget.isTeacher ? Icons.person_outline_rounded : Icons.groups_outlined;
-    return ListTile(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      selected: isSelected,
-      selectedTileColor: theme.colorScheme.primary.withAlpha(20),
-      leading: SizedBox(
-        width: 44,
-        height: 40,
-        child: Stack(
-          clipBehavior: Clip.none,
-          children: [
-            CircleAvatar(
-              radius: 18,
-              backgroundColor: theme.colorScheme.primary.withAlpha(22),
-              child: Icon(
-                leadingIcon,
-                color: theme.colorScheme.primary,
-                size: 20,
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(4, 0, 4, 6),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(14),
+          onTap: () {
+            HapticFeedback.lightImpact();
+            widget.onSelect(g);
+          },
+          onLongPress: () {
+            HapticFeedback.selectionClick();
+            widget.onToggleFavorite(g.name);
+            setState(() {});
+          },
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 180),
+            padding: const EdgeInsets.fromLTRB(14, 4, 4, 4),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(14),
+              color: isSelected ? cs.primary.withAlpha(18) : Colors.transparent,
+              border: Border.all(
+                color: isSelected ? cs.primary : cs.onSurface.withAlpha(18),
+                width: isSelected ? 1.5 : 1,
               ),
             ),
-            if (isFav)
-              Positioned(
-                right: -2,
-                top: -4,
-                child: Container(
-                  padding: const EdgeInsets.all(2),
-                  decoration: BoxDecoration(
-                    color: theme.colorScheme.surface,
-                    shape: BoxShape.circle,
-                  ),
-                  child: Icon(
-                    Icons.star_rounded,
-                    size: 16,
-                    color: theme.colorScheme.primary,
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    g.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.bodyLarge?.copyWith(
+                      fontWeight:
+                          isSelected ? FontWeight.w700 : FontWeight.w500,
+                      color: isSelected ? cs.primary : cs.onSurface,
+                    ),
                   ),
                 ),
-              ),
-          ],
+                if (isSelected)
+                  Padding(
+                    padding: const EdgeInsets.only(right: 2),
+                    child: Icon(Icons.check_circle_rounded,
+                        size: 18, color: cs.primary),
+                  ),
+                IconButton(
+                  tooltip: isFav ? "Убрать из избранного" : "В избранное",
+                  visualDensity: VisualDensity.compact,
+                  onPressed: () {
+                    HapticFeedback.selectionClick();
+                    widget.onToggleFavorite(g.name);
+                    setState(() {});
+                  },
+                  icon: Icon(
+                    isFav ? Icons.star_rounded : Icons.star_border_rounded,
+                    size: 20,
+                    color: isFav
+                        ? cs.primary
+                        : cs.onSurfaceVariant.withAlpha(140),
+                  ),
+                ),
+              ],
+            ),
+          ),
         ),
       ),
-      title: Text(g.name, style: theme.textTheme.bodyLarge),
-      trailing: isSelected
-          ? Icon(Icons.check_circle, color: theme.colorScheme.primary)
-          : null,
-      onTap: () => widget.onSelect(g),
-      onLongPress: () {
-        widget.onToggleFavorite(g.name);
-        setState(() {});
-      },
+    );
+  }
+}
+
+class _AccentSwatch extends StatelessWidget {
+  const _AccentSwatch({
+    required this.color,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final Color color;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        curve: Curves.easeOutBack,
+        width: selected ? 48 : 44,
+        height: selected ? 48 : 44,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: color,
+          border: Border.all(
+            color: selected
+                ? theme.colorScheme.onSurface
+                : theme.colorScheme.onSurface.withAlpha(38),
+            width: selected ? 3 : 1,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: color.withAlpha(selected ? 130 : 60),
+              blurRadius: selected ? 12 : 5,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: selected
+            ? Icon(
+                Icons.check_rounded,
+                size: 22,
+                color: color.computeLuminance() > 0.5
+                    ? Colors.black87
+                    : Colors.white,
+              )
+            : null,
+      ),
+    );
+  }
+}
+
+class _AccentSlider extends StatelessWidget {
+  const _AccentSlider({
+    required this.label,
+    required this.value,
+    required this.trackGradient,
+    required this.onChanged,
+  });
+
+  final String label;
+  final double value;
+  final Gradient trackGradient;
+  final ValueChanged<double> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label,
+              style: theme.textTheme.labelSmall
+                  ?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+          const SizedBox(height: 4),
+          SizedBox(
+            height: 30,
+            child: Stack(
+              alignment: Alignment.centerLeft,
+              children: [
+                Container(
+                  height: 10,
+                  margin: const EdgeInsets.symmetric(horizontal: 8),
+                  decoration: BoxDecoration(
+                    gradient: trackGradient,
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                ),
+                SliderTheme(
+                  data: SliderTheme.of(context).copyWith(
+                    trackHeight: 10,
+                    activeTrackColor: Colors.transparent,
+                    inactiveTrackColor: Colors.transparent,
+                    overlayShape:
+                        const RoundSliderOverlayShape(overlayRadius: 16),
+                    thumbShape:
+                        const RoundSliderThumbShape(enabledThumbRadius: 9),
+                  ),
+                  child: Slider(
+                    value: value.clamp(0.0, 1.0),
+                    onChanged: onChanged,
+                    min: 0,
+                    max: 1,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

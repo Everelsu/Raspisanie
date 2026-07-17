@@ -8,26 +8,21 @@ import "package:url_launcher/url_launcher.dart";
 import "package:webview_flutter/webview_flutter.dart";
 
 import "../../../app/theme.dart" show contentBottomPadding;
-import "../../../core/widgets/animated_app_bar.dart";
 import "../../schedule/presentation/schedule_controller.dart";
+import "browser_bar.dart";
 
+/// Высота браузерной части единого AppBar (совпадает с kToolbarHeight).
 const _browserAppBarHeight = 56.0;
 
-enum _BrowserMenuAction {
-  login,
-  editStartUrl,
-  reload,
-  google,
-  openExternal,
-  copy,
-  paste,
-}
-
+/// Вкладка «Сеть»: WebView без собственного AppBar. Браузерный тулбар
+/// рисуется единым AppBar в HomePage через [BrowserBarController] —
+/// здесь только контент, обработчики действий и полноэкранный режим.
 class NetworkPage extends StatefulWidget {
   const NetworkPage({
     super.key,
     required this.scheduleController,
     required this.parentImmersiveNotifier,
+    required this.barController,
     this.isActive = false,
     this.onImmersiveChanged,
   });
@@ -38,6 +33,9 @@ class NetworkPage extends StatefulWidget {
 
   /// Parent sets `false` when leaving the tab to exit fullscreen.
   final ValueNotifier<bool> parentImmersiveNotifier;
+
+  /// Общий контроллер браузерного тулбара (владеет HomePage).
+  final BrowserBarController barController;
 
   /// True while this tab is the active page. First time it becomes true,
   /// the WebView fires its initial [loadRequest].
@@ -58,27 +56,20 @@ class _NetworkPageState extends State<NetworkPage>
     with SingleTickerProviderStateMixin {
   /// 0 = normal chrome, 1 = fullscreen WebView.
   late final AnimationController _immersiveCtrl;
-  final TextEditingController _addressController = TextEditingController();
-  final FocusNode _addressFocusNode = FocusNode();
-  final GlobalKey _moreMenuButtonKey = GlobalKey();
 
   WebViewController? _controller;
   bool _initialLoadDone = false;
-  int _progress = 0;
-  bool _canGoBack = false;
-  bool _canGoForward = false;
-  String? _currentUrl;
-  bool _urlBarEditing = false;
 
-  /// Hides in-app browser chrome + bottom nav (via parent) for more WebView space.
+  /// Hides browser chrome + bottom nav (via parent) for more WebView space.
   bool _immersive = false;
 
   /// Ошибка загрузки основного фрейма (показываем оверлей с «Повторить»).
   String? _pageLoadError;
 
+  BrowserBarController get _bar => widget.barController;
+
   bool get _webViewSupported =>
       Platform.isAndroid || Platform.isIOS || Platform.isMacOS;
-  bool get _isLoading => _progress > 0 && _progress < 100;
 
   /// Built-in URL if custom start URL is empty or invalid.
   Uri get _resolvedStartUri {
@@ -97,8 +88,7 @@ class _NetworkPageState extends State<NetworkPage>
       reverseDuration: const Duration(milliseconds: 320),
     );
     widget.parentImmersiveNotifier.addListener(_onParentImmersiveNotifier);
-    _addressFocusNode.addListener(_onAddressFocusChanged);
-    _addressController.text = _resolvedStartUri.toString();
+    _wireBarController();
 
     if (_webViewSupported) {
       _controller = WebViewController()
@@ -108,31 +98,24 @@ class _NetworkPageState extends State<NetworkPage>
           NavigationDelegate(
             onProgress: (progress) {
               if (!mounted) return;
-              setState(() => _progress = progress);
+              _bar.progress.value = progress;
             },
             onPageStarted: (url) {
               if (!mounted) return;
-              setState(() {
-                _progress = 8;
-                _currentUrl = url;
-                _pageLoadError = null;
-              });
-              _syncAddressBar(url);
+              _bar.progress.value = 8;
+              _bar.setCurrentUrl(url);
+              setState(() => _pageLoadError = null);
             },
             onUrlChange: (change) {
               final url = change.url;
               if (url == null || !mounted) return;
-              setState(() => _currentUrl = url);
-              _syncAddressBar(url);
+              _bar.setCurrentUrl(url);
             },
             onPageFinished: (url) async {
               await _refreshNavigationState();
               if (!mounted) return;
-              setState(() {
-                _progress = 100;
-                _currentUrl = url;
-              });
-              _syncAddressBar(url);
+              _bar.progress.value = 100;
+              _bar.setCurrentUrl(url);
             },
             onWebResourceError: (WebResourceError error) {
               if (!mounted) return;
@@ -155,6 +138,23 @@ class _NetworkPageState extends State<NetworkPage>
     }
   }
 
+  /// Подписывает обработчики действий тулбара на этот State.
+  void _wireBarController() {
+    final bar = _bar;
+    if (bar.address.text.trim().isEmpty) {
+      bar.address.text = _resolvedStartUri.toString();
+    }
+    bar.onBack = () => unawaited(_goBack());
+    bar.onForward = () => unawaited(_goForward());
+    bar.onSubmit = () => unawaited(_navigateToInput());
+    bar.onToggleImmersive = () {
+      HapticFeedback.selectionClick();
+      _setImmersive(!_immersive);
+    };
+    bar.onReloadOrStop = () => unawaited(_reloadOrStop());
+    bar.onMenuAction = (a) => unawaited(_handleMenuAction(a));
+  }
+
   void _triggerInitialLoad() {
     if (_initialLoadDone) return;
     _initialLoadDone = true;
@@ -164,6 +164,9 @@ class _NetworkPageState extends State<NetworkPage>
   @override
   void didUpdateWidget(NetworkPage oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (oldWidget.barController != widget.barController) {
+      _wireBarController();
+    }
     if (!oldWidget.isActive && widget.isActive) {
       _triggerInitialLoad();
     }
@@ -173,9 +176,14 @@ class _NetworkPageState extends State<NetworkPage>
   void dispose() {
     _immersiveCtrl.dispose();
     widget.parentImmersiveNotifier.removeListener(_onParentImmersiveNotifier);
-    _addressFocusNode.removeListener(_onAddressFocusChanged);
-    _addressController.dispose();
-    _addressFocusNode.dispose();
+    // Контроллер бара живёт в HomePage — снимаем только свои обработчики.
+    _bar
+      ..onBack = null
+      ..onForward = null
+      ..onSubmit = null
+      ..onToggleImmersive = null
+      ..onReloadOrStop = null
+      ..onMenuAction = null;
     super.dispose();
   }
 
@@ -184,6 +192,7 @@ class _NetworkPageState extends State<NetworkPage>
     final parentWants = widget.parentImmersiveNotifier.value;
     if (!parentWants && _immersive) {
       setState(() => _immersive = false);
+      _bar.setImmersive(false);
       _immersiveCtrl.reverse();
     }
   }
@@ -191,6 +200,7 @@ class _NetworkPageState extends State<NetworkPage>
   void _setImmersive(bool value) {
     if (_immersive == value) return;
     setState(() => _immersive = value);
+    _bar.setImmersive(value);
     if (value) {
       _immersiveCtrl.forward();
     } else {
@@ -235,18 +245,17 @@ class _NetworkPageState extends State<NetworkPage>
     await c.reload();
   }
 
-  void _syncAddressBar(String url) {
-    if (_addressFocusNode.hasFocus) return;
-    if (_addressController.text == url) return;
-    _addressController.value = TextEditingValue(
-      text: url,
-      selection: TextSelection.collapsed(offset: url.length),
-    );
-  }
-
-  void _onAddressFocusChanged() {
-    if (_addressFocusNode.hasFocus || !_urlBarEditing || !mounted) return;
-    setState(() => _urlBarEditing = false);
+  Future<void> _reloadOrStop() async {
+    final c = _controller;
+    if (c == null) return;
+    final p = _bar.progress;
+    if (p.value > 0 && p.value < 100) {
+      await c.runJavaScript("window.stop();");
+      p.value = 100;
+      return;
+    }
+    p.value = 12;
+    await _reloadPage();
   }
 
   Future<void> _refreshNavigationState() async {
@@ -255,22 +264,19 @@ class _NetworkPageState extends State<NetworkPage>
     final canGoBack = await controller.canGoBack();
     final canGoForward = await controller.canGoForward();
     if (!mounted) return;
-    setState(() {
-      _canGoBack = canGoBack;
-      _canGoForward = canGoForward;
-    });
+    _bar.setNavState(back: canGoBack, forward: canGoForward);
   }
 
   Future<void> _goBack() async {
     final controller = _controller;
-    if (controller == null || !_canGoBack) return;
+    if (controller == null || !_bar.canGoBack) return;
     await controller.goBack();
     await _refreshNavigationState();
   }
 
   Future<void> _goForward() async {
     final controller = _controller;
-    if (controller == null || !_canGoForward) return;
+    if (controller == null || !_bar.canGoForward) return;
     await controller.goForward();
     await _refreshNavigationState();
   }
@@ -279,7 +285,7 @@ class _NetworkPageState extends State<NetworkPage>
     final controller = _controller;
     if (controller == null) return;
 
-    final input = _addressController.text.trim();
+    final input = _bar.address.text.trim();
     final uri = _normalizeInputToUri(input);
     if (uri == null) {
       ScaffoldMessenger.maybeOf(context)?.showSnackBar(
@@ -289,10 +295,8 @@ class _NetworkPageState extends State<NetworkPage>
     }
 
     FocusScope.of(context).unfocus();
-    setState(() {
-      _progress = 12;
-      _urlBarEditing = false;
-    });
+    _bar.progress.value = 12;
+    _bar.stopEditing(restoreUrl: false);
     await controller.loadRequest(uri);
   }
 
@@ -304,44 +308,50 @@ class _NetworkPageState extends State<NetworkPage>
     }
 
     FocusScope.of(context).unfocus();
-    _addressController.text = NetworkPage.googleUri.toString();
-    if (mounted) {
-      setState(() {
-        _progress = 12;
-        _urlBarEditing = false;
-      });
-    }
+    _bar.address.text = NetworkPage.googleUri.toString();
+    _bar.progress.value = 12;
+    _bar.stopEditing(restoreUrl: false);
     await controller.loadRequest(NetworkPage.googleUri);
   }
 
-  String _currentAddressLabel() {
-    final typed = _addressController.text.trim();
-    if (typed.isNotEmpty) return typed;
-    final current = (_currentUrl ?? "").trim();
-    if (current.isNotEmpty) return current;
-    return _resolvedStartUri.toString();
-  }
+  Future<void> _handleMenuAction(BrowserMenuAction action) async {
+    final controller = _controller;
+    if (controller == null) return;
 
-  void _openUrlBarEditor() {
-    final sync = _currentUrl;
-    if (sync != null) _syncAddressBar(sync);
-
-    setState(() => _urlBarEditing = true);
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      _addressFocusNode.requestFocus();
-      _addressController.selection = TextSelection(
-        baseOffset: 0,
-        extentOffset: _addressController.text.length,
-      );
-    });
-  }
-
-  void _cancelUrlBarEditor() {
-    final sync = _currentUrl;
-    if (sync != null) _syncAddressBar(sync);
-    _addressFocusNode.unfocus();
-    setState(() => _urlBarEditing = false);
+    switch (action) {
+      case BrowserMenuAction.home:
+        _bar.progress.value = 12;
+        unawaited(controller.loadRequest(_resolvedStartUri));
+        break;
+      case BrowserMenuAction.editStartUrl:
+        await _showEditStartUrlDialog();
+        break;
+      case BrowserMenuAction.reload:
+        await _reloadPage();
+        break;
+      case BrowserMenuAction.google:
+        unawaited(_openGoogleInWebView());
+        break;
+      case BrowserMenuAction.openExternal:
+        unawaited(_openExternally());
+        break;
+      case BrowserMenuAction.copy:
+        await Clipboard.setData(
+          ClipboardData(text: _bar.address.text.trim()),
+        );
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Ссылка скопирована")),
+        );
+        break;
+      case BrowserMenuAction.paste:
+        final data = await Clipboard.getData("text/plain");
+        final pasted = (data?.text ?? "").trim();
+        if (pasted.isEmpty) return;
+        _bar.address.text = pasted;
+        await _navigateToInput();
+        break;
+    }
   }
 
   Future<void> _showEditStartUrlDialog() async {
@@ -427,425 +437,10 @@ class _NetworkPageState extends State<NetworkPage>
     if (apply != true || !mounted) return;
     final c = _controller;
     if (c == null) return;
-    setState(() => _progress = 12);
+    _bar.progress.value = 12;
     await c.loadRequest(_resolvedStartUri);
     if (!mounted) return;
-    _addressController.text = _resolvedStartUri.toString();
-  }
-
-  PopupMenuItem<_BrowserMenuAction> _menuItem({
-    required _BrowserMenuAction value,
-    required IconData icon,
-    required String label,
-    required ThemeData theme,
-  }) {
-    return PopupMenuItem<_BrowserMenuAction>(
-      value: value,
-      height: 44,
-      child: Row(
-        children: [
-          Icon(icon, size: 20, color: theme.colorScheme.onSurface),
-          const SizedBox(width: 10),
-          Text(label, style: theme.textTheme.bodyMedium),
-        ],
-      ),
-    );
-  }
-
-  Future<void> _showBrowserMoreMenu() async {
-    final controller = _controller;
-    if (controller == null) return;
-
-    final buttonContext = _moreMenuButtonKey.currentContext;
-    if (buttonContext == null) return;
-
-    final overlay = Overlay.of(context).context.findRenderObject() as RenderBox;
-    final button = buttonContext.findRenderObject() as RenderBox;
-    final position = RelativeRect.fromRect(
-      Rect.fromPoints(
-        button.localToGlobal(Offset.zero, ancestor: overlay),
-        button.localToGlobal(
-          button.size.bottomRight(Offset.zero),
-          ancestor: overlay,
-        ),
-      ),
-      Offset.zero & overlay.size,
-    );
-
-    final theme = Theme.of(context);
-    final action = await showMenu<_BrowserMenuAction>(
-      context: context,
-      color: theme.cardTheme.color ?? theme.cardColor,
-      elevation: 14,
-      position: position,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      items: [
-        PopupMenuItem<_BrowserMenuAction>(
-          enabled: false,
-          height: 56,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Text(
-                "Текущая ссылка",
-                style: theme.textTheme.labelSmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              const SizedBox(height: 2),
-              Text(
-                _currentAddressLabel(),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurface,
-                ),
-              ),
-            ],
-          ),
-        ),
-        const PopupMenuDivider(height: 8),
-        _menuItem(
-          value: _BrowserMenuAction.login,
-          icon: Icons.home_rounded,
-          label: "Стартовая страница",
-          theme: theme,
-        ),
-        _menuItem(
-          value: _BrowserMenuAction.editStartUrl,
-          icon: Icons.home_work_outlined,
-          label: "Адрес при открытии вкладки…",
-          theme: theme,
-        ),
-        _menuItem(
-          value: _BrowserMenuAction.reload,
-          icon: Icons.refresh_rounded,
-          label: "Обновить страницу",
-          theme: theme,
-        ),
-        _menuItem(
-          value: _BrowserMenuAction.google,
-          icon: Icons.travel_explore_rounded,
-          label: "Открыть Google",
-          theme: theme,
-        ),
-        const PopupMenuDivider(height: 8),
-        _menuItem(
-          value: _BrowserMenuAction.openExternal,
-          icon: Icons.open_in_new_rounded,
-          label: "Открыть в браузере",
-          theme: theme,
-        ),
-        _menuItem(
-          value: _BrowserMenuAction.copy,
-          icon: Icons.content_copy_rounded,
-          label: "Копировать ссылку",
-          theme: theme,
-        ),
-        _menuItem(
-          value: _BrowserMenuAction.paste,
-          icon: Icons.content_paste_rounded,
-          label: "Вставить и перейти",
-          theme: theme,
-        ),
-      ],
-    );
-
-    if (!mounted || action == null) return;
-
-    switch (action) {
-      case _BrowserMenuAction.login:
-        unawaited(controller.loadRequest(_resolvedStartUri));
-        break;
-      case _BrowserMenuAction.editStartUrl:
-        await _showEditStartUrlDialog();
-        break;
-      case _BrowserMenuAction.reload:
-        await _reloadPage();
-        break;
-      case _BrowserMenuAction.google:
-        unawaited(_openGoogleInWebView());
-        break;
-      case _BrowserMenuAction.openExternal:
-        unawaited(_openExternally());
-        break;
-      case _BrowserMenuAction.copy:
-        await Clipboard.setData(
-          ClipboardData(text: _addressController.text.trim()),
-        );
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Ссылка скопирована")),
-        );
-        break;
-      case _BrowserMenuAction.paste:
-        final data = await Clipboard.getData("text/plain");
-        final pasted = (data?.text ?? "").trim();
-        if (pasted.isEmpty) return;
-        _addressController.text = pasted;
-        await _navigateToInput();
-        break;
-    }
-  }
-
-  Widget _browserToolbarIcon({
-    Key? buttonKey,
-    required IconData icon,
-    required String tooltip,
-    VoidCallback? onPressed,
-    double size = 20,
-  }) {
-    return IconButton(
-      key: buttonKey,
-      tooltip: tooltip,
-      onPressed: onPressed,
-      icon: Icon(icon, size: size),
-      visualDensity: VisualDensity.compact,
-      padding: EdgeInsets.zero,
-      constraints: const BoxConstraints.tightFor(width: 40, height: 40),
-      splashRadius: 18,
-    );
-  }
-
-  Widget _buildLeadingNavControls() {
-    return AnimatedSwitcher(
-      duration: const Duration(milliseconds: 220),
-      switchInCurve: Curves.easeOutCubic,
-      switchOutCurve: Curves.easeInCubic,
-      transitionBuilder: (child, animation) {
-        return FadeTransition(
-          opacity: animation,
-          child: SizeTransition(
-            sizeFactor: animation,
-            axis: Axis.horizontal,
-            child: child,
-          ),
-        );
-      },
-      child: _urlBarEditing
-          ? const SizedBox(key: ValueKey("leading_empty"))
-          : Row(
-              key: const ValueKey("leading_nav"),
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Padding(
-                  padding: const EdgeInsets.only(top: 8),
-                  child: _browserToolbarIcon(
-                    icon: Icons.arrow_back_ios_new_rounded,
-                    tooltip: "Назад",
-                    onPressed: _canGoBack ? () => unawaited(_goBack()) : null,
-                    size: 18,
-                  ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.only(top: 8),
-                  child: _browserToolbarIcon(
-                    icon: Icons.arrow_forward_ios_rounded,
-                    tooltip: "Вперёд",
-                    onPressed:
-                        _canGoForward ? () => unawaited(_goForward()) : null,
-                    size: 18,
-                  ),
-                ),
-              ],
-            ),
-    );
-  }
-
-  Widget _buildAddressSwitcher(ThemeData theme, {required bool isHttps}) {
-    return AnimatedSwitcher(
-      duration: const Duration(milliseconds: 230),
-      switchInCurve: Curves.easeOutCubic,
-      switchOutCurve: Curves.easeInCubic,
-      transitionBuilder: (child, animation) {
-        final slide = Tween<Offset>(
-          begin: const Offset(0.0, 0.08),
-          end: Offset.zero,
-        ).animate(animation);
-        return FadeTransition(
-          opacity: animation,
-          child: SlideTransition(position: slide, child: child),
-        );
-      },
-      child: _urlBarEditing
-          ? TextField(
-              key: const ValueKey("url_editor"),
-              controller: _addressController,
-              focusNode: _addressFocusNode,
-              keyboardType: TextInputType.url,
-              textInputAction: TextInputAction.go,
-              autocorrect: false,
-              enableSuggestions: false,
-              style: theme.textTheme.bodyMedium?.copyWith(fontSize: 13.5),
-              decoration: InputDecoration(
-                hintText: "https://...",
-                isDense: true,
-                filled: true,
-                fillColor:
-                    theme.colorScheme.surfaceContainerHighest.withAlpha(130),
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 8,
-                ),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(11),
-                  borderSide: BorderSide(
-                    color: theme.colorScheme.outline.withAlpha(100),
-                  ),
-                ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(11),
-                  borderSide: BorderSide(
-                    color: theme.colorScheme.outline.withAlpha(100),
-                  ),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(11),
-                  borderSide: BorderSide(
-                    color: theme.colorScheme.primary,
-                    width: 1.4,
-                  ),
-                ),
-                suffixIcon: IconButton(
-                  icon: const Icon(Icons.clear_rounded, size: 18),
-                  onPressed: _addressController.clear,
-                  tooltip: "Очистить",
-                  visualDensity: VisualDensity.compact,
-                ),
-              ),
-              onSubmitted: (_) => unawaited(_navigateToInput()),
-            )
-          : Material(
-              key: const ValueKey("url_chip"),
-              color: theme.colorScheme.surfaceContainerHighest.withAlpha(90),
-              borderRadius: BorderRadius.circular(11),
-              child: InkWell(
-                onTap: _openUrlBarEditor,
-                borderRadius: BorderRadius.circular(11),
-                child: Padding(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 9, vertical: 8),
-                  child: Row(
-                    children: [
-                      Icon(
-                        isHttps
-                            ? Icons.lock_outline_rounded
-                            : Icons.link_rounded,
-                        size: 14,
-                        color: theme.colorScheme.onSurfaceVariant,
-                      ),
-                      const SizedBox(width: 6),
-                      Expanded(
-                        child: Text(
-                          _currentAddressLabel(),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: theme.textTheme.bodyMedium?.copyWith(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-    );
-  }
-
-  Widget _buildTrailingActions(WebViewController controller) {
-    return AnimatedSwitcher(
-      duration: const Duration(milliseconds: 190),
-      switchInCurve: Curves.easeOutCubic,
-      switchOutCurve: Curves.easeInCubic,
-      transitionBuilder: (child, animation) => FadeTransition(
-        opacity: animation,
-        child: ScaleTransition(scale: animation, child: child),
-      ),
-      child: _urlBarEditing
-          ? Row(
-              key: const ValueKey("edit_actions"),
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                _browserToolbarIcon(
-                  icon: Icons.close_rounded,
-                  tooltip: "Отмена",
-                  onPressed: _cancelUrlBarEditor,
-                ),
-                _browserToolbarIcon(
-                  icon: Icons.check_rounded,
-                  tooltip: "Перейти",
-                  onPressed: () => unawaited(_navigateToInput()),
-                ),
-              ],
-            )
-          : Row(
-              key: const ValueKey("normal_actions"),
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                _browserToolbarIcon(
-                  icon: _immersive
-                      ? Icons.fullscreen_exit_rounded
-                      : Icons.fullscreen_rounded,
-                  tooltip: _immersive ? "Показать панель" : "Полный экран",
-                  onPressed: () {
-                    HapticFeedback.selectionClick();
-                    _setImmersive(!_immersive);
-                  },
-                ),
-                _browserToolbarIcon(
-                  icon:
-                      _isLoading ? Icons.close_rounded : Icons.refresh_rounded,
-                  tooltip: _isLoading ? "Остановить загрузку" : "Обновить",
-                  onPressed: () async {
-                    if (_isLoading) {
-                      await controller.runJavaScript("window.stop();");
-                      if (!mounted) return;
-                      setState(() => _progress = 100);
-                      return;
-                    }
-                    setState(() => _progress = 12);
-                    await controller.reload();
-                  },
-                ),
-                _browserToolbarIcon(
-                  buttonKey: _moreMenuButtonKey,
-                  icon: Icons.more_vert_rounded,
-                  tooltip: "Ещё",
-                  onPressed: () => unawaited(_showBrowserMoreMenu()),
-                ),
-              ],
-            ),
-    );
-  }
-
-  AnimatedAppBar _buildWebAppBar(
-    WebViewController controller, {
-    required bool isHttps,
-  }) {
-    final theme = Theme.of(context);
-    return AnimatedAppBar(
-      title: "",
-      subtitle: null,
-      tabIndex: 2,
-      height: _browserAppBarHeight,
-      blurSigma: 0,
-      bottomRadius: 16,
-      actions: const [],
-      titleWidget: Row(
-        children: [
-          _buildLeadingNavControls(),
-          Expanded(
-            child: _buildAddressSwitcher(theme, isHttps: isHttps),
-          ),
-          const SizedBox(width: 4),
-          _buildTrailingActions(controller),
-        ],
-      ),
-    );
+    _bar.address.text = _resolvedStartUri.toString();
   }
 
   Uri? _normalizeInputToUri(String input) {
@@ -858,8 +453,8 @@ class _NetworkPageState extends State<NetworkPage>
   }
 
   Future<void> _openExternally() async {
-    final typed = _normalizeInputToUri(_addressController.text.trim());
-    final current = Uri.tryParse(_currentUrl ?? "");
+    final typed = _normalizeInputToUri(_bar.address.text.trim());
+    final current = Uri.tryParse(_bar.currentUrl);
     final uri = typed ?? current ?? _resolvedStartUri;
     await launchUrl(uri, mode: LaunchMode.externalApplication);
   }
@@ -876,37 +471,47 @@ class _NetworkPageState extends State<NetworkPage>
     final theme = Theme.of(context);
 
     if (!_webViewSupported) {
-      return Scaffold(
-        backgroundColor: theme.colorScheme.surface,
-        extendBodyBehindAppBar: true,
-        appBar: const AnimatedAppBar(
-          title: "Сеть",
-          subtitle: null,
-          tabIndex: 2,
-          height: _browserAppBarHeight,
-          blurSigma: 0,
-          bottomRadius: 16,
-        ),
-        body: _UnsupportedBrowserView(
-          topPadding: _contentTopInset(context),
-          addressController: _addressController,
-          onSubmit: _openExternally,
-          onOpenGoogle: _openGoogleExternally,
-        ),
+      return _UnsupportedBrowserView(
+        topPadding: _contentTopInset(context),
+        addressController: _bar.address,
+        onSubmit: _openExternally,
+        onOpenGoogle: _openGoogleExternally,
       );
     }
 
     final controller = _controller;
     if (controller == null) return const SizedBox.shrink();
 
-    final progressValue =
-        _progress >= 100 ? null : _progress.clamp(0, 100) / 100.0;
-    final barUrl =
-        Uri.tryParse((_currentUrl ?? _addressController.text).trim());
-    final isHttps = barUrl?.scheme == "https";
-
     final curve = Curves.easeOutCubic;
     final bottomSafe = MediaQuery.viewPaddingOf(context).bottom;
+
+    // Полоска прогресса на своём ValueListenableBuilder — тики onProgress
+    // не перестраивают остальной экран. Когда не грузимся, индикатор
+    // снимается из дерева (indeterminate-анимация не крутится зря).
+    final progressBar = ValueListenableBuilder<int>(
+      valueListenable: _bar.progress,
+      builder: (context, p, _) {
+        final loading = p > 0 && p < 100;
+        return AnimatedOpacity(
+          duration: const Duration(milliseconds: 180),
+          opacity: loading ? 1 : 0,
+          child: SizedBox(
+            height: 3,
+            child: loading
+                ? ClipRRect(
+                    borderRadius: BorderRadius.circular(99),
+                    child: LinearProgressIndicator(
+                      value: p.clamp(0, 100) / 100.0,
+                      minHeight: 3,
+                      backgroundColor:
+                          theme.colorScheme.outlineVariant.withAlpha(60),
+                    ),
+                  )
+                : null,
+          ),
+        );
+      },
+    );
 
     return PopScope(
       canPop: false,
@@ -927,15 +532,23 @@ class _NetworkPageState extends State<NetworkPage>
       },
       child: Scaffold(
         backgroundColor: theme.colorScheme.surface,
-        extendBodyBehindAppBar: true,
-        appBar: null,
         body: AnimatedBuilder(
           animation: _immersiveCtrl,
-          builder: (context, _) {
+          // WebView — child, а не часть builder: platform view не
+          // пересоздаётся на каждый кадр анимации перехода в fullscreen.
+          child: RepaintBoundary(
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(18),
+              child: ColoredBox(
+                color: theme.cardTheme.color ?? theme.cardColor,
+                child: WebViewWidget(controller: controller),
+              ),
+            ),
+          ),
+          builder: (context, webView) {
             final t = curve.transform(_immersiveCtrl.value.clamp(0.0, 1.0));
             final topSpacer = _topSpacer(context, t);
             final bottomPad = _webviewBottomPadding(t);
-            final barHiddenFactor = t;
 
             return Stack(
               clipBehavior: Clip.hardEdge,
@@ -945,47 +558,15 @@ class _NetworkPageState extends State<NetworkPage>
                     SizedBox(height: topSpacer),
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 12),
-                      child: AnimatedOpacity(
-                        duration: const Duration(milliseconds: 180),
-                        opacity: progressValue == null ? 0 : 1,
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(99),
-                          child: LinearProgressIndicator(
-                            value: progressValue,
-                            minHeight: 3,
-                            backgroundColor:
-                                theme.colorScheme.outlineVariant.withAlpha(60),
-                          ),
-                        ),
-                      ),
+                      child: progressBar,
                     ),
                     Expanded(
                       child: Padding(
                         padding: EdgeInsets.fromLTRB(12, 10, 12, bottomPad),
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(18),
-                          child: ColoredBox(
-                            color: theme.cardTheme.color ?? theme.cardColor,
-                            child: WebViewWidget(controller: controller),
-                          ),
-                        ),
+                        child: webView!,
                       ),
                     ),
                   ],
-                ),
-                // AnimatedAppBar already includes status bar + toolbar (see animated_app_bar.dart).
-                // Do not wrap in a fixed 56px box — that clipped the bar.
-                Positioned(
-                  top: 0,
-                  left: 0,
-                  right: 0,
-                  child: ClipRect(
-                    child: Align(
-                      alignment: Alignment.topCenter,
-                      heightFactor: (1 - barHiddenFactor).clamp(0.0, 1.0),
-                      child: _buildWebAppBar(controller, isHttps: isHttps),
-                    ),
-                  ),
                 ),
                 if (_pageLoadError != null)
                   Positioned.fill(
@@ -1087,7 +668,8 @@ class _UnsupportedBrowserView extends StatelessWidget {
       physics: const AlwaysScrollableScrollPhysics(
         parent: BouncingScrollPhysics(),
       ),
-      padding: EdgeInsets.fromLTRB(20, topPadding, 20, contentBottomPadding(context)),
+      padding:
+          EdgeInsets.fromLTRB(20, topPadding, 20, contentBottomPadding(context)),
       children: [
         ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 560),

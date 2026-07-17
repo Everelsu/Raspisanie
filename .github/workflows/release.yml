@@ -98,7 +98,14 @@ jobs:
             echo "KEYSTORE_BASE64 not set — APK will use debug signing"
             exit 0
           fi
-          echo "$KEYSTORE_BASE64" | base64 -d > android/app/release.keystore
+          if ! echo "$KEYSTORE_BASE64" | base64 -d --ignore-garbage > android/app/release.keystore; then
+            echo "::error::KEYSTORE_BASE64 secret is not valid base64. Regenerate it with 'base64 -w 0 release.keystore' (on Windows use WSL or Git Bash, not certutil) and re-set the GitHub secret without extra whitespace/newlines."
+            exit 1
+          fi
+          if [ ! -s android/app/release.keystore ]; then
+            echo "::error::Decoded keystore is empty — KEYSTORE_BASE64 secret is corrupted."
+            exit 1
+          fi
           cat > android/key.properties << EOF
           storePassword=$KEY_STORE_PASSWORD
           keyPassword=$KEY_PASSWORD

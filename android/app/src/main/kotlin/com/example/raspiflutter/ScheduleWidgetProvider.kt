@@ -7,41 +7,21 @@ import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
 import android.graphics.Color
-import android.util.TypedValue
 import android.appwidget.AppWidgetProvider
+import android.os.Bundle
 import android.widget.RemoteViews
-
-// Виджет использует шрифт приложения, когда выбран один из встроенных в APK
-// (Space Grotesk / Ndot 77): RemoteViews не умеет менять Typeface в рантайме,
-// поэтому под каждый шрифт есть свой вариант layout с android:fontFamily.
-// Шрифты из Google Fonts качаются приложением в рантайме и в ресурсы не
-// попадают — для них остаётся системный шрифт. До Android 8.0 (API 26)
-// font-ресурсы в RemoteViews не работают — используется базовый layout.
-internal fun widgetLayoutRes(fontKey: String?): Int {
-    if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.O) {
-        return R.layout.schedule_widget_layout
-    }
-    return when (fontKey) {
-        "grotesk" -> R.layout.schedule_widget_layout_grotesk
-        "ndot" -> R.layout.schedule_widget_layout_ndot
-        else -> R.layout.schedule_widget_layout
-    }
-}
-
-internal fun widgetItemLayoutRes(fontKey: String?): Int {
-    if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.O) {
-        return R.layout.schedule_widget_list_item
-    }
-    return when (fontKey) {
-        "grotesk" -> R.layout.schedule_widget_list_item_grotesk
-        "ndot" -> R.layout.schedule_widget_list_item_ndot
-        else -> R.layout.schedule_widget_list_item
-    }
-}
+import kotlin.math.roundToInt
 
 // Расширяем AppWidgetProvider напрямую, не через HomeWidgetProvider,
 // чтобы не зависеть от бинарной совместимости native-кода home_widget пакета.
 // Данные читаем из тех же SharedPreferences что пишет HomeWidget Dart-сторона.
+//
+// Кастомный шрифт (Space Grotesk / Ndot 77) RemoteViews не резолвит через
+// android:fontFamily="@font/..." при инфлейте в процессе лаунчера (проверено
+// живьём — виджет молча падает на системный шрифт). Поэтому текстовые поля
+// рисуются в Bitmap через WidgetTextRenderer и вставляются как ImageView —
+// перенос/эллипсис/размер теперь считаются здесь вручную под текущую ширину
+// виджета (см. onAppWidgetOptionsChanged).
 class ScheduleWidgetProvider : AppWidgetProvider() {
 
     override fun onUpdate(
@@ -73,8 +53,27 @@ class ScheduleWidgetProvider : AppWidgetProvider() {
         }
     }
 
+    override fun onAppWidgetOptionsChanged(
+        context: Context,
+        appWidgetManager: AppWidgetManager,
+        appWidgetId: Int,
+        newOptions: Bundle,
+    ) {
+        super.onAppWidgetOptionsChanged(context, appWidgetManager, appWidgetId, newOptions)
+        // Пользователь изменил размер виджета — перерисовываем bitmap-текст под
+        // новую ширину (иначе он останется зафиксирован под старый размер).
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        updateWidget(context, appWidgetManager, appWidgetId, prefs)
+    }
+
     companion object {
         private const val PREFS_NAME = "HomeWidgetPreferences"
+
+        // Фиксированные отступы вокруг текстовых полей — см. schedule_widget_layout.xml
+        // и drawable/widget_background_*.xml (<padding> у shape-фона).
+        private const val BG_PADDING_DP = 14
+        private const val COUNT_CHIP_MARGIN_START_DP = 8
+        private const val COUNT_CHIP_PADDING_H_DP = 8 // на сторону
 
         private fun updateWidget(
             context: Context,
@@ -153,41 +152,97 @@ class ScheduleWidgetProvider : AppWidgetProvider() {
                 else -> Color.parseColor("#9A9A9A")
             }
 
-            val views = RemoteViews(context.packageName, widgetLayoutRes(fontKey))
+            val density = context.resources.displayMetrics.density
+            fun dp(v: Int) = (v * density).roundToInt()
+
+            val options = appWidgetManager.getAppWidgetOptions(appWidgetId)
+            val minWidthDp = options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH, 250)
+            val totalWidthPx = dp(minWidthDp)
+            val contentWidthPx = (totalWidthPx - dp(BG_PADDING_DP * 2)).coerceAtLeast(dp(80))
+            prefs.edit().putInt("widget_last_content_width_px", contentWidthPx).apply()
+
+            val regularTypeface = WidgetTextRenderer.typeface(context, fontKey, bold = false)
+            val boldTypeface = WidgetTextRenderer.typeface(context, fontKey, bold = true)
+
+            val views = RemoteViews(context.packageName, R.layout.schedule_widget_layout)
             views.setInt(
                 R.id.widget_root,
                 "setBackgroundResource",
                 bgRes
             )
-            // Акцентная полоска у названия группы — как в шапке карточки дня.
-            views.setInt(R.id.widget_title_bar, "setColorFilter", accentColor ?: themeTitleColor)
-            views.setTextViewText(R.id.widget_title, title)
-            views.setTextViewText(R.id.widget_subtitle, subtitle)
-            views.setTextViewText(R.id.widget_primary, primary)
-            views.setTextViewText(R.id.widget_secondary, secondary)
-            views.setTextViewText(R.id.widget_footer, footer)
-            views.setTextColor(R.id.widget_title, titleColor)
-            views.setTextColor(R.id.widget_subtitle, subColor)
-            views.setTextColor(R.id.widget_primary, titleColor)
-            views.setTextColor(R.id.widget_secondary, subColor)
-            views.setTextColor(R.id.widget_footer, footerColor)
-            views.setTextColor(R.id.widget_empty, subColor)
-            views.setTextViewTextSize(R.id.widget_title, TypedValue.COMPLEX_UNIT_SP, 16f * fontScale)
-            views.setTextViewTextSize(R.id.widget_subtitle, TypedValue.COMPLEX_UNIT_SP, 11f * fontScale)
-            views.setTextViewTextSize(R.id.widget_primary, TypedValue.COMPLEX_UNIT_SP, 14f * fontScale)
-            views.setTextViewTextSize(R.id.widget_secondary, TypedValue.COMPLEX_UNIT_SP, 12f * fontScale)
-            views.setTextViewTextSize(R.id.widget_empty, TypedValue.COMPLEX_UNIT_SP, 11f * fontScale)
-            views.setTextViewTextSize(R.id.widget_footer, TypedValue.COMPLEX_UNIT_SP, 10f * fontScale)
-            // Чип количества пар справа от названия группы (акцентным цветом).
+            // Чип количества пар рендерим первым — заголовку нужна его ширина,
+            // чтобы не наехать друг на друга (оба в одном Row).
+            var chipWidthPx = 0
             if (countLabel.isNotBlank()) {
+                val chipBitmap = WidgetTextRenderer.render(
+                    context, countLabel, boldTypeface, 11f, subColor,
+                    maxWidthPx = contentWidthPx, maxLines = 1, fontScale = fontScale,
+                )
+                chipWidthPx = chipBitmap.width + dp(COUNT_CHIP_PADDING_H_DP * 2)
                 views.setViewVisibility(R.id.widget_count, android.view.View.VISIBLE)
-                views.setTextViewText(R.id.widget_count, countLabel)
-                views.setTextColor(R.id.widget_count, subColor)
-                views.setTextViewTextSize(R.id.widget_count, TypedValue.COMPLEX_UNIT_SP, 11f * fontScale)
+                views.setImageViewBitmap(R.id.widget_count, chipBitmap)
             } else {
                 views.setViewVisibility(R.id.widget_count, android.view.View.GONE)
             }
+
+            val titleMaxWidthPx = (
+                contentWidthPx -
+                    if (chipWidthPx > 0) chipWidthPx + dp(COUNT_CHIP_MARGIN_START_DP) else 0
+                ).coerceAtLeast(dp(40))
+
+            views.setImageViewBitmap(
+                R.id.widget_title,
+                WidgetTextRenderer.render(
+                    context, title, boldTypeface, 16f, titleColor,
+                    maxWidthPx = titleMaxWidthPx, maxLines = 1, fontScale = fontScale,
+                ),
+            )
+            views.setImageViewBitmap(
+                R.id.widget_subtitle,
+                WidgetTextRenderer.render(
+                    context, subtitle, regularTypeface, 11f, subColor,
+                    maxWidthPx = contentWidthPx, maxLines = 1, fontScale = fontScale,
+                ),
+            )
+            val showFooter = prefs.getString("widget_show_footer", "1") != "0"
+            if (showFooter) {
+                views.setImageViewBitmap(
+                    R.id.widget_footer,
+                    WidgetTextRenderer.render(
+                        context, footer, regularTypeface, 10f, footerColor,
+                        maxWidthPx = contentWidthPx, maxLines = 1, fontScale = fontScale,
+                    ),
+                )
+            }
+            views.setViewVisibility(
+                R.id.widget_footer,
+                if (showFooter) android.view.View.VISIBLE else android.view.View.GONE
+            )
+
             val hasList = dayItems.isNotBlank()
+            if (!hasList) {
+                views.setImageViewBitmap(
+                    R.id.widget_primary,
+                    WidgetTextRenderer.render(
+                        context, primary, boldTypeface, 14f, titleColor,
+                        maxWidthPx = contentWidthPx, maxLines = 1, fontScale = fontScale,
+                    ),
+                )
+                views.setImageViewBitmap(
+                    R.id.widget_secondary,
+                    WidgetTextRenderer.render(
+                        context, secondary, regularTypeface, 12f, subColor,
+                        maxWidthPx = contentWidthPx, maxLines = 2, fontScale = fontScale,
+                    ),
+                )
+            }
+            views.setImageViewBitmap(
+                R.id.widget_empty,
+                WidgetTextRenderer.render(
+                    context, "Нет пар на день", regularTypeface, 11f, subColor,
+                    maxWidthPx = contentWidthPx, maxLines = 1, fontScale = fontScale,
+                ),
+            )
             views.setViewVisibility(
                 R.id.widget_primary,
                 if (hasList) android.view.View.GONE else android.view.View.VISIBLE
@@ -208,7 +263,7 @@ class ScheduleWidgetProvider : AppWidgetProvider() {
                 putExtra("widget_theme", themeKey)
                 putExtra("widget_accent_color", accentColorStr ?: "")
                 data = android.net.Uri.parse(
-                    "widget://${context.packageName}/schedule/$appWidgetId?rev=$refreshToken&theme=$themeKey&accent=${accentColorStr ?: ""}&font=$fontKey"
+                    "widget://${context.packageName}/schedule/$appWidgetId?rev=$refreshToken&theme=$themeKey&accent=${accentColorStr ?: ""}&font=$fontKey&width=$contentWidthPx"
                 )
             }
             views.setRemoteAdapter(R.id.widget_list, listIntent)

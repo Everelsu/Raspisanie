@@ -21,9 +21,14 @@ class SchedulePage extends StatelessWidget {
     super.key,
     required this.controller,
     required this.fontService,
+    this.scrollController,
   });
   final ScheduleController controller;
   final FontService fontService;
+
+  /// Внешний контроллер прокрутки — HomePage использует его для
+  /// «скролла наверх» по долгому нажатию на AppBar.
+  final ScrollController? scrollController;
 
   @override
   Widget build(BuildContext context) {
@@ -91,11 +96,15 @@ class SchedulePage extends StatelessWidget {
             contentBottomPadding(context),
           );
           Widget buildDayItem(int index) {
-            final card = _DayCard(
-              day: schedule[index],
-              college: college,
-              prefs: prefs,
-              controller: controller,
+            // RepaintBoundary: карточка дня с тенями не перерисовывается
+            // при скролле соседних элементов.
+            final card = RepaintBoundary(
+              child: _DayCard(
+                day: schedule[index],
+                college: college,
+                prefs: prefs,
+                controller: controller,
+              ),
             );
             if (!useAnimations) return card;
             return AnimationConfiguration.staggeredList(
@@ -116,6 +125,7 @@ class SchedulePage extends StatelessWidget {
             // Один CustomScrollView: pull-to-refresh срабатывает и при тяге с баннера,
             // а не только с области списка (Column+Expanded(ListView) ломал жест).
             listView = CustomScrollView(
+              controller: scrollController,
               slivers: [
                 SliverPadding(
                   padding: EdgeInsets.only(top: contentTopUnderAppBar(context)),
@@ -146,6 +156,7 @@ class SchedulePage extends StatelessWidget {
             );
           } else {
             listView = CustomScrollView(
+              controller: scrollController,
               slivers: [
                 SliverPadding(
                   padding: EdgeInsets.only(top: contentTopUnderAppBar(context)),
@@ -504,10 +515,12 @@ class _LessonTile extends StatelessWidget {
       content = _subgroupLesson(context, theme);
     }
 
+    // Обычные Container вместо AnimatedContainer: статус пары меняется только
+    // при пересборке списка, промежуточная анимация невидима, а implicit-
+    // анимации на каждой плитке — лишние тикеры и лишний layout.
     Widget tile = Padding(
       padding: const EdgeInsets.symmetric(vertical: 7),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 180),
+      child: Container(
         padding: const EdgeInsets.fromLTRB(8, 6, 8, 6),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(12),
@@ -524,8 +537,7 @@ class _LessonTile extends StatelessWidget {
               child: Stack(
                 alignment: Alignment.center,
                 children: [
-                  AnimatedContainer(
-                    duration: const Duration(milliseconds: 200),
+                  Container(
                     width: 36,
                     height: 36,
                     decoration: BoxDecoration(

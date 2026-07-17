@@ -19,36 +19,140 @@ Future<void> showDayShareSheet(
   String? subtitle,
 }) async {
   final theme = Theme.of(context);
+  final cs = theme.colorScheme;
   HapticFeedback.mediumImpact();
+
+  Widget actionTile({
+    required IconData icon,
+    required String label,
+    String? caption,
+    required VoidCallback onTap,
+  }) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: () {
+          HapticFeedback.lightImpact();
+          onTap();
+        },
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          child: Row(
+            children: [
+              Container(
+                width: 38,
+                height: 38,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: cs.primary.withAlpha(22),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(icon, size: 19, color: cs.primary),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(label, style: theme.textTheme.bodyLarge),
+                    if (caption != null)
+                      Text(
+                        caption,
+                        style: theme.textTheme.bodySmall
+                            ?.copyWith(color: cs.onSurfaceVariant),
+                      ),
+                  ],
+                ),
+              ),
+              Icon(Icons.chevron_right_rounded,
+                  size: 20, color: cs.onSurfaceVariant.withAlpha(120)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  final headerSubtitle = (subtitle == null || subtitle.trim().isEmpty)
+      ? day.date
+      : "${day.date} • ${subtitle.trim()}";
+
   await showModalBottomSheet<void>(
     context: context,
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+    ),
     builder: (ctx) => SafeArea(
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const SizedBox(height: 8),
+          const SizedBox(height: 10),
           Container(
-            width: 40,
+            width: 36,
             height: 4,
             decoration: BoxDecoration(
-              color: theme.colorScheme.onSurface.withAlpha(40),
+              color: cs.onSurface.withAlpha(60),
               borderRadius: BorderRadius.circular(2),
             ),
           ),
-          const SizedBox(height: 12),
-          ListTile(
-            leading:
-                Icon(Icons.share_outlined, color: theme.colorScheme.primary),
-            title: const Text("Поделиться"),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
+            child: Row(
+              children: [
+                Container(
+                  width: 40,
+                  height: 40,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: cs.primary.withAlpha(25),
+                    shape: BoxShape.circle,
+                  ),
+                  child:
+                      Icon(Icons.event_rounded, size: 20, color: cs.primary),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        _capitalize(day.day),
+                        style: theme.textTheme.titleMedium
+                            ?.copyWith(fontWeight: FontWeight.w700),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 1),
+                      Text(
+                        headerSubtitle,
+                        style: theme.textTheme.bodySmall
+                            ?.copyWith(color: cs.onSurfaceVariant),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Divider(height: 1, indent: 16, endIndent: 16,
+              color: theme.dividerTheme.color),
+          const SizedBox(height: 6),
+          actionTile(
+            icon: Icons.share_rounded,
+            label: "Поделиться текстом",
+            caption: "Отправить день как сообщение",
             onTap: () async {
               Navigator.pop(ctx);
               await SharePlus.instance.share(ShareParams(text: shareText));
             },
           ),
-          ListTile(
-            leading:
-                Icon(Icons.copy_outlined, color: theme.colorScheme.primary),
-            title: const Text("Скопировать"),
+          actionTile(
+            icon: Icons.copy_rounded,
+            label: "Скопировать",
+            caption: "Текст дня в буфер обмена",
             onTap: () async {
               Navigator.pop(ctx);
               await Clipboard.setData(ClipboardData(text: shareText));
@@ -61,10 +165,10 @@ Future<void> showDayShareSheet(
               );
             },
           ),
-          ListTile(
-            leading:
-                Icon(Icons.image_outlined, color: theme.colorScheme.primary),
-            title: const Text("Поделиться изображением"),
+          actionTile(
+            icon: Icons.image_rounded,
+            label: "Картинкой",
+            caption: "Красивое изображение для отправки",
             onTap: () async {
               Navigator.pop(ctx);
               await _shareDayAsImage(
@@ -76,7 +180,7 @@ Future<void> showDayShareSheet(
               );
             },
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 10),
         ],
       ),
     ),

@@ -4,7 +4,7 @@ publish_to: "none"
 
 # Версия — единственный источник истины для релиза (workflow читает её отсюда).
 # Build-номер после «+» становится versionCode Android: major*10000 + minor*100 + patch.
-version: 2.0.5+20005
+version: 2.1.0+20100
 
 environment:
   sdk: ">=3.6.0 <4.0.0"
@@ -91,18 +91,21 @@ flutter_launcher_icons:
   ios: true
   image_path: "assets/icon/app_icon.png"
   # Matches in-app icon: dark circle behind the logo.
-  adaptive_icon_background: "#000000"
+  adaptive_icon_background: "#171717"
   adaptive_icon_foreground: "assets/icon/app_icon.png"
   min_sdk_android: 21
   remove_alpha_ios: true
 
-# Native splash — pure black (#000000) like the reference device screen.
+# Native splash — тёмный фон приложения + знак без подложки (не обрезается в круг).
+# Дальше подхватывает Flutter-оверлей SplashIntro с анимацией.
 flutter_native_splash:
-  color: "#000000"
-  image: assets/icon/app_icon.png
-  # Edge-to-edge black until Flutter draws the first frame.
-  fullscreen: true
+  color: "#101010"
+  image: assets/icon/splash_mark.png
+  # fullscreen выключен: иначе центр сплэша (без статус-бара) не совпадает
+  # с центром Flutter-оверлея (с панелями) и знак «подплывает» при стыке.
+  fullscreen: false
   android_12:
-    color: "#000000"
-    image: assets/icon/app_icon.png
+    color: "#101010"
+    image: assets/icon/splash_mark.png
+    icon_background_color: "#101010"
   web: false

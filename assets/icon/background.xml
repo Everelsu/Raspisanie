@@ -1,0 +1,7 @@
+<View
+android:id="@+id/rectangle_5"
+android:layout_width="1000dp"
+android:layout_height="1000dp"
+android:background="#171717"
+ />
+

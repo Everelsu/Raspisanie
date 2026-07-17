@@ -1,5 +1,6 @@
 import "package:easy_refresh/easy_refresh.dart";
 import "package:flutter/material.dart";
+import "package:flutter/services.dart";
 import "package:flutter_staggered_animations/flutter_staggered_animations.dart";
 
 import "../../../app/theme.dart";
@@ -10,8 +11,12 @@ import "../../schedule/domain/models.dart";
 import "../../schedule/presentation/schedule_controller.dart";
 
 class StatisticsPage extends StatefulWidget {
-  const StatisticsPage({super.key, required this.controller});
+  const StatisticsPage({super.key, required this.controller, this.scrollController});
   final ScheduleController controller;
+
+  /// Внешний контроллер прокрутки — HomePage использует его для
+  /// «скролла наверх» по долгому нажатию на AppBar.
+  final ScrollController? scrollController;
 
   @override
   State<StatisticsPage> createState() => _StatisticsPageState();
@@ -143,6 +148,7 @@ class _StatisticsPageState extends State<StatisticsPage> {
 
         final appBarTop = contentTopUnderAppBar(context);
         final listView = CustomScrollView(
+          controller: widget.scrollController,
           slivers: [
             SliverPadding(padding: EdgeInsets.only(top: appBarTop)),
             const HeaderLocator.sliver(),
@@ -183,6 +189,7 @@ class _SummaryRow extends StatelessWidget {
         _SummaryBadge(
           value: "${stats.totalHours ?? '—'}",
           label: "Всего",
+          caption: "Всего часов по программе",
           color: theme.brightness == Brightness.light
               ? theme.colorScheme.onSurface
               : Colors.white,
@@ -192,6 +199,7 @@ class _SummaryRow extends StatelessWidget {
         _SummaryBadge(
           value: "${stats.completedHours ?? '—'}",
           label: "Факт",
+          caption: "Часов уже проведено",
           color: const Color(0xFF4CAF50),
           theme: theme,
         ),
@@ -199,6 +207,7 @@ class _SummaryRow extends StatelessWidget {
         _SummaryBadge(
           value: "${stats.remainingHours ?? '—'}",
           label: "Остаток",
+          caption: "Часов осталось провести",
           color: const Color(0xFFFFC107),
           theme: theme,
         ),
@@ -206,6 +215,7 @@ class _SummaryRow extends StatelessWidget {
         _SummaryBadge(
           value: "${stats.plannedHours ?? '—'}",
           label: "План",
+          caption: "Запланировано по расписанию",
           color: const Color.fromARGB(255, 54, 143, 244),
           theme: theme,
         ),
@@ -218,14 +228,30 @@ class _SummaryBadge extends StatelessWidget {
   const _SummaryBadge({
     required this.value,
     required this.label,
+    required this.caption,
     required this.color,
     required this.theme,
   });
 
   final String value;
   final String label;
+  final String caption;
   final Color color;
   final ThemeData theme;
+
+  void _showCaption(BuildContext context) {
+    HapticFeedback.selectionClick();
+    ScaffoldMessenger.of(context).clearSnackBars();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text("$label: $caption"),
+        duration: const Duration(milliseconds: 1400),
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        margin: const EdgeInsets.fromLTRB(16, 0, 16, 90),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -236,7 +262,12 @@ class _SummaryBadge extends StatelessWidget {
         curve: Curves.easeOutBack,
         builder: (_, scale, child) =>
             Transform.scale(scale: scale, child: child),
-        child: Container(
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            borderRadius: BorderRadius.circular(14),
+            onLongPress: () => _showCaption(context),
+            child: Container(
           padding: const EdgeInsets.symmetric(vertical: 12),
           decoration: BoxDecoration(
             gradient: LinearGradient(
@@ -278,6 +309,8 @@ class _SummaryBadge extends StatelessWidget {
               ),
             ],
           ),
+            ),
+          ),
         ),
       ),
     );
@@ -303,7 +336,9 @@ class _DisciplineCard extends StatelessWidget {
 
     return Card(
       clipBehavior: Clip.antiAlias,
-      child: Stack(
+      child: InkWell(
+        onLongPress: () => _showDetailsSheet(context),
+        child: Stack(
         children: [
           Positioned.fill(
             child: TweenAnimationBuilder<double>(
@@ -445,6 +480,207 @@ class _DisciplineCard extends StatelessWidget {
             ),
           ),
         ],
+        ),
+      ),
+    );
+  }
+
+  void _showDetailsSheet(BuildContext context) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+    final percent = _computePercent();
+    final pctText = _percentText(percent);
+    final person = isTeacherMode
+        ? (discipline.group.isNotEmpty ? "Группа: ${discipline.group}" : null)
+        : (discipline.teacher.isNotEmpty ? discipline.teacher : null);
+    final hasTwoWeeks = (discipline.plannedIn2Weeks?.isNotEmpty ?? false) ||
+        (discipline.factIn2Weeks?.isNotEmpty ?? false);
+    final hasCompletionDate = discipline.completionDate?.isNotEmpty ?? false;
+    final copyText = [
+      discipline.discipline,
+      if (person != null) person,
+      if (discipline.lessonType.isNotEmpty) discipline.lessonType,
+      "Всего: ${discipline.totalHours ?? '—'} • "
+          "План: ${discipline.plannedHours ?? '—'} • "
+          "Факт: ${discipline.factHours ?? '—'} • "
+          "Остаток: ${discipline.remainingHours ?? '—'}",
+      "Выполнено: $pctText",
+      if (hasTwoWeeks)
+        "За 2 недели — план: ${discipline.plannedIn2Weeks ?? '—'}, "
+            "факт: ${discipline.factIn2Weeks ?? '—'}",
+      if (hasCompletionDate) "Дата завершения: ${discipline.completionDate}",
+    ].join("\n");
+
+    HapticFeedback.mediumImpact();
+    showModalBottomSheet<void>(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 10, 20, 20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Center(
+                child: Container(
+                  width: 36,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: cs.onSurface.withAlpha(60),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    width: 40,
+                    height: 40,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: cs.primary.withAlpha(25),
+                    ),
+                    child: Text(
+                      discipline.number.isNotEmpty
+                          ? discipline.number.replaceAll(RegExp(r'\.$'), '')
+                          : "${index + 1}",
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.bold,
+                        color: cs.primary,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          discipline.discipline.isNotEmpty
+                              ? discipline.discipline
+                              : "—",
+                          style: theme.textTheme.titleMedium
+                              ?.copyWith(fontWeight: FontWeight.w700),
+                        ),
+                        if (person != null) ...[
+                          const SizedBox(height: 2),
+                          Text(
+                            person,
+                            style: theme.textTheme.bodySmall
+                                ?.copyWith(color: cs.onSurfaceVariant),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(6),
+                child: LinearProgressIndicator(
+                  value: (percent / 100).clamp(0.0, 1.0),
+                  minHeight: 8,
+                  backgroundColor: cs.onSurface.withAlpha(15),
+                ),
+              ),
+              const SizedBox(height: 6),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    discipline.lessonType.isNotEmpty
+                        ? discipline.lessonType
+                        : "Выполнение программы",
+                    style: theme.textTheme.bodySmall
+                        ?.copyWith(color: cs.onSurfaceVariant),
+                  ),
+                  Text(
+                    pctText,
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      fontWeight: FontWeight.w700,
+                      color: cs.primary,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 14),
+              Container(
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                decoration: BoxDecoration(
+                  color: cs.onSurface.withAlpha(10),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Row(
+                  children: [
+                    _HourStat(
+                        label: "Всего",
+                        value: "${discipline.totalHours ?? '—'}",
+                        theme: theme),
+                    _HourStat(
+                        label: "План",
+                        value: "${discipline.plannedHours ?? '—'}",
+                        theme: theme),
+                    _HourStat(
+                        label: "Факт",
+                        value: "${discipline.factHours ?? '—'}",
+                        theme: theme),
+                    _HourStat(
+                        label: "Остаток",
+                        value: "${discipline.remainingHours ?? '—'}",
+                        theme: theme),
+                  ],
+                ),
+              ),
+              if (hasTwoWeeks || hasCompletionDate) ...[
+                const SizedBox(height: 10),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    if (hasTwoWeeks)
+                      _InfoChip(
+                        icon: Icons.date_range_rounded,
+                        label: "За 2 нед.: план "
+                            "${discipline.plannedIn2Weeks ?? '—'} • факт "
+                            "${discipline.factIn2Weeks ?? '—'}",
+                        theme: theme,
+                      ),
+                    if (hasCompletionDate)
+                      _InfoChip(
+                        icon: Icons.event_available_rounded,
+                        label: "Завершение: ${discipline.completionDate}",
+                        theme: theme,
+                      ),
+                  ],
+                ),
+              ],
+              const SizedBox(height: 16),
+              FilledButton.tonalIcon(
+                onPressed: () async {
+                  Navigator.pop(ctx);
+                  await Clipboard.setData(ClipboardData(text: copyText));
+                  if (!context.mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text("Скопировано"),
+                      duration: Duration(seconds: 1),
+                    ),
+                  );
+                },
+                icon: const Icon(Icons.copy_rounded, size: 18),
+                label: const Text("Скопировать"),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -465,6 +701,42 @@ class _DisciplineCard extends StatelessWidget {
       return raw.contains("%") ? raw : "$raw%";
     }
     return "$percent%";
+  }
+}
+
+class _InfoChip extends StatelessWidget {
+  const _InfoChip({
+    required this.icon,
+    required this.label,
+    required this.theme,
+  });
+
+  final IconData icon;
+  final String label;
+  final ThemeData theme;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = theme.colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      decoration: BoxDecoration(
+        color: cs.onSurface.withAlpha(10),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: cs.onSurfaceVariant),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: theme.textTheme.bodySmall
+                ?.copyWith(color: cs.onSurfaceVariant),
+          ),
+        ],
+      ),
+    );
   }
 }
 

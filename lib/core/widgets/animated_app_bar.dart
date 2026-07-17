@@ -16,9 +16,12 @@ class AnimatedAppBarVisuals {
     final isDark = theme.brightness == Brightness.dark;
     final primary = theme.colorScheme.primary;
     final surface = theme.colorScheme.surface;
+    // Почти непрозрачный фон: BackdropFilter убран ради производительности
+    // (blur заставлял пере-рендерить весь контент под баром каждый кадр),
+    // лёгкая полупрозрачность сохраняет ощущение «стекла».
     return Color.alphaBlend(
       primary.withAlpha(isDark ? 18 : 10),
-      surface.withValues(alpha: isDark ? 0.82 : 0.88),
+      surface.withValues(alpha: isDark ? 0.93 : 0.95),
     );
   }
 }
@@ -33,7 +36,9 @@ class AnimatedAppBar extends StatefulWidget implements PreferredSizeWidget {
     this.actions = const [],
     this.titleWidget,
     this.bottomRadius = AnimatedAppBarVisuals.defaultBottomRadius,
-    this.blurSigma = 22.0,
+    // 0 по умолчанию: BackdropFilter дорог (каждый кадр скролла под баром =
+    // readback + blur), а на фоне с alpha ≥0.93 эффект неотличим.
+    this.blurSigma = 0,
     this.height,
   });
 
@@ -117,9 +122,9 @@ class _AnimatedAppBarState extends State<AnimatedAppBar> {
                             children: [
                               Expanded(
                                 child: AnimatedSwitcher(
-                                  duration: const Duration(milliseconds: 140),
-                                  switchInCurve: Curves.easeOut,
-                                  switchOutCurve: Curves.easeIn,
+                                  duration: const Duration(milliseconds: 280),
+                                  switchInCurve: Curves.easeOutCubic,
+                                  switchOutCurve: Curves.easeInCubic,
                                   layoutBuilder: (currentChild, previousChildren) {
                                     return Stack(
                                       alignment: Alignment.centerLeft,
@@ -130,9 +135,26 @@ class _AnimatedAppBarState extends State<AnimatedAppBar> {
                                     );
                                   },
                                   transitionBuilder: (child, animation) {
+                                    // Новый контент всплывает снизу с лёгким
+                                    // увеличением; старый — тонет вниз и гаснет.
+                                    final slide = Tween<Offset>(
+                                      begin: const Offset(0, 0.35),
+                                      end: Offset.zero,
+                                    ).animate(animation);
+                                    final scale = Tween<double>(
+                                      begin: 0.96,
+                                      end: 1.0,
+                                    ).animate(animation);
                                     return FadeTransition(
                                       opacity: animation,
-                                      child: child,
+                                      child: SlideTransition(
+                                        position: slide,
+                                        child: ScaleTransition(
+                                          scale: scale,
+                                          alignment: Alignment.centerLeft,
+                                          child: child,
+                                        ),
+                                      ),
                                     );
                                   },
                                   child: KeyedSubtree(
@@ -149,11 +171,35 @@ class _AnimatedAppBarState extends State<AnimatedAppBar> {
                                   ),
                                 ),
                               ),
-                              if (widget.actions.isNotEmpty)
-                                Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: widget.actions,
-                                ),
+                              // Экшены появляются/уходят мягко (fade + scale),
+                              // а не выскакивают мгновенно при смене вкладки.
+                              AnimatedSwitcher(
+                                duration: const Duration(milliseconds: 260),
+                                switchInCurve: Curves.easeOutCubic,
+                                switchOutCurve: Curves.easeInCubic,
+                                transitionBuilder: (child, animation) {
+                                  final scale = Tween<double>(
+                                    begin: 0.55,
+                                    end: 1.0,
+                                  ).animate(animation);
+                                  return FadeTransition(
+                                    opacity: animation,
+                                    child: ScaleTransition(
+                                      scale: scale,
+                                      child: child,
+                                    ),
+                                  );
+                                },
+                                child: widget.actions.isEmpty
+                                    ? const SizedBox(
+                                        key: ValueKey("appbar_actions_none"))
+                                    : Row(
+                                        key: ValueKey(
+                                            "appbar_actions_${widget.tabIndex}"),
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: widget.actions,
+                                      ),
+                              ),
                             ],
                           ),
                         ),

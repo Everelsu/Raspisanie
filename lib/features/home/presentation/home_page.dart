@@ -1,3 +1,4 @@
+import "dart:async";
 import "dart:io";
 
 import "package:flutter/foundation.dart";
@@ -15,7 +16,9 @@ import "../../../core/update/version_utils.dart";
 import "../../../core/widgets/animated_app_bar.dart";
 import "../../../core/widgets/bottom_bar_sheet.dart";
 import "../../games/games_menu.dart";
+import "../../network/presentation/browser_bar.dart";
 import "../../network/presentation/network_page.dart";
+import "../../schedule/domain/models.dart";
 import "../../schedule/presentation/history_calendar_sheet.dart";
 import "../../schedule/presentation/schedule_controller.dart";
 import "../../schedule/presentation/schedule_page.dart";
@@ -46,6 +49,16 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   bool _appUpdateDialogOpen = false;
   bool _isProgrammaticNavigation = false;
   PageController? _pageController;
+
+  /// Контроллеры прокрутки вкладок — для «скролла наверх» по долгому
+  /// нажатию на AppBar (расписание и итоги).
+  final _scheduleScrollCtrl = ScrollController();
+  final _statsScrollCtrl = ScrollController();
+
+  /// Состояние браузерного тулбара. Сам тулбар рисуется здесь — в едином
+  /// AppBar (переключается с заголовком по вкладке), а WebView-логика
+  /// живёт в NetworkPage.
+  final _browserBarCtrl = BrowserBarController();
 
   /// Fullscreen WebView on the network tab — hides bottom bar + in-browser toolbar.
   bool _networkImmersive = false;
@@ -116,6 +129,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 
   @override
   void dispose() {
+    _scheduleScrollCtrl.dispose();
+    _statsScrollCtrl.dispose();
+    _browserBarCtrl.dispose();
     _networkImmersiveNotifier.dispose();
     _pageController?.dispose();
     _pageController = null;
@@ -142,24 +158,29 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     });
   }
 
-  /// Собираем вкладки при каждом [build], чтобы после hot reload и обновления
-  /// [HomePage] всегда передавался актуальный [ScheduleController] (кэш в
-  /// [initState] давал «битые» слоты полей и null у [NetworkPage.controller]).
+  /// Кэш вкладок: одинаковые инстансы виджетов между build'ами — Flutter
+  /// пропускает их пересборку (identical-check), и setState на переключении
+  /// вкладки не перестраивает все четыре страницы разом (это был главный
+  /// источник просадки кадров при переключении).
+  ///
+  /// Кэш сбрасывается при смене controller/fontService (didUpdateWidget) и
+  /// при hot reload (reassemble) — это сохраняет старый фикс «битых» слотов
+  /// после hot reload. NetworkPage пересоздаётся только когда меняется его
+  /// isActive-флаг.
+  List<Widget>? _tabPagesCache;
+  bool? _tabPagesNetworkActive;
+
   List<Widget> _buildTabPages() {
-    return [
-      SchedulePage(
-        key: const ValueKey<Object>("home_tab_schedule"),
-        controller: widget.controller,
-        fontService: widget.fontService,
-      ),
-      StatisticsPage(
-        key: const ValueKey<Object>("home_tab_stats"),
-        controller: widget.controller,
-      ),
-      NetworkPage(
+    final networkActive = _currentIndex == 2;
+    if (_tabPagesCache != null && _tabPagesNetworkActive == networkActive) {
+      return _tabPagesCache!;
+    }
+    final networkPage = RepaintBoundary(
+      child: NetworkPage(
         key: const ValueKey<Object>("network_browser_v2"),
         scheduleController: widget.controller,
-        isActive: _currentIndex == 2,
+        isActive: networkActive,
+        barController: _browserBarCtrl,
         parentImmersiveNotifier: _networkImmersiveNotifier,
         onImmersiveChanged: (v) {
           setState(() {
@@ -168,13 +189,58 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
           });
         },
       ),
-      SettingsPage(
-        key: const ValueKey<Object>("home_tab_settings"),
-        controller: widget.controller,
-        onThemeChanged: widget.onThemeChanged,
-        fontService: widget.fontService,
-      ),
-    ];
+    );
+    if (_tabPagesCache != null) {
+      // ВАЖНО: новый список, а не мутация старого. Старый PageView держит
+      // ссылку на прежний список; мутация на месте делала old.children[2]
+      // == new.children[2], диффер считал ребёнка неизменным и NetworkPage
+      // не получал isActive=true при свайпе на вкладку.
+      _tabPagesCache = List.of(_tabPagesCache!)..[2] = networkPage;
+    } else {
+      _tabPagesCache = [
+        RepaintBoundary(
+          child: SchedulePage(
+            key: const ValueKey<Object>("home_tab_schedule"),
+            controller: widget.controller,
+            fontService: widget.fontService,
+            scrollController: _scheduleScrollCtrl,
+          ),
+        ),
+        RepaintBoundary(
+          child: StatisticsPage(
+            key: const ValueKey<Object>("home_tab_stats"),
+            controller: widget.controller,
+            scrollController: _statsScrollCtrl,
+          ),
+        ),
+        networkPage,
+        RepaintBoundary(
+          child: SettingsPage(
+            key: const ValueKey<Object>("home_tab_settings"),
+            controller: widget.controller,
+            onThemeChanged: widget.onThemeChanged,
+            fontService: widget.fontService,
+          ),
+        ),
+      ];
+    }
+    _tabPagesNetworkActive = networkActive;
+    return _tabPagesCache!;
+  }
+
+  @override
+  void didUpdateWidget(covariant HomePage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.controller != widget.controller ||
+        oldWidget.fontService != widget.fontService) {
+      _tabPagesCache = null;
+    }
+  }
+
+  @override
+  void reassemble() {
+    super.reassemble();
+    _tabPagesCache = null;
   }
 
   /// Фоновый воркер нашёл обновление — сразу запускаем полную проверку
@@ -268,19 +334,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     AnalyticsService.instance.logScreen(_screenIds[index]);
   }
 
-  double _homeBarVisibility() {
-    final controller = _pageController;
-    if (controller == null || !controller.hasClients) {
-      return _currentIndex == 2 ? 0 : 1;
-    }
-    final page = controller.page ?? _currentIndex.toDouble();
-    final distanceToNetwork = (page - 2).abs();
-    if (distanceToNetwork >= 0.55) return 1;
-    return Curves.easeOut.transform(
-      (distanceToNetwork / 0.55).clamp(0.0, 1.0),
-    );
-  }
-
   Future<void> _handleNetworkBottomZoneSwipe(DragEndDetails details) async {
     if (!mounted || _currentIndex != 2 || _networkImmersive || _sheetOpen) {
       return;
@@ -293,6 +346,126 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       return;
     }
     await _goToPage(1);
+  }
+
+  /// Долгое нажатие на AppBar — плавный скролл наверх (расписание и итоги).
+  void _handleAppBarLongPress() {
+    final target = switch (_currentIndex) {
+      0 => _scheduleScrollCtrl,
+      1 => _statsScrollCtrl,
+      _ => null,
+    };
+    if (target == null || !target.hasClients) return;
+    if (target.offset <= 0) return;
+    HapticFeedback.mediumImpact();
+    target.animateTo(
+      0,
+      duration: const Duration(milliseconds: 450),
+      curve: Curves.easeOutCubic,
+    );
+  }
+
+  /// Свайп по AppBar на «Расписании»/«Итогах» — переключение между
+  /// избранными группами (или преподавателями — тот же список).
+  ///
+  /// Реализовано через сырые указатели [Listener], а не
+  /// [GestureDetector.onHorizontalDragEnd]: AppBar лежит поверх [PageView]
+  /// в [Stack], и обычный распознаватель горизонтального жеста конкурирует
+  /// с внутренним drag-распознавателем PageView за ту же арену — PageView
+  /// почти всегда побеждает первым, и свайп по AppBar просто листает вкладки
+  /// вместо переключения группы. [Listener] не участвует в арене жестов и
+  /// получает события в любом случае.
+  Offset? _appBarPointerDownPos;
+
+  void _handleAppBarPointerDown(PointerDownEvent event) {
+    _appBarPointerDownPos = event.position;
+  }
+
+  void _handleAppBarPointerCancel(PointerCancelEvent event) {
+    _appBarPointerDownPos = null;
+  }
+
+  void _handleAppBarPointerUp(PointerUpEvent event) {
+    final start = _appBarPointerDownPos;
+    _appBarPointerDownPos = null;
+    if (start == null) return;
+    if (_currentIndex != 0 && _currentIndex != 1) return;
+    final delta = event.position - start;
+    if (delta.dx.abs() < 48) return;
+    if (delta.dx.abs() < delta.dy.abs() * 1.2) return;
+    _switchFavoriteGroup(delta.dx < 0 ? 1 : -1);
+  }
+
+  void _showAppBarToast(IconData icon, String text) {
+    if (!mounted) return;
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.clearSnackBars();
+    messenger.showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            Icon(icon, size: 16, color: Colors.white),
+            const SizedBox(width: 8),
+            Expanded(child: Text(text)),
+          ],
+        ),
+        duration: const Duration(milliseconds: 1800),
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        margin: const EdgeInsets.fromLTRB(24, 0, 24, 90),
+      ),
+    );
+  }
+
+  /// Переключение между избранными группами/преподавателями по кругу.
+  /// Молча не выходим: каждая причина «не сработало» даёт подсказку —
+  /// иначе фича выглядит сломанной.
+  void _switchFavoriteGroup(int dir) {
+    final ctrl = widget.controller;
+    final isTeacher = ctrl.prefs.isTeacherMode;
+    if (ctrl.groups.isEmpty) {
+      unawaited(ctrl.loadGroups());
+      _showAppBarToast(
+        Icons.hourglass_top_rounded,
+        "Список ещё загружается — попробуй через секунду",
+      );
+      return;
+    }
+    // Только избранные, существующие в текущем списке: у преподавателей
+    // отфильтруются группы, добавленные в режиме студента, и наоборот.
+    final names = ctrl.groups.map((g) => g.name).toSet();
+    final favs = ctrl.prefs.favoriteGroups.where(names.contains).toList()
+      ..sort();
+    if (favs.length < 2) {
+      _showAppBarToast(
+        Icons.star_border_rounded,
+        isTeacher
+            ? "Добавь 2+ преподавателей в избранное — и переключай их свайпом по шапке"
+            : "Добавь 2+ группы в избранное — и переключай их свайпом по шапке",
+      );
+      return;
+    }
+    final currentName =
+        ctrl.selectedGroup?.name ?? ctrl.prefs.selectedGroupName;
+    var idx = favs.indexOf(currentName);
+    idx = idx == -1
+        ? (dir > 0 ? 0 : favs.length - 1)
+        : (idx + dir + favs.length) % favs.length;
+    Group? next;
+    for (final g in ctrl.groups) {
+      if (g.name == favs[idx]) {
+        next = g;
+        break;
+      }
+    }
+    if (next == null || next.name == currentName) return;
+    HapticFeedback.mediumImpact();
+    ctrl.selectGroup(next);
+    unawaited(ctrl.loadSchedule());
+    if (_currentIndex == 1) {
+      unawaited(ctrl.loadStatistics());
+    }
+    _showAppBarToast(Icons.star_rounded, next.name);
   }
 
   @override
@@ -314,37 +487,75 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                 _applyTabChange(index);
               }
             },
-            children: _buildTabPages()
-                .map((page) => RepaintBoundary(child: page))
-                .toList(),
+            children: _buildTabPages(),
           ),
+          // Растворение контента у нижнего края (кроме «Сети» — там WebView).
+          // Дешёвая вуаль цветом фона вместо ShaderMask: без saveLayer на
+          // весь экран, стоимость — один маленький градиент.
+          if (widget.controller.prefs.contentEdgeFade && _currentIndex != 2)
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 0,
+              height: 110,
+              child: IgnorePointer(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.bottomCenter,
+                      end: Alignment.topCenter,
+                      colors: [
+                        Theme.of(context).scaffoldBackgroundColor,
+                        Theme.of(context)
+                            .scaffoldBackgroundColor
+                            .withValues(alpha: 0.0),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          // Единый AppBar на все вкладки: на «Сети» вместо заголовка —
+          // браузерный тулбар (BrowserToolbar). Прячется только в
+          // полноэкранном режиме WebView.
           Positioned(
             top: 0,
             left: 0,
             right: 0,
-            child: AnimatedBuilder(
-              animation: _safePageController,
-              builder: (context, _) {
-                final visibility = _homeBarVisibility();
-                if (visibility <= 0.001) {
-                  return const SizedBox.shrink();
-                }
-                final offsetY = (1 - visibility) * -18;
-                final scale = 0.96 + visibility * 0.04;
-                return Transform.translate(
-                  offset: Offset(0, offsetY),
-                  child: Transform.scale(
-                    scale: scale,
-                    alignment: Alignment.topCenter,
-                    child: Opacity(
-                      opacity: visibility,
-                      child: _HomeAnimatedAppBar(
-                        controller: widget.controller,
-                        title: _titles[_currentIndex],
-                        tabIndex: _currentIndex,
-                        showNotificationsAction: _currentIndex == 3,
-                        onNotificationsTap: () =>
-                            _showNotificationSheet(context),
+            child: Builder(
+              builder: (context) {
+                final hidden = _currentIndex == 2 && _networkImmersive;
+                return IgnorePointer(
+                  ignoring: hidden,
+                  child: AnimatedSlide(
+                    duration: const Duration(milliseconds: 300),
+                    curve: Curves.easeOutCubic,
+                    offset: hidden ? const Offset(0, -1.1) : Offset.zero,
+                    child: AnimatedOpacity(
+                      duration: const Duration(milliseconds: 240),
+                      opacity: hidden ? 0 : 1,
+                      child: Listener(
+                        behavior: HitTestBehavior.translucent,
+                        onPointerDown: _handleAppBarPointerDown,
+                        onPointerUp: _handleAppBarPointerUp,
+                        onPointerCancel: _handleAppBarPointerCancel,
+                        child: GestureDetector(
+                          behavior: HitTestBehavior.translucent,
+                          onLongPress: _currentIndex == 2
+                              ? null
+                              : _handleAppBarLongPress,
+                          child: _HomeAnimatedAppBar(
+                            controller: widget.controller,
+                            title: _titles[_currentIndex],
+                            tabIndex: _currentIndex,
+                            showNotificationsAction: _currentIndex == 3,
+                            onNotificationsTap: () =>
+                                _showNotificationSheet(context),
+                            browserToolbar: _currentIndex == 2
+                                ? BrowserToolbar(controller: _browserBarCtrl)
+                                : null,
+                          ),
+                        ),
                       ),
                     ),
                   ),
@@ -409,7 +620,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         ),
         decoration: BoxDecoration(
           color: surface,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
         ),
         child: ListenableBuilder(
           listenable: ctrl,
@@ -432,12 +643,46 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                         ),
                       ),
                     ),
-                    const SizedBox(height: 12),
-                    Text(
-                      "Уведомления",
-                      style: theme.textTheme.bodySmall,
+                    const SizedBox(height: 14),
+                    Row(
+                      children: [
+                        Container(
+                          width: 40,
+                          height: 40,
+                          alignment: Alignment.center,
+                          decoration: BoxDecoration(
+                            color: theme.colorScheme.primary.withAlpha(25),
+                            shape: BoxShape.circle,
+                          ),
+                          child: Icon(
+                            Icons.notifications_rounded,
+                            size: 20,
+                            color: theme.colorScheme.primary,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                "Уведомления",
+                                style: theme.textTheme.titleLarge
+                                    ?.copyWith(fontWeight: FontWeight.w600),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                "Напоминания о парах и изменениях",
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: theme.colorScheme.onSurfaceVariant,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
                     ),
-                    const SizedBox(height: 10),
+                    const SizedBox(height: 14),
                     Card(
                       clipBehavior: Clip.antiAlias,
                       margin: EdgeInsets.zero,
@@ -447,6 +692,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                           _notificationSwitchTile(
                             theme,
                             setSheetState,
+                            Icons.alarm_rounded,
                             "Напоминания о парах",
                             "Пуш за выбранное время до начала пары (на текущий день)",
                             prefs.notificationsEnabled,
@@ -506,6 +752,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                           _notificationSwitchTile(
                             theme,
                             setSheetState,
+                            Icons.published_with_changes_rounded,
                             "Изменение расписания",
                             "Пуш, когда данные расписания обновились",
                             prefs.notifyScheduleChanges,
@@ -707,15 +954,32 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     ThemeData theme,
     StateSetter
         sheetState, // ignore: unused_parameter — нужен для единой сигнатуры с вызовом из листа
+    IconData icon,
     String title,
     String subtitle,
     bool value,
     ValueChanged<bool> onChanged,
   ) {
+    final cs = theme.colorScheme;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
       child: Row(
         children: [
+          Container(
+            width: 34,
+            height: 34,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: cs.primary.withAlpha(value ? 28 : 14),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              icon,
+              size: 17,
+              color: value ? cs.primary : cs.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(width: 12),
           Expanded(
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -942,6 +1206,7 @@ class _HomeAnimatedAppBar extends StatelessWidget
     required this.tabIndex,
     required this.showNotificationsAction,
     required this.onNotificationsTap,
+    this.browserToolbar,
   });
 
   final ScheduleController controller;
@@ -949,6 +1214,10 @@ class _HomeAnimatedAppBar extends StatelessWidget
   final int tabIndex;
   final bool showNotificationsAction;
   final VoidCallback onNotificationsTap;
+
+  /// Браузерный тулбар для вкладки «Сеть» — подменяет заголовок,
+  /// оставаясь внутри того же самого AppBar.
+  final Widget? browserToolbar;
 
   @override
   Size get preferredSize => const Size.fromHeight(kToolbarHeight);
@@ -963,6 +1232,7 @@ class _HomeAnimatedAppBar extends StatelessWidget
           title: title,
           subtitle: (groupName != null && tabIndex != 3) ? groupName : null,
           tabIndex: tabIndex,
+          titleWidget: browserToolbar,
           actions: [
             if (showNotificationsAction)
               GlassActionButton(
