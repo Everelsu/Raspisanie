@@ -106,6 +106,18 @@ class PreferencesManager {
     }
   }
 
+  /// Растворение контента у нижнего края (как в настройках Noctrinth).
+  bool get contentEdgeFade => _prefs.getBool("content_edge_fade") ?? true;
+  set contentEdgeFade(bool v) => _prefs.setBool("content_edge_fade", v);
+
+  // --- App icon ---
+  /// "auto" — иконка лаунчера следует теме приложения; иначе ключ темы.
+  String get appIcon => _prefs.getString("app_icon") ?? "auto";
+  set appIcon(String v) => _prefs.setString("app_icon", v);
+
+  /// Ключ темы, чья иконка должна стоять в лаунчере прямо сейчас.
+  String get effectiveAppIcon => appIcon == "auto" ? theme : appIcon;
+
   // --- Widget ---
   bool get widgetUseAppTheme => _prefs.getBool("widget_use_app_theme") ?? true;
   set widgetUseAppTheme(bool v) => _prefs.setBool("widget_use_app_theme", v);
@@ -115,6 +127,15 @@ class PreferencesManager {
 
   double get widgetFontScale => _prefs.getDouble("widget_font_scale") ?? 1.0;
   set widgetFontScale(double v) => _prefs.setDouble("widget_font_scale", v);
+
+  bool get widgetShowTime => _prefs.getBool("widget_show_time") ?? true;
+  set widgetShowTime(bool v) => _prefs.setBool("widget_show_time", v);
+
+  bool get widgetShowDetails => _prefs.getBool("widget_show_details") ?? true;
+  set widgetShowDetails(bool v) => _prefs.setBool("widget_show_details", v);
+
+  bool get widgetShowFooter => _prefs.getBool("widget_show_footer") ?? true;
+  set widgetShowFooter(bool v) => _prefs.setBool("widget_show_footer", v);
 
   String get effectiveWidgetTheme => widgetUseAppTheme ? theme : widgetTheme;
 

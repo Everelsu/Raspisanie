@@ -140,14 +140,26 @@ class _Game2048PageState extends State<Game2048Page> {
     return true;
   }
 
-  void _onPanEnd(DragEndDetails d) {
-    final vel = d.velocity.pixelsPerSecond;
-    if (vel.distance < 80) return;
+  // Свайп срабатывает сразу по порогу движения (24px), а не в конце жеста —
+  // управление ощущается мгновенным. Один ход за один жест.
+  Offset _panDelta = Offset.zero;
+  bool _panConsumed = false;
+
+  void _onPanStart(DragStartDetails d) {
+    _panDelta = Offset.zero;
+    _panConsumed = false;
+  }
+
+  void _onPanUpdate(DragUpdateDetails d) {
+    if (_panConsumed) return;
+    _panDelta += d.delta;
+    if (_panDelta.distance < 24) return;
+    _panConsumed = true;
     int dr = 0, dc = 0;
-    if (vel.dx.abs() > vel.dy.abs()) {
-      dc = vel.dx > 0 ? 1 : -1;
+    if (_panDelta.dx.abs() > _panDelta.dy.abs()) {
+      dc = _panDelta.dx > 0 ? 1 : -1;
     } else {
-      dr = vel.dy > 0 ? 1 : -1;
+      dr = _panDelta.dy > 0 ? 1 : -1;
     }
     setState(() => _move(dr, dc));
     HapticFeedback.selectionClick();
@@ -196,7 +208,8 @@ class _Game2048PageState extends State<Game2048Page> {
                     child: Padding(
                       padding: const EdgeInsets.all(16),
                       child: GestureDetector(
-                        onPanEnd: _onPanEnd,
+                        onPanStart: _onPanStart,
+                        onPanUpdate: _onPanUpdate,
                         child: AspectRatio(
                           aspectRatio: 1,
                           child: _GridWidget(grid: _grid, theme: theme),

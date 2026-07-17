@@ -3,6 +3,7 @@ import "package:firebase_crashlytics/firebase_crashlytics.dart";
 import "package:firebase_messaging/firebase_messaging.dart";
 import "package:flutter/material.dart";
 import "package:flutter/foundation.dart";
+import "package:flutter_native_splash/flutter_native_splash.dart";
 import "package:intl/date_symbol_data_local.dart";
 import "package:package_info_plus/package_info_plus.dart";
 import "package:shared_preferences/shared_preferences.dart";
@@ -21,7 +22,10 @@ import "package:workmanager/workmanager.dart";
 import "firebase_options.dart";
 
 void main() async {
-  WidgetsFlutterBinding.ensureInitialized();
+  final binding = WidgetsFlutterBinding.ensureInitialized();
+  // Держим нативный сплэш, пока SplashIntro не отрисует свой первый кадр —
+  // иначе система анимированно убирает свою иконку и знак «выплывает» заново.
+  FlutterNativeSplash.preserve(widgetsBinding: binding);
   FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
 
   if (ScheduleBackgroundWorker.supported) {

@@ -17,6 +17,9 @@ class HomeWidgetService {
     try {
       await HomeWidget.setAppGroupId(_appGroupId);
     } catch (_) {}
+    try {
+      await _saveWidgetFont();
+    } catch (_) {}
   }
 
   static Future<void> updateWidget({
@@ -111,11 +114,23 @@ class HomeWidgetService {
       } else {
         await HomeWidget.saveWidgetData<String>("widget_accent_color", "");
       }
-      await _saveWidgetFontScale(fontScale);
-      await _saveWidgetFont();
-      await _bumpWidgetRefreshToken();
-      await _forceRefreshWidget();
     } catch (_) {}
+    // Отдельные try/catch ниже: сбой на любом из шагов выше (например,
+    // saveWidgetData для расписания) не должен блокировать применение
+    // шрифта и обновление виджета — иначе ошибка молча "съедала" бы их.
+    try {
+      await _saveWidgetFontScale(fontScale);
+    } catch (_) {}
+    try {
+      await _saveWidgetFont();
+    } catch (_) {}
+    try {
+      await _saveWidgetDisplayFlags();
+    } catch (_) {}
+    try {
+      await _bumpWidgetRefreshToken();
+    } catch (_) {}
+    await _forceRefreshWidget();
   }
 
   static Future<void> updateWidgetTheme({
@@ -138,20 +153,45 @@ class HomeWidgetService {
       await _saveWidgetFont();
     } catch (_) {}
     try {
+      await _saveWidgetDisplayFlags();
+    } catch (_) {}
+    try {
       await _bumpWidgetRefreshToken();
     } catch (_) {}
     await _forceRefreshWidget();
   }
 
-  /// Передаёт виджету шрифт приложения. Виджет умеет только шрифты,
-  /// встроенные в APK как ресурсы (Space Grotesk, Ndot 77); шрифты из
-  /// Google Fonts качаются в рантайме — для них остаётся системный.
+  /// Копирует флаги отображения из настроек приложения в хранилище виджета:
+  /// показывать ли время пар, детали (ауд./преподаватель) и строку «Обновлено».
+  static Future<void> _saveWidgetDisplayFlags() async {
+    final sp = await SharedPreferences.getInstance();
+    await HomeWidget.saveWidgetData<String>(
+      "widget_show_time",
+      (sp.getBool("widget_show_time") ?? true) ? "1" : "0",
+    );
+    await HomeWidget.saveWidgetData<String>(
+      "widget_show_details",
+      (sp.getBool("widget_show_details") ?? true) ? "1" : "0",
+    );
+    await HomeWidget.saveWidgetData<String>(
+      "widget_show_footer",
+      (sp.getBool("widget_show_footer") ?? true) ? "1" : "0",
+    );
+  }
+
+  /// Передаёт виджету шрифт приложения. Виджет рисует текст сам через
+  /// WidgetTextRenderer (Bitmap) и умеет все шрифты, для которых в
+  /// android/app/src/main/res/font/ есть .ttf-файл — см. WidgetTextRenderer.typeface.
   static Future<void> _saveWidgetFont() async {
     final sp = await SharedPreferences.getInstance();
     final selected = sp.getString("selected_font") ?? "";
     final key = switch (selected) {
       "spaceGrotesk" || "spaceGroteskLocal" => "grotesk",
       "ndot77" => "ndot",
+      "nunito" => "nunito",
+      "jost" => "jost",
+      "manrope" => "manrope",
+      "robotoSlab" => "robotoSlab",
       _ => "",
     };
     await HomeWidget.saveWidgetData<String>("widget_font", key);

@@ -3,11 +3,12 @@ package com.example.raspiflutter
 import android.content.Context
 import android.content.Intent
 import android.graphics.Color
-import android.util.TypedValue
+import android.graphics.Typeface
 import android.view.View
 import android.widget.RemoteViews
 import android.widget.RemoteViewsService
 import java.util.Calendar
+import kotlin.math.roundToInt
 
 class ScheduleWidgetRemoteService : RemoteViewsService() {
     override fun onGetViewFactory(intent: Intent): RemoteViewsFactory {
@@ -48,6 +49,19 @@ private class ScheduleWidgetFactory(
     private var accentColor: Int? = null
     private var isToday: Boolean = false
     private var fontKey: String = ""
+    private var columnWidthPx: Int = 400
+    // Флаги отображения из настроек приложения (см. HomeWidgetService).
+    private var showTime: Boolean = true
+    private var showDetails: Boolean = true
+    private var regularTypeface: Typeface = Typeface.DEFAULT
+    private var boldTypeface: Typeface = Typeface.DEFAULT_BOLD
+
+    // Отступы вокруг колонки время/предмет/детали — см. schedule_widget_list_item.xml.
+    private val rowPaddingStartDp = 12
+    private val rowPaddingEndDp = 10
+    private val badgeSizeDp = 32
+    private val columnMarginStartDp = 11
+    private fun dp(v: Int) = (v * context.resources.displayMetrics.density).roundToInt()
 
     override fun onCreate() {
         loadData()
@@ -77,7 +91,7 @@ private class ScheduleWidgetFactory(
         val secondColor = if (dim) withAlpha(subTextColor, 90) else subTextColor
         val timeColor = if (status == RowStatus.CURRENT) accent else secondColor
 
-        return RemoteViews(context.packageName, widgetItemLayoutRes(fontKey)).apply {
+        return RemoteViews(context.packageName, R.layout.schedule_widget_list_item).apply {
             // Фон карточки: у текущей пары — акцентная заливка, у остальных —
             // едва заметная подложка цветом текста (onSurface с малой альфой).
             if (status == RowStatus.CURRENT) {
@@ -89,60 +103,71 @@ private class ScheduleWidgetFactory(
             }
 
             // Бейдж номера пары.
-            setTextViewText(R.id.widget_item_num, if (row.number.isEmpty()) "•" else row.number)
+            val numText = if (row.number.isEmpty()) "•" else row.number
+            val numColor: Int
             when {
                 status == RowStatus.CURRENT -> {
                     setInt(R.id.widget_item_badge, "setColorFilter", accent)
                     setInt(R.id.widget_item_badge, "setImageAlpha", 255)
-                    setTextColor(R.id.widget_item_num, contrastOn(accent))
+                    numColor = contrastOn(accent)
                 }
                 status == RowStatus.UPCOMING && isNextNumber(row.number) -> {
                     setInt(R.id.widget_item_badge, "setColorFilter", accent)
                     setInt(R.id.widget_item_badge, "setImageAlpha", 150)
-                    setTextColor(R.id.widget_item_num, contrastOn(accent))
+                    numColor = contrastOn(accent)
                 }
                 else -> {
                     setInt(R.id.widget_item_badge, "setColorFilter", textColor)
                     setInt(R.id.widget_item_badge, "setImageAlpha", if (dim) 12 else 24)
-                    setTextColor(R.id.widget_item_num, mainColor)
+                    numColor = mainColor
                 }
             }
+            setImageViewBitmap(
+                R.id.widget_item_num,
+                WidgetTextRenderer.render(
+                    context, numText, boldTypeface, 14f, numColor,
+                    maxWidthPx = dp(badgeSizeDp), maxLines = 1, fontScale = fontScale,
+                ),
+            )
 
             // Время над предметом, как в приложении; без времени — скрываем.
-            if (row.start.isNotEmpty() && row.end.isNotEmpty()) {
-                setTextViewText(R.id.widget_item_time, "${row.start}–${row.end}")
-                setViewVisibility(R.id.widget_item_time, View.VISIBLE)
-            } else if (row.start.isNotEmpty()) {
-                setTextViewText(R.id.widget_item_time, row.start)
+            val timeText = when {
+                row.start.isNotEmpty() && row.end.isNotEmpty() -> "${row.start}–${row.end}"
+                row.start.isNotEmpty() -> row.start
+                else -> null
+            }
+            if (timeText != null && showTime) {
+                setImageViewBitmap(
+                    R.id.widget_item_time,
+                    WidgetTextRenderer.render(
+                        context, timeText, regularTypeface, 11f, timeColor,
+                        maxWidthPx = columnWidthPx, maxLines = 1, fontScale = fontScale,
+                    ),
+                )
                 setViewVisibility(R.id.widget_item_time, View.VISIBLE)
             } else {
                 setViewVisibility(R.id.widget_item_time, View.GONE)
             }
-            setTextViewText(R.id.widget_item_subject, row.subject)
-            if (row.details.isNotEmpty()) {
-                setTextViewText(R.id.widget_item_details, row.details)
+            setImageViewBitmap(
+                R.id.widget_item_subject,
+                WidgetTextRenderer.render(
+                    context, row.subject, boldTypeface, 13f, mainColor,
+                    maxWidthPx = columnWidthPx, maxLines = 2, fontScale = fontScale,
+                ),
+            )
+            if (row.details.isNotEmpty() && showDetails) {
+                setImageViewBitmap(
+                    R.id.widget_item_details,
+                    WidgetTextRenderer.render(
+                        context, row.details, regularTypeface, 11f, secondColor,
+                        maxWidthPx = columnWidthPx, maxLines = 4, fontScale = fontScale,
+                    ),
+                )
                 setViewVisibility(R.id.widget_item_details, View.VISIBLE)
             } else {
                 setViewVisibility(R.id.widget_item_details, View.GONE)
             }
 
-            setTextColor(R.id.widget_item_time, timeColor)
-            setTextColor(R.id.widget_item_subject, mainColor)
-            setTextColor(R.id.widget_item_details, secondColor)
-
-            // Полоска-индикатор слева: видима только у текущей пары.
-            if (status == RowStatus.CURRENT) {
-                setInt(R.id.widget_item_stripe, "setColorFilter", accent)
-                setInt(R.id.widget_item_stripe, "setImageAlpha", 255)
-            } else {
-                setInt(R.id.widget_item_stripe, "setColorFilter", textColor)
-                setInt(R.id.widget_item_stripe, "setImageAlpha", 0)
-            }
-
-            setTextViewTextSize(R.id.widget_item_num, TypedValue.COMPLEX_UNIT_SP, 14f * fontScale)
-            setTextViewTextSize(R.id.widget_item_time, TypedValue.COMPLEX_UNIT_SP, 11f * fontScale)
-            setTextViewTextSize(R.id.widget_item_subject, TypedValue.COMPLEX_UNIT_SP, 13f * fontScale)
-            setTextViewTextSize(R.id.widget_item_details, TypedValue.COMPLEX_UNIT_SP, 11f * fontScale)
         }
     }
 
@@ -193,7 +218,17 @@ private class ScheduleWidgetFactory(
         accentColor = if (!accentStr.isNullOrEmpty()) accentStr.toIntOrNull() else null
         fontKey = intent.data?.getQueryParameter("font")?.trim()
             ?: prefs.getString("widget_font", "") ?: ""
+        regularTypeface = WidgetTextRenderer.typeface(context, fontKey, bold = false)
+        boldTypeface = WidgetTextRenderer.typeface(context, fontKey, bold = true)
+        val contentWidthPx = intent.data?.getQueryParameter("width")?.toIntOrNull()
+            ?: prefs.getInt("widget_last_content_width_px", dp(250))
+        columnWidthPx = (
+            contentWidthPx - dp(rowPaddingStartDp) - dp(badgeSizeDp) -
+                dp(columnMarginStartDp) - dp(rowPaddingEndDp)
+            ).coerceAtLeast(dp(60))
         isToday = isDateToday(prefs.getString("widget_date", "") ?: "")
+        showTime = prefs.getString("widget_show_time", "1") != "0"
+        showDetails = prefs.getString("widget_show_details", "1") != "0"
         textColor = when (themeKey) {
             "light" -> Color.parseColor("#111111")
             "green" -> Color.parseColor("#E7FBEF")

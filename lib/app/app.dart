@@ -5,6 +5,8 @@ import "package:shared_preferences/shared_preferences.dart";
 import "../core/services/analytics_service.dart";
 import "../core/notifications/notification_service.dart";
 import "../core/services/font_service.dart";
+import "../core/services/app_icon_service.dart";
+import "../core/widgets/splash_intro.dart";
 import "../features/home/presentation/home_page.dart";
 import "../features/schedule/presentation/schedule_controller.dart";
 import "theme.dart";
@@ -34,7 +36,12 @@ class _RaspiFlutterAppState extends State<RaspiFlutterApp>
     _controller = ScheduleController(prefs: widget.prefs);
     _themeKey = _controller.prefs.theme;
     _accentColorValue = _controller.prefs.accentColorForTheme(_themeKey);
-    WidgetsBinding.instance.addPostFrameCallback((_) => _controller.init());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _controller.init();
+      // Синхронизирует alias иконки и тему системного сплэша (API 33+)
+      // со следующим запуском — идемпотентно.
+      AppIconService.setIcon(_controller.prefs.effectiveAppIcon);
+    });
   }
 
   @override
@@ -101,10 +108,15 @@ class _RaspiFlutterAppState extends State<RaspiFlutterApp>
               child: child ?? const SizedBox.shrink(),
             );
           },
-          home: HomePage(
-            controller: _controller,
-            onThemeChanged: _onThemeChanged,
-            fontService: widget.fontService,
+          home: SplashIntro(
+            // Сплэш стартует в цветах темы, чья иконка стоит в лаунчере,
+            // и перетекает в выбранную тему.
+            fromColors: AppThemes.colorsFor(_controller.prefs.effectiveAppIcon),
+            child: HomePage(
+              controller: _controller,
+              onThemeChanged: _onThemeChanged,
+              fontService: widget.fontService,
+            ),
           ),
         );
       },

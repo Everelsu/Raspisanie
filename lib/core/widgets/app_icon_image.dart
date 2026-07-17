@@ -1,30 +1,31 @@
 import "package:flutter/material.dart";
 
-import "../constants/app_assets.dart";
+import "../../app/theme.dart" show AppThemeColors;
+import "refresh_logo_mark.dart";
 
-/// Renders the app launcher artwork from [AppAssets.appIconPng] (circle crop).
+/// Рисует иконку приложения (круг + знак) в цветах темы [colors] —
+/// всегда совпадает с тем, что реально стоит в лаунчере.
 class AppIconImage extends StatelessWidget {
   const AppIconImage({
     super.key,
+    required this.colors,
     this.size = 48,
-    this.fit = BoxFit.cover,
   });
 
+  final AppThemeColors colors;
   final double size;
-  final BoxFit fit;
 
   @override
   Widget build(BuildContext context) {
-    return ClipOval(
-      child: SizedBox(
-        width: size,
-        height: size,
-        child: Image.asset(
-          AppAssets.appIconPng,
-          fit: fit,
-          filterQuality: FilterQuality.high,
-          gaplessPlayback: true,
-        ),
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        color: colors.surface,
+        shape: BoxShape.circle,
+      ),
+      child: Center(
+        child: RefreshLogoMark(size: size * 0.44, color: colors.primary),
       ),
     );
   }

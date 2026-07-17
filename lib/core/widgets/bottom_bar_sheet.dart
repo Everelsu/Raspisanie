@@ -1,7 +1,7 @@
 import 'dart:math' as math;
-import 'dart:ui';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 class BottomBarWithSheet extends StatefulWidget {
   const BottomBarWithSheet({
@@ -210,10 +210,12 @@ class _BottomBarWithSheetState extends State<BottomBarWithSheet>
         cs.onSurfaceVariant;
     final barH = _effectiveBarHeight(context);
 
-    // Единый цвет фона для бара и шторки
+    // Единый цвет фона для бара и шторки. Почти непрозрачный:
+    // BackdropFilter убран — blur под баром пере-рендерил контент каждый
+    // кадр скролла и был главным источником лагов.
     final sharedBg = Color.alphaBlend(
       cs.primary.withAlpha(isDark ? 16 : 10),
-      navBg.withAlpha(isDark ? 210 : 220),
+      navBg.withAlpha(isDark ? 242 : 246),
     );
 
     return SafeArea(
@@ -262,61 +264,66 @@ class _BottomBarWithSheetState extends State<BottomBarWithSheet>
         return LayoutBuilder(builder: (context, pc) {
           final actualH = math.min(h, pc.maxHeight);
           if (actualH < 1) return const SizedBox.shrink();
+          final contentH = math.min(maxSheet, pc.maxHeight.isFinite
+              ? pc.maxHeight
+              : maxSheet);
 
           return ClipRRect(
             // Верхние углы совпадают с радиусом бара
             borderRadius: const BorderRadius.all(Radius.circular(_radius)),
-            child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
-              child: Container(
-                height: actualH,
-                width: double.infinity,
-                decoration: BoxDecoration(
-                  color: bg,
-                  // Тонкий бордер — тот же стиль что у бара
-                  border: Border.all(
-                    color: cs.primary.withAlpha(isDark ? 28 : 18),
-                    width: 0.8,
-                  ),
-                  borderRadius: const BorderRadius.all(Radius.circular(_radius)),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withAlpha(isDark ? 42 : 22),
-                      blurRadius: 20,
-                      spreadRadius: -4,
-                      offset: const Offset(0, 6),
-                    ),
-                  ],
+            child: Container(
+              height: actualH,
+              width: double.infinity,
+              decoration: BoxDecoration(
+                color: bg,
+                // Тонкий бордер — тот же стиль что у бара
+                border: Border.all(
+                  color: cs.primary.withAlpha(isDark ? 28 : 18),
+                  width: 0.8,
                 ),
-                child: GestureDetector(
-                  behavior: HitTestBehavior.translucent,
-                  onVerticalDragStart: (_) {},
-                  onVerticalDragUpdate: (d) {
-                    if (!widget.sheetOpen) return;
-                    final next =
-                        (_sheetCtrl.value - (d.delta.dy / maxSheet))
-                            .clamp(0.0, 1.0);
-                    _sheetCtrl.value = next;
-                    _btnCtrl.value = next;
-                  },
-                  onVerticalDragEnd: (d) {
-                    final v = d.primaryVelocity ?? 0;
-                    final shouldClose =
-                        _sheetCtrl.value < _closeSnapThreshold || v > 700;
-                    if (shouldClose && widget.sheetOpen && !_closingByDrag) {
-                      _triggerDragClose();
-                      return;
-                    }
-                    if (widget.sheetOpen) {
-                      _sheetCtrl.forward();
-                      _btnCtrl.forward();
-                    }
-                  },
-                  child: LayoutBuilder(builder: (context, constraints) {
-                    if (constraints.maxHeight < _sheetHandleBlockH) {
-                      return const SizedBox.expand();
-                    }
-                    return Column(
+                borderRadius: const BorderRadius.all(Radius.circular(_radius)),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withAlpha(isDark ? 42 : 22),
+                    blurRadius: 20,
+                    spreadRadius: -4,
+                    offset: const Offset(0, 6),
+                  ),
+                ],
+              ),
+              child: GestureDetector(
+                behavior: HitTestBehavior.translucent,
+                onVerticalDragStart: (_) {},
+                onVerticalDragUpdate: (d) {
+                  if (!widget.sheetOpen) return;
+                  final next =
+                      (_sheetCtrl.value - (d.delta.dy / maxSheet))
+                          .clamp(0.0, 1.0);
+                  _sheetCtrl.value = next;
+                  _btnCtrl.value = next;
+                },
+                onVerticalDragEnd: (d) {
+                  final v = d.primaryVelocity ?? 0;
+                  final shouldClose =
+                      _sheetCtrl.value < _closeSnapThreshold || v > 700;
+                  if (shouldClose && widget.sheetOpen && !_closingByDrag) {
+                    _triggerDragClose();
+                    return;
+                  }
+                  if (widget.sheetOpen) {
+                    _sheetCtrl.forward();
+                    _btnCtrl.forward();
+                  }
+                },
+                // OverflowBox держит контент на полной высоте шторки:
+                // при анимации высоты меняется только клип, а календарь
+                // не перелэйаутится каждый кадр (главный источник лагов).
+                child: ClipRect(
+                  child: OverflowBox(
+                    alignment: Alignment.topCenter,
+                    minHeight: contentH,
+                    maxHeight: contentH,
+                    child: Column(
                       children: [
                         if (showHandle)
                           Padding(
@@ -334,13 +341,13 @@ class _BottomBarWithSheetState extends State<BottomBarWithSheet>
                             ignoring: contentOpacity < 0.98,
                             child: Opacity(
                               opacity: contentOpacity,
-                              child: child!,
+                              child: RepaintBoundary(child: child!),
                             ),
                           ),
                         ),
                       ],
-                    );
-                  }),
+                    ),
+                  ),
                 ),
               ),
             ),
@@ -370,11 +377,10 @@ class _BottomBarWithSheetState extends State<BottomBarWithSheet>
       WidgetsBinding.instance.addPostFrameCallback((_) => _measureSlots());
     }
 
-    return ClipRRect(
+    return RepaintBoundary(
+      child: ClipRRect(
       borderRadius: BorderRadius.circular(_radius),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
-        child: Container(
+      child: Container(
           decoration: BoxDecoration(
             color: bg,
             borderRadius: BorderRadius.circular(_radius),
@@ -507,7 +513,10 @@ class _BottomBarWithSheetState extends State<BottomBarWithSheet>
           child: InkWell(
             onTap: () => widget.onIndexChanged(i),
             onLongPress: widget.onNavItemLongPress != null
-                ? () => widget.onNavItemLongPress!(i)
+                ? () {
+                    HapticFeedback.mediumImpact();
+                    widget.onNavItemLongPress!(i);
+                  }
                 : null,
             splashFactory: InkRipple.splashFactory,
             splashColor: primary.withAlpha(35),

@@ -1,4 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="ic_launcher_background">#000000</color>
+    <color name="ic_launcher_background">#171717</color>
+    <color name="ic_launcher_bg_dark">#171717</color>
+    <color name="ic_launcher_bg_light">#F2F2F7</color>
+    <color name="ic_launcher_bg_green">#0C1A0C</color>
+    <color name="ic_launcher_bg_pink">#140A10</color>
+    <color name="ic_launcher_bg_blue">#0A1620</color>
+    <color name="ic_launcher_bg_gray">#18181A</color>
+    <color name="ic_launcher_bg_purple">#120D1F</color>
+    <color name="ic_launcher_bg_orange">#211307</color>
+    <color name="ic_launcher_bg_red">#1A0A0A</color>
+    <color name="ic_launcher_bg_teal">#1A1807</color>
 </resources>

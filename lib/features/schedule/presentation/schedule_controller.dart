@@ -3,6 +3,7 @@ import "dart:async";
 import "package:flutter/foundation.dart";
 import "package:shared_preferences/shared_preferences.dart";
 
+import "../../../app/theme.dart" show AppThemes;
 import "../../../core/notifications/notification_service.dart" show Lesson, NotificationService;
 import "../../../core/update/github_urls.dart";
 import "../../../core/widgets/home_widget_service.dart";
@@ -388,6 +389,14 @@ class ScheduleController extends ChangeNotifier {
     notifyListeners();
   }
 
+  // Полоска-акцент в виджете красится всегда: свой цвет темы, если
+  // пользователь не задал кастомный акцент — иначе виджет рисует её
+  // белой (Kotlin-сторона фолбэчится на themeTitleColor, который для
+  // тёмной темы = белый, и полоска не смотрится).
+  int _widgetAccentColor(String widgetTheme) =>
+      _prefsManager.accentColorForTheme(widgetTheme) ??
+      AppThemes.colorsFor(widgetTheme).primary.toARGB32();
+
   void _updateHomeWidget() {
     final widgetTheme = _prefsManager.effectiveWidgetTheme;
     HomeWidgetService.updateWidget(
@@ -396,7 +405,7 @@ class ScheduleController extends ChangeNotifier {
       themeKey: widgetTheme,
       fontScale: _prefsManager.widgetFontScale,
       college: college,
-      accentColorValue: _prefsManager.accentColorForTheme(widgetTheme),
+      accentColorValue: _widgetAccentColor(widgetTheme),
     );
   }
 
@@ -409,7 +418,7 @@ class ScheduleController extends ChangeNotifier {
     HomeWidgetService.updateWidgetTheme(
       themeKey: widgetTheme,
       fontScale: _prefsManager.widgetFontScale,
-      accentColorValue: _prefsManager.accentColorForTheme(widgetTheme),
+      accentColorValue: _widgetAccentColor(widgetTheme),
     );
   }
 

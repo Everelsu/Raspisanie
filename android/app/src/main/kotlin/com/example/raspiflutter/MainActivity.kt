@@ -1,6 +1,8 @@
 package com.example.raspiflutter
 
+import android.content.ComponentName
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
@@ -14,6 +16,21 @@ class MainActivity : FlutterActivity() {
 
     private val channel = "com.example.raspiflutter/install_apk"
     private val settingsChannel = "com.example.raspiflutter/system_settings"
+    private val iconChannel = "com.example.raspiflutter/app_icon"
+
+    // Тема → alias из AndroidManifest. Включён всегда ровно один.
+    private val iconAliases = mapOf(
+        "dark" to "IconDark",
+        "light" to "IconLight",
+        "green" to "IconGreen",
+        "pink" to "IconPink",
+        "blue" to "IconBlue",
+        "gray" to "IconGray",
+        "purple" to "IconPurple",
+        "orange" to "IconOrange",
+        "red" to "IconRed",
+        "teal" to "IconTeal",
+    )
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -26,6 +43,25 @@ class MainActivity : FlutterActivity() {
                 }
                 startActivity(intent)
                 result.success(null)
+            } else {
+                result.notImplemented()
+            }
+        }
+
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, iconChannel).setMethodCallHandler { call, result ->
+            if (call.method == "setIcon") {
+                val theme = call.arguments as? String
+                val alias = iconAliases[theme]
+                if (alias == null) {
+                    result.error("INVALID_THEME", "Unknown theme: $theme", null)
+                    return@setMethodCallHandler
+                }
+                try {
+                    setLauncherIcon(alias)
+                    result.success(null)
+                } catch (e: Exception) {
+                    result.error("SET_ICON_FAILED", e.message, null)
+                }
             } else {
                 result.notImplemented()
             }
@@ -48,6 +84,48 @@ class MainActivity : FlutterActivity() {
                 }
             } else {
                 result.notImplemented()
+            }
+        }
+    }
+
+    private fun setLauncherIcon(enabledAlias: String) {
+        val pm = packageManager
+        // В debug-сборках IconDark остаётся включённым всегда: flutter run
+        // стартует именно его (первый LAUNCHER в манифесте), а выключенный
+        // компонент нельзя вернуть через adb на новых Android — пришлось бы
+        // переустанавливать приложение. Цена — вторая иконка на дев-устройстве.
+        val isDebuggable =
+            (applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0
+        fun setState(alias: String, enabled: Boolean) {
+            val component = ComponentName(packageName, "$packageName.$alias")
+            val state = if (enabled) {
+                PackageManager.COMPONENT_ENABLED_STATE_ENABLED
+            } else {
+                PackageManager.COMPONENT_ENABLED_STATE_DISABLED
+            }
+            // DONT_KILL_APP — иначе система убьёт приложение при переключении.
+            pm.setComponentEnabledSetting(component, state, PackageManager.DONT_KILL_APP)
+        }
+        // Сначала включаем новый alias, потом выключаем остальные: если процесс
+        // умрёт посреди цикла, в лаунчере всегда останется хотя бы одна иконка.
+        setState(enabledAlias, true)
+        for (alias in iconAliases.values) {
+            if (alias == enabledAlias) continue
+            val keep = isDebuggable && alias == "IconDark"
+            setState(alias, keep)
+        }
+        // Сплэш следующего запуска — в цвет иконки: первый кадр системы
+        // совпадает с оверлеем SplashIntro, серой вспышки нет. API 33+.
+        if (Build.VERSION.SDK_INT >= 33) {
+            // Icon<Theme> → LaunchTheme<Theme>
+            val styleName = "LaunchTheme" + enabledAlias.removePrefix("Icon")
+            val styleId = resources.getIdentifier(styleName, "style", packageName)
+            if (styleId != 0) {
+                try {
+                    splashScreen.setSplashScreenTheme(styleId)
+                } catch (_: Exception) {
+                    // Не критично — останется дефолтный тёмный сплэш.
+                }
             }
         }
     }

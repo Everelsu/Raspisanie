@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Сплэш в цвет темы: назначается через SplashScreen.setSplashScreenTheme (API 33+)
+     из MainActivity.setLauncherIcon вместе со сменой иконки. Не трогается
+     flutter_native_splash (он пишет только styles.xml). -->
+<resources>
+    <style name="LaunchThemeDark" parent="LaunchTheme">
+        <item name="android:windowBackground">#101010</item>
+        <item name="android:windowSplashScreenBackground">#101010</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/splash_mark_dark</item>
+        <item name="android:windowSplashScreenIconBackgroundColor">#101010</item>
+    </style>
+    <style name="LaunchThemeLight" parent="LaunchTheme">
+        <item name="android:windowBackground">#F2F2F7</item>
+        <item name="android:windowSplashScreenBackground">#F2F2F7</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/splash_mark_light</item>
+        <item name="android:windowSplashScreenIconBackgroundColor">#F2F2F7</item>
+    </style>
+    <style name="LaunchThemeGreen" parent="LaunchTheme">
+        <item name="android:windowBackground">#0C1A0C</item>
+        <item name="android:windowSplashScreenBackground">#0C1A0C</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/splash_mark_green</item>
+        <item name="android:windowSplashScreenIconBackgroundColor">#0C1A0C</item>
+    </style>
+    <style name="LaunchThemePink" parent="LaunchTheme">
+        <item name="android:windowBackground">#140A10</item>
+        <item name="android:windowSplashScreenBackground">#140A10</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/splash_mark_pink</item>
+        <item name="android:windowSplashScreenIconBackgroundColor">#140A10</item>
+    </style>
+    <style name="LaunchThemeBlue" parent="LaunchTheme">
+        <item name="android:windowBackground">#0A1620</item>
+        <item name="android:windowSplashScreenBackground">#0A1620</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/splash_mark_blue</item>
+        <item name="android:windowSplashScreenIconBackgroundColor">#0A1620</item>
+    </style>
+    <style name="LaunchThemeGray" parent="LaunchTheme">
+        <item name="android:windowBackground">#18181A</item>
+        <item name="android:windowSplashScreenBackground">#18181A</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/splash_mark_gray</item>
+        <item name="android:windowSplashScreenIconBackgroundColor">#18181A</item>
+    </style>
+    <style name="LaunchThemePurple" parent="LaunchTheme">
+        <item name="android:windowBackground">#120D1F</item>
+        <item name="android:windowSplashScreenBackground">#120D1F</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/splash_mark_purple</item>
+        <item name="android:windowSplashScreenIconBackgroundColor">#120D1F</item>
+    </style>
+    <style name="LaunchThemeOrange" parent="LaunchTheme">
+        <item name="android:windowBackground">#211307</item>
+        <item name="android:windowSplashScreenBackground">#211307</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/splash_mark_orange</item>
+        <item name="android:windowSplashScreenIconBackgroundColor">#211307</item>
+    </style>
+    <style name="LaunchThemeRed" parent="LaunchTheme">
+        <item name="android:windowBackground">#1A0A0A</item>
+        <item name="android:windowSplashScreenBackground">#1A0A0A</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/splash_mark_red</item>
+        <item name="android:windowSplashScreenIconBackgroundColor">#1A0A0A</item>
+    </style>
+    <style name="LaunchThemeTeal" parent="LaunchTheme">
+        <item name="android:windowBackground">#1A1807</item>
+        <item name="android:windowSplashScreenBackground">#1A1807</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/splash_mark_teal</item>
+        <item name="android:windowSplashScreenIconBackgroundColor">#1A1807</item>
+    </style>
+</resources>

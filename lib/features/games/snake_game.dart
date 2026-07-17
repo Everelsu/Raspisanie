@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 // Position encoded as x * 1000 + y (grid ≤ 999 in each dimension)
@@ -19,8 +20,11 @@ class SnakePage extends StatefulWidget {
 class _SnakePageState extends State<SnakePage> with WidgetsBindingObserver {
   static const int kCols = 22;
   static const int kRows = 30;
-  static const Duration kTick = Duration(milliseconds: 140);
   static const String _kBestKey = 'snake_best_score';
+
+  /// Скорость растёт со счётом: 140 мс на старте, минимум 75 мс.
+  Duration get _tickDuration =>
+      Duration(milliseconds: (140 - _score * 3).clamp(75, 140));
 
   int _dirX = 1, _dirY = 0;
   int _pendingDirX = 1, _pendingDirY = 0;
@@ -82,7 +86,12 @@ class _SnakePageState extends State<SnakePage> with WidgetsBindingObserver {
   void _startGame() {
     _started = true;
     _paused = false;
-    _timer = Timer.periodic(kTick, (_) => _tick());
+    _restartTimer();
+  }
+
+  void _restartTimer() {
+    _timer?.cancel();
+    _timer = Timer.periodic(_tickDuration, (_) => _tick());
   }
 
   void _pause() {
@@ -94,7 +103,7 @@ class _SnakePageState extends State<SnakePage> with WidgetsBindingObserver {
   void _resume() {
     if (!_paused) return;
     setState(() => _paused = false);
-    _timer = Timer.periodic(kTick, (_) => _tick());
+    _restartTimer();
   }
 
   void _togglePause() {
@@ -138,11 +147,14 @@ class _SnakePageState extends State<SnakePage> with WidgetsBindingObserver {
       _snake.insert(0, newHead);
       if (newHead == _food) {
         _score++;
+        HapticFeedback.lightImpact();
         if (_score > _best) {
           _best = _score;
           _saveBest(_best);
         }
         _spawnFood();
+        // Змейка ускоряется с каждым съеденным яблоком.
+        _restartTimer();
       } else {
         _snake.removeLast();
       }
@@ -151,6 +163,7 @@ class _SnakePageState extends State<SnakePage> with WidgetsBindingObserver {
 
   void _triggerGameOver() {
     _timer?.cancel();
+    HapticFeedback.heavyImpact();
     setState(() => _gameOver = true);
   }
 
@@ -166,11 +179,26 @@ class _SnakePageState extends State<SnakePage> with WidgetsBindingObserver {
     _pendingDirY = dy;
   }
 
-  void _handleSwipe(Offset vel) {
-    if (vel.dx.abs() > vel.dy.abs()) {
-      _changeDirection(vel.dx > 0 ? 1 : -1, 0);
+  // Свайп срабатывает сразу по порогу движения (18px), а не в конце жеста:
+  // поворот применяется мгновенно, управление не «запаздывает».
+  Offset _panDelta = Offset.zero;
+  bool _panConsumed = false;
+
+  void _onPanStart(DragStartDetails d) {
+    _panDelta = Offset.zero;
+    _panConsumed = false;
+  }
+
+  void _onPanUpdate(DragUpdateDetails d) {
+    if (_panConsumed) return;
+    _panDelta += d.delta;
+    if (_panDelta.distance < 18) return;
+    _panConsumed = true;
+    HapticFeedback.selectionClick();
+    if (_panDelta.dx.abs() > _panDelta.dy.abs()) {
+      _changeDirection(_panDelta.dx > 0 ? 1 : -1, 0);
     } else {
-      _changeDirection(0, vel.dy > 0 ? 1 : -1);
+      _changeDirection(0, _panDelta.dy > 0 ? 1 : -1);
     }
   }
 
@@ -224,7 +252,8 @@ class _SnakePageState extends State<SnakePage> with WidgetsBindingObserver {
         children: [
           Expanded(
             child: GestureDetector(
-              onPanEnd: (d) => _handleSwipe(d.velocity.pixelsPerSecond),
+              onPanStart: _onPanStart,
+              onPanUpdate: _onPanUpdate,
               onTap: () {
                 if (_paused) { _resume(); return; }
                 if (!_started && !_gameOver) _startGame();
@@ -440,7 +469,10 @@ class _ABtn extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      onTap: onTap,
+      onTap: () {
+        HapticFeedback.selectionClick();
+        onTap();
+      },
       child: Container(
         width: size,
         height: size,
