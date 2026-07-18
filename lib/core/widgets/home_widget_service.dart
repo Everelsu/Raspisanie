@@ -22,10 +22,10 @@ int widgetAccentColorFor(PreferencesManager prefs, String widgetTheme) {
 
 class HomeWidgetService {
   static const _androidProviderFull =
-      "com.example.raspiflutter.ScheduleWidgetProvider";
+      "com.relsev.raspisanie.ScheduleWidgetProvider";
   static const _androidProviderShort = "ScheduleWidgetProvider";
   static const _iosWidgetKind = "ScheduleWidget";
-  static const _appGroupId = "group.com.example.raspiflutter";
+  static const _appGroupId = "group.com.relsev.raspisanie";
   static const _itemSeparator = "\u241E";
   static const _fieldSeparator = "\u241F";
 

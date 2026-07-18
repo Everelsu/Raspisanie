@@ -9,7 +9,7 @@ plugins {
 }
 
 android {
-    namespace = "com.example.raspiflutter"
+    namespace = "com.relsev.raspisanie"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
@@ -39,7 +39,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.example.raspiflutter"
+        applicationId = "com.relsev.raspisanie"
         minSdk = flutter.minSdkVersion
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode

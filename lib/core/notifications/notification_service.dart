@@ -420,7 +420,7 @@ class NotificationService {
   Future<void> openNotificationSettings() async {
     if (Platform.isAndroid) {
       try {
-        await const MethodChannel("com.example.raspiflutter/system_settings")
+        await const MethodChannel("com.relsev.raspisanie/system_settings")
             .invokeMethod<void>("openNotificationSettings");
       } catch (e) {
         debugPrint("NotificationService: openNotificationSettings error: $e");

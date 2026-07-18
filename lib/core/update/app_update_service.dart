@@ -3,7 +3,7 @@ import "dart:io";
 import "package:flutter/foundation.dart";
 import "package:flutter/services.dart";
 
-const MethodChannel _channel = MethodChannel("com.example.raspiflutter/install_apk");
+const MethodChannel _channel = MethodChannel("com.relsev.raspisanie/install_apk");
 
 /// Запускает установку APK по пути. Только Android.
 /// Файл не удаляем сразу — установщик читает его асинхронно; кэш почистится при необходимости.

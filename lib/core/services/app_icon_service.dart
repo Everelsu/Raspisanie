@@ -5,7 +5,7 @@ import 'package:flutter/services.dart';
 /// Switches the launcher icon between the per-theme activity-aliases
 /// declared in AndroidManifest.xml.
 class AppIconService {
-  static const _channel = MethodChannel('com.example.raspiflutter/app_icon');
+  static const _channel = MethodChannel('com.relsev.raspisanie/app_icon');
 
   static const themedIcons = [
     'dark',

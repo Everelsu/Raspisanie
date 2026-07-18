@@ -1,4 +1,4 @@
-package com.example.raspiflutter
+package com.relsev.raspisanie
 
 import android.content.ComponentName
 import android.content.Intent
@@ -24,9 +24,9 @@ class MainActivity : FlutterActivity() {
         }
     }
 
-    private val channel = "com.example.raspiflutter/install_apk"
-    private val settingsChannel = "com.example.raspiflutter/system_settings"
-    private val iconChannel = "com.example.raspiflutter/app_icon"
+    private val channel = "com.relsev.raspisanie/install_apk"
+    private val settingsChannel = "com.relsev.raspisanie/system_settings"
+    private val iconChannel = "com.relsev.raspisanie/app_icon"
 
     // Тема → alias из AndroidManifest. Включён всегда ровно один.
     private val iconAliases = mapOf(

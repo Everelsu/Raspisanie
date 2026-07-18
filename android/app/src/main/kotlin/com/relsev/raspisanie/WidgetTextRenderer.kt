@@ -1,4 +1,4 @@
-package com.example.raspiflutter
+package com.relsev.raspisanie
 
 import android.content.Context
 import android.graphics.Bitmap
