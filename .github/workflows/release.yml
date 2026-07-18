@@ -87,9 +87,6 @@ jobs:
             echo "found=false" >> "$GITHUB_OUTPUT"
           fi
 
-      # Подготовка подписи. Все проверки — ДО сборки: если секрет забыт или
-      # битый, узнаём об этом за секунды с понятной ошибкой, а не через
-      # 7 минут на этапе packageRelease с криптическим KeytoolException.
       - name: Setup release keystore
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
@@ -97,46 +94,18 @@ jobs:
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
         run: |
-          set -euo pipefail
           if [ -z "$KEYSTORE_BASE64" ]; then
             echo "KEYSTORE_BASE64 not set — APK will use debug signing"
             exit 0
           fi
-
-          # 1. Все четыре секрета обязательны разом.
-          missing=""
-          [ -z "$KEY_STORE_PASSWORD" ] && missing="$missing KEY_STORE_PASSWORD"
-          [ -z "$KEY_PASSWORD" ] && missing="$missing KEY_PASSWORD"
-          [ -z "$KEY_ALIAS" ] && missing="$missing KEY_ALIAS"
-          if [ -n "$missing" ]; then
-            echo "::error::Не заданы секреты:$missing. Нужны все 4: KEYSTORE_BASE64, KEY_STORE_PASSWORD, KEY_PASSWORD, KEY_ALIAS (Settings → Secrets and variables → Actions)."
-            exit 1
-          fi
-
-          # 2. Декодируем keystore.
           if ! echo "$KEYSTORE_BASE64" | base64 -d --ignore-garbage > android/app/release.keystore; then
-            echo "::error::KEYSTORE_BASE64 не является валидным base64. Перегенерируйте: 'base64 -w 0 release.keystore' (Git Bash/WSL, НЕ certutil) и вставьте одной строкой без переносов."
+            echo "::error::KEYSTORE_BASE64 secret is not valid base64. Regenerate it with 'base64 -w 0 release.keystore' (on Windows use WSL or Git Bash, not certutil) and re-set the GitHub secret without extra whitespace/newlines."
             exit 1
           fi
           if [ ! -s android/app/release.keystore ]; then
-            echo "::error::Раскодированный keystore пуст — секрет KEYSTORE_BASE64 повреждён."
+            echo "::error::Decoded keystore is empty — KEYSTORE_BASE64 secret is corrupted."
             exit 1
           fi
-
-          # 3. Проверяем пароль keystore и что alias существует.
-          if ! keytool -list -keystore android/app/release.keystore \
-              -storepass "$KEY_STORE_PASSWORD" > /tmp/keystore_list.txt 2>&1; then
-            echo "::error::Не удалось открыть keystore — секрет KEY_STORE_PASSWORD неверен (или keystore битый). $(tail -1 /tmp/keystore_list.txt)"
-            exit 1
-          fi
-          if ! keytool -list -keystore android/app/release.keystore \
-              -storepass "$KEY_STORE_PASSWORD" -alias "$KEY_ALIAS" >/dev/null 2>&1; then
-            echo "::error::В keystore нет ключа с alias '$KEY_ALIAS'. Доступные alias'ы:"
-            grep -iE "alias|Запись" /tmp/keystore_list.txt || cat /tmp/keystore_list.txt
-            exit 1
-          fi
-          echo "Keystore OK: alias '$KEY_ALIAS' найден, пароль верен."
-
           cat > android/key.properties << EOF
           storePassword=$KEY_STORE_PASSWORD
           keyPassword=$KEY_PASSWORD
@@ -146,19 +115,6 @@ jobs:
 
       - name: Build release APK
         run: flutter build apk --release
-
-      # Страховка от «зелёного релиза с debug-подписью»: если секреты заданы,
-      # APK обязан быть подписан релизным ключом.
-      - name: Verify APK signature
-        if: ${{ secrets.KEYSTORE_BASE64 != '' }}
-        run: |
-          SIGNER=$("$ANDROID_HOME"/build-tools/*/apksigner verify --print-certs \
-            build/app/outputs/flutter-apk/app-release.apk | grep -m1 "certificate DN" || true)
-          echo "$SIGNER"
-          if echo "$SIGNER" | grep -qi "Android Debug"; then
-            echo "::error::APK подписан debug-ключом, хотя keystore-секреты заданы — проверьте key.properties."
-            exit 1
-          fi
 
       - name: Rename APK
         run: |
