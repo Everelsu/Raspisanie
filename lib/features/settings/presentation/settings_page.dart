@@ -1400,7 +1400,7 @@ class _SettingsPageState extends State<SettingsPage> {
       ),
       builder: (ctx) => _GroupSelectorSheet(
         groups: ctrl.groups,
-        favorites: prefs.favoriteGroups,
+        favorites: () => prefs.favoriteGroups,
         selected: ctrl.selectedGroup,
         isTeacher: prefs.isTeacherMode,
         onSelect: (g) {
@@ -2602,7 +2602,11 @@ class _GroupSelectorSheet extends StatefulWidget {
   });
 
   final List<Group> groups;
-  final Set<String> favorites;
+
+  /// Живой доступ к избранным: шторка — отдельный route, снимок множества
+  /// не обновился бы после тапа по звёздочке (звёзды «не работали»).
+  final Set<String> Function() favorites;
+
   final Group? selected;
   final bool isTeacher;
   final ValueChanged<Group> onSelect;
@@ -2623,10 +2627,11 @@ class _GroupSelectorSheetState extends State<_GroupSelectorSheet> {
       return g.name.toLowerCase().contains(_query.toLowerCase());
     }).toList();
 
+    final favorites = widget.favorites();
     final favGroups =
-        filtered.where((g) => widget.favorites.contains(g.name)).toList();
+        filtered.where((g) => favorites.contains(g.name)).toList();
     final otherGroups =
-        filtered.where((g) => !widget.favorites.contains(g.name)).toList();
+        filtered.where((g) => !favorites.contains(g.name)).toList();
 
     return DraggableScrollableSheet(
       initialChildSize: 0.65,

@@ -115,21 +115,21 @@ class HomeWidgetService {
       final footer =
           "Обновлено ${now2.hour.toString().padLeft(2, "0")}:${now2.minute.toString().padLeft(2, "0")}";
 
-      await HomeWidget.saveWidgetData<String>("widget_title", title);
-      await HomeWidget.saveWidgetData<String>("widget_subtitle", subtitle);
-      await HomeWidget.saveWidgetData<String>("widget_primary", primary);
-      await HomeWidget.saveWidgetData<String>("widget_secondary", secondary);
-      await HomeWidget.saveWidgetData<String>("widget_footer", footer);
-      await HomeWidget.saveWidgetData<String>("widget_count_label", countLabel);
-      await HomeWidget.saveWidgetData<String>(
-          "widget_date", displayDay?.date ?? "");
-      await HomeWidget.saveWidgetData<String>("widget_day_items", dayItemsPayload);
-      await HomeWidget.saveWidgetData<String>("widget_theme", themeKey);
-      if (accentColorValue != null) {
-        await HomeWidget.saveWidgetData<String>("widget_accent_color", accentColorValue.toString());
-      } else {
-        await HomeWidget.saveWidgetData<String>("widget_accent_color", "");
-      }
+      // Параллельно: каждый saveWidgetData — отдельный platform-вызов,
+      // последовательное ожидание десяти было заметно дольше.
+      await Future.wait([
+        HomeWidget.saveWidgetData<String>("widget_title", title),
+        HomeWidget.saveWidgetData<String>("widget_subtitle", subtitle),
+        HomeWidget.saveWidgetData<String>("widget_primary", primary),
+        HomeWidget.saveWidgetData<String>("widget_secondary", secondary),
+        HomeWidget.saveWidgetData<String>("widget_footer", footer),
+        HomeWidget.saveWidgetData<String>("widget_count_label", countLabel),
+        HomeWidget.saveWidgetData<String>("widget_date", displayDay?.date ?? ""),
+        HomeWidget.saveWidgetData<String>("widget_day_items", dayItemsPayload),
+        HomeWidget.saveWidgetData<String>("widget_theme", themeKey),
+        HomeWidget.saveWidgetData<String>(
+            "widget_accent_color", accentColorValue?.toString() ?? ""),
+      ]);
     } catch (_) {}
     // Отдельные try/catch ниже: сбой на любом из шагов выше (например,
     // saveWidgetData для расписания) не должен блокировать применение
@@ -237,16 +237,17 @@ class HomeWidgetService {
     }
     _lastRefresh = now;
     await _updateWidgetByKnownNames();
-    await Future<void>.delayed(const Duration(milliseconds: 220));
-    await _updateWidgetByKnownNames();
   }
 
   static Future<void> _updateWidgetByKnownNames() async {
+    // Полное имя провайдера — рабочее; короткое пробуем только если полное
+    // упало (раньше слались оба всегда, вдвое больше platform-вызовов).
     try {
       await HomeWidget.updateWidget(
         androidName: _androidProviderFull,
         iOSName: _iosWidgetKind,
       );
+      return;
     } catch (_) {}
     try {
       await HomeWidget.updateWidget(

@@ -208,12 +208,24 @@ class NotificationService {
   ///
   /// Старые уведомления отменяются первым делом — повторный вызов безопасен.
   /// Если [enabled] == false, только отменяет всё и сохраняет состояние.
+  /// Отпечаток последнего успешно запланированного состояния — чтобы не
+  /// перепланировать одни и те же будильники на каждом обновлении расписания
+  /// (loadSchedule зовёт синк при каждом открытии и фоновом рефреше).
+  String? _lastScheduledFingerprint;
+
   Future<void> scheduleToday({
     required List<Lesson> lessons,
     required int offsetMinutes,
     required bool enabled,
   }) async {
     await _ensureInit();
+
+    final fingerprint =
+        "$enabled|$offsetMinutes|${jsonEncode(lessons.map((l) => l.toJson()).toList())}"
+        "|${DateTime.now().day}";
+    if (fingerprint == _lastScheduledFingerprint) {
+      return;
+    }
 
     // Сначала сохраняем — чтобы restoreIfNeeded() знал актуальное состояние.
     await _saveToPrefs(
@@ -281,6 +293,7 @@ class NotificationService {
       if (ok) scheduled++;
     }
 
+    _lastScheduledFingerprint = fingerprint;
     debugPrint(
       "NotificationService: scheduled $scheduled/${lessons.length}",
     );
