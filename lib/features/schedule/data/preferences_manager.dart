@@ -419,6 +419,12 @@ class PreferencesManager {
   String _normalizeLessonTimesRemoteUrl(String input) {
     final trimmed = input.trim();
     if (trimmed.isEmpty) return defaultLessonTimesRemoteUrl;
+    // Миграция: раньше файл жил в master — у старых установок этот URL
+    // сохранён в prefs. Прозрачно переводим их на ветку data.
+    if (trimmed == GitHubProjectUrls.scheduleTimesMasterFallbackRaw ||
+        trimmed == GitHubProjectUrls.lessonTimesLegacyRaw) {
+      return defaultLessonTimesRemoteUrl;
+    }
     final uri = Uri.tryParse(trimmed);
     if (uri == null) return trimmed;
 

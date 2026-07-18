@@ -3,7 +3,6 @@ import "dart:async";
 import "package:flutter/foundation.dart";
 import "package:shared_preferences/shared_preferences.dart";
 
-import "../../../app/theme.dart" show AppThemes;
 import "../../../core/notifications/notification_service.dart" show Lesson, NotificationService;
 import "../../../core/update/github_urls.dart";
 import "../../../core/widgets/home_widget_service.dart";
@@ -394,8 +393,7 @@ class ScheduleController extends ChangeNotifier {
   // белой (Kotlin-сторона фолбэчится на themeTitleColor, который для
   // тёмной темы = белый, и полоска не смотрится).
   int _widgetAccentColor(String widgetTheme) =>
-      _prefsManager.accentColorForTheme(widgetTheme) ??
-      AppThemes.colorsFor(widgetTheme).primary.toARGB32();
+      widgetAccentColorFor(_prefsManager, widgetTheme);
 
   void _updateHomeWidget() {
     final widgetTheme = _prefsManager.effectiveWidgetTheme;
@@ -501,14 +499,21 @@ class ScheduleController extends ChangeNotifier {
           sendConditional: useEtag && etag.isNotEmpty,
         );
       } catch (_) {
-        if (url.contains("schedule_times.json")) {
+        // Цепочка фолбэков как у обновлялки: ветка data → master →
+        // легаси-файл. Работает и если ветка data ещё не создана/недоступна.
+        if (!url.contains(GitHubProjectUrls.scheduleTimesFile)) rethrow;
+        try {
+          outcome = await _scheduleTimesRemote.fetch(
+            GitHubProjectUrls.scheduleTimesMasterFallbackRaw,
+            ifNoneMatch: null,
+            sendConditional: false,
+          );
+        } catch (_) {
           outcome = await _scheduleTimesRemote.fetch(
             GitHubProjectUrls.lessonTimesLegacyRaw,
             ifNoneMatch: null,
             sendConditional: false,
           );
-        } else {
-          rethrow;
         }
       }
 

@@ -5,6 +5,7 @@ import "package:shared_preferences/shared_preferences.dart";
 import "package:workmanager/workmanager.dart";
 
 import "../../core/notifications/notification_service.dart";
+import "../widgets/home_widget_service.dart";
 import "app_update_background_worker.dart";
 import "../../features/schedule/data/express_schedule_repository.dart";
 import "../../features/schedule/data/groups_cache.dart";
@@ -97,6 +98,23 @@ void callbackDispatcher() {
       }
 
       prefs.lastScheduleHash = newHash;
+
+      // Обновляем и домашний виджет: без этого он показывал вчерашние
+      // данные и старое «Обновлено», пока пользователь не откроет приложение.
+      try {
+        await HomeWidgetService.init();
+        await HomeWidgetService.updateWidget(
+          schedule: days,
+          groupName: prefs.selectedGroupName,
+          themeKey: prefs.effectiveWidgetTheme,
+          fontScale: prefs.widgetFontScale,
+          college: prefs.college,
+          accentColorValue:
+              widgetAccentColorFor(prefs, prefs.effectiveWidgetTheme),
+        );
+      } catch (e) {
+        if (kDebugMode) debugPrint("Widget update from worker failed: $e");
+      }
     } catch (e, st) {
       if (kDebugMode) {
         debugPrint("Background schedule check failed: $e");

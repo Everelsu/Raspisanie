@@ -1,8 +1,24 @@
 import "package:home_widget/home_widget.dart";
 import "package:shared_preferences/shared_preferences.dart";
 
+import "../../app/theme.dart" show AppThemes;
 import "../../features/schedule/data/lesson_times.dart";
+import "../../features/schedule/data/preferences_manager.dart";
 import "../../features/schedule/domain/models.dart";
+
+/// Акцент подсветки текущей пары в виджете для темы [widgetTheme].
+/// Единая логика для приложения и фонового воркера: кастомный акцент
+/// пользователя как есть; у монохромных тем (белый/чёрный primary)
+/// подсветка сливалась бы с текстом или фоном — даём цветной дефолт.
+int widgetAccentColorFor(PreferencesManager prefs, String widgetTheme) {
+  final custom = prefs.accentColorForTheme(widgetTheme);
+  if (custom != null) return custom;
+  final primary = AppThemes.colorsFor(widgetTheme).primary;
+  final l = primary.computeLuminance();
+  if (l > 0.8) return 0xFF5AC8FA; // белый/почти белый → голубой
+  if (l < 0.05) return 0xFF0A84FF; // чёрный/почти чёрный → синий
+  return primary.toARGB32();
+}
 
 class HomeWidgetService {
   static const _androidProviderFull =

@@ -14,6 +14,16 @@ import java.io.File
 
 class MainActivity : FlutterActivity() {
 
+    override fun onCreate(savedInstanceState: android.os.Bundle?) {
+        super.onCreate(savedInstanceState)
+        // Убираем системную анимацию ухода сплэша (slide-up иконки):
+        // под ним уже нарисован идентичный кадр Flutter-оверлея, и любое
+        // движение системной копии знака выглядит как «выплывание».
+        if (Build.VERSION.SDK_INT >= 31) {
+            splashScreen.setOnExitAnimationListener { view -> view.remove() }
+        }
+    }
+
     private val channel = "com.example.raspiflutter/install_apk"
     private val settingsChannel = "com.example.raspiflutter/system_settings"
     private val iconChannel = "com.example.raspiflutter/app_icon"
