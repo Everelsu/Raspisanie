@@ -4,7 +4,7 @@ publish_to: "none"
 
 # Версия — единственный источник истины для релиза (workflow читает её отсюда).
 # Build-номер после «+» становится versionCode Android: major*10000 + minor*100 + patch.
-version: 2.1.0+20100
+version: 2.1.1+20101
 
 environment:
   sdk: ">=3.6.0 <4.0.0"
