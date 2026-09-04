@@ -7,6 +7,7 @@ import "package:path_provider/path_provider.dart";
 import "package:share_plus/share_plus.dart";
 
 import "../../../core/services/font_service.dart";
+import "../../../core/widgets/app_action_button.dart";
 import "../data/lesson_times.dart";
 import "../domain/models.dart";
 
@@ -21,58 +22,6 @@ Future<void> showDayShareSheet(
   final theme = Theme.of(context);
   final cs = theme.colorScheme;
   HapticFeedback.mediumImpact();
-
-  Widget actionTile({
-    required IconData icon,
-    required String label,
-    String? caption,
-    required VoidCallback onTap,
-  }) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(14),
-        onTap: () {
-          HapticFeedback.lightImpact();
-          onTap();
-        },
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-          child: Row(
-            children: [
-              Container(
-                width: 38,
-                height: 38,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: cs.primary.withAlpha(22),
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(icon, size: 19, color: cs.primary),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(label, style: theme.textTheme.bodyLarge),
-                    if (caption != null)
-                      Text(
-                        caption,
-                        style: theme.textTheme.bodySmall
-                            ?.copyWith(color: cs.onSurfaceVariant),
-                      ),
-                  ],
-                ),
-              ),
-              Icon(Icons.chevron_right_rounded,
-                  size: 20, color: cs.onSurfaceVariant.withAlpha(120)),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
 
   final headerSubtitle = (subtitle == null || subtitle.trim().isEmpty)
       ? day.date
@@ -108,8 +57,7 @@ Future<void> showDayShareSheet(
                     color: cs.primary.withAlpha(25),
                     shape: BoxShape.circle,
                   ),
-                  child:
-                      Icon(Icons.event_rounded, size: 20, color: cs.primary),
+                  child: Icon(Icons.event_rounded, size: 20, color: cs.primary),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
@@ -137,10 +85,13 @@ Future<void> showDayShareSheet(
               ],
             ),
           ),
-          Divider(height: 1, indent: 16, endIndent: 16,
+          Divider(
+              height: 1,
+              indent: 16,
+              endIndent: 16,
               color: theme.dividerTheme.color),
           const SizedBox(height: 6),
-          actionTile(
+          AppActionTile(
             icon: Icons.share_rounded,
             label: "Поделиться текстом",
             caption: "Отправить день как сообщение",
@@ -149,7 +100,7 @@ Future<void> showDayShareSheet(
               await SharePlus.instance.share(ShareParams(text: shareText));
             },
           ),
-          actionTile(
+          AppActionTile(
             icon: Icons.copy_rounded,
             label: "Скопировать",
             caption: "Текст дня в буфер обмена",
@@ -165,7 +116,7 @@ Future<void> showDayShareSheet(
               );
             },
           ),
-          actionTile(
+          AppActionTile(
             icon: Icons.image_rounded,
             label: "Картинкой",
             caption: "Красивое изображение для отправки",

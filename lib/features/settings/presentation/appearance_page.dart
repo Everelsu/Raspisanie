@@ -4,6 +4,7 @@ import "package:flutter/material.dart";
 import "package:flutter/services.dart";
 
 import "../../../app/theme.dart" show AppThemeColors, AppThemes;
+import "../../../core/widgets/app_action_button.dart";
 import "../../../core/services/analytics_service.dart";
 import "../../../core/services/app_icon_service.dart";
 import "../../../core/services/font_service.dart";
@@ -511,8 +512,11 @@ class _AppearanceSectionsState extends State<AppearanceSections> {
                   ],
                 ),
                 const SizedBox(height: 20),
-                FilledButton.icon(
-                  onPressed: () {
+                AppActionButton(
+                  icon: Icons.check_circle_outline,
+                  label: "Применить тему",
+                  primary: true,
+                  onTap: () {
                     prefs.theme = themeKey;
                     widget.onThemeChanged();
                     ctrl.refreshHomeWidgetTheme();
@@ -520,12 +524,12 @@ class _AppearanceSectionsState extends State<AppearanceSections> {
                     AnalyticsService.instance.logThemeChanged(themeKey);
                     if (ctx.mounted) Navigator.of(ctx).pop();
                   },
-                  icon: const Icon(Icons.check_circle_outline, size: 20),
-                  label: const Text("Применить тему"),
                 ),
                 const SizedBox(height: 10),
-                OutlinedButton.icon(
-                  onPressed: () {
+                AppActionButton(
+                  icon: Icons.palette_outlined,
+                  label: "Акцентный цвет",
+                  onTap: () {
                     Navigator.of(ctx).pop();
                     WidgetsBinding.instance.addPostFrameCallback((_) {
                       if (mounted) {
@@ -533,8 +537,6 @@ class _AppearanceSectionsState extends State<AppearanceSections> {
                       }
                     });
                   },
-                  icon: const Icon(Icons.palette_outlined, size: 20),
-                  label: const Text("Акцентный цвет"),
                 ),
                 if (prefs.accentColorForTheme(themeKey) != null) ...[
                   const SizedBox(height: 8),
@@ -729,10 +731,11 @@ class _AppearanceSectionsState extends State<AppearanceSections> {
                             setSheetState(() => customLightness = v),
                       ),
                       const SizedBox(height: 4),
-                      FilledButton.icon(
-                        onPressed: () => apply(customColor, "custom"),
-                        icon: const Icon(Icons.check_rounded, size: 20),
-                        label: const Text("Применить свой цвет"),
+                      AppActionButton(
+                        icon: Icons.check_rounded,
+                        label: "Применить свой цвет",
+                        primary: true,
+                        onTap: () => apply(customColor, "custom"),
                       ),
                     ],
                   ),

@@ -4,13 +4,12 @@ import "package:flutter/foundation.dart";
 import "package:shared_preferences/shared_preferences.dart";
 
 import "../../../core/notifications/notification_service.dart" show Lesson, NotificationService;
-import "../../../core/update/github_urls.dart";
 import "../../../core/widgets/home_widget_service.dart";
 import "../data/express_schedule_repository.dart";
 import "../data/groups_cache.dart";
 import "../data/lesson_times.dart";
 import "../data/preferences_manager.dart";
-import "../data/schedule_times_remote.dart";
+import "../data/lesson_times_sync.dart";
 import "../data/schedule_cache.dart";
 import "../data/statistics_cache.dart";
 import "../data/sub_schedule_cache.dart";
@@ -30,7 +29,7 @@ class ScheduleController extends ChangeNotifier {
       statisticsCache: stCache,
       subScheduleCache: subCache,
     );
-    _scheduleTimesRemote = ScheduleTimesRemoteService();
+    _lessonTimesSync = LessonTimesSync(_prefsManager);
     _applyCustomBaseUrls();
     _applyCustomLessonTimes();
   }
@@ -43,7 +42,7 @@ class ScheduleController extends ChangeNotifier {
 
   final PreferencesManager _prefsManager;
   late final ExpressScheduleRepository _repository;
-  late final ScheduleTimesRemoteService _scheduleTimesRemote;
+  late final LessonTimesSync _lessonTimesSync;
 
   PreferencesManager get prefs => _prefsManager;
   ExpressScheduleRepository get repository => _repository;
@@ -61,7 +60,10 @@ class ScheduleController extends ChangeNotifier {
   String get college => _prefsManager.college;
 
   Future<void> init() async {
-    await _syncRemoteLessonTimesIfNeeded(silent: true);
+    // Не ждём сеть на старте: цепочка фолбэков может занять секунды, а
+    // расписание рисуется из кэша сразу. Изменится время — экран
+    // перерисуется сам, когда запрос вернётся.
+    unawaited(_syncRemoteLessonTimesIfNeeded(silent: true));
     _startRemoteLessonTimesAutoSync();
     if (_prefsManager.isGroupSelected) {
       selectedGroup = Group(
@@ -180,6 +182,9 @@ class ScheduleController extends ChangeNotifier {
 
   /// Вызывать при возврате в приложение: тихо обновляет расписание, если кэш устарел.
   Future<void> onAppResumed() async {
+    // Время пар проверяем всегда: оно меняется независимо от расписания,
+    // а гейт по интервалу и паузе после ошибок внутри LessonTimesSync.
+    unawaited(_syncRemoteLessonTimesIfNeeded(silent: true));
     if (!_prefsManager.autoRefreshEnabled || selectedGroup == null) return;
     final now = DateTime.now();
     if (_lastScheduleRefreshAt != null &&
@@ -459,102 +464,17 @@ class ScheduleController extends ChangeNotifier {
     bool force = false,
     bool silent = false,
   }) async {
-    final url = _prefsManager.lessonTimesRemoteUrl.trim();
-    if (url.isEmpty) return false;
-    if (!url.startsWith("http://") && !url.startsWith("https://")) {
-      if (!silent) {
-        error = "Некорректная ссылка на файл времени пар";
-        notifyListeners();
-      }
-      return false;
-    }
-    final nowMs = DateTime.now().millisecondsSinceEpoch;
-    final lastCheckedAt = _prefsManager.lessonTimesRemoteCheckedAt;
-    final intervalMs =
-        Duration(hours: _prefsManager.lessonTimesMinIntervalHours).inMilliseconds;
-    if (!force &&
-        lastCheckedAt != null &&
-        nowMs - lastCheckedAt < intervalMs) {
-      return true;
-    }
-    final useEtag = _prefsManager.lessonTimesUseEtag;
-    final etag = _prefsManager.lessonTimesRemoteEtag;
     try {
-      ScheduleTimesFetchOutcome outcome;
-      try {
-        outcome = await _scheduleTimesRemote.fetch(
-          url,
-          ifNoneMatch: useEtag && etag.isNotEmpty ? etag : null,
-          sendConditional: useEtag && etag.isNotEmpty,
-        );
-      } catch (_) {
-        // Цепочка фолбэков как у обновлялки: ветка data → master →
-        // легаси-файл. Работает и если ветка data ещё не создана/недоступна.
-        if (!url.contains(GitHubProjectUrls.scheduleTimesFile)) rethrow;
-        try {
-          outcome = await _scheduleTimesRemote.fetch(
-            GitHubProjectUrls.scheduleTimesMasterFallbackRaw,
-            ifNoneMatch: null,
-            sendConditional: false,
-          );
-        } catch (_) {
-          outcome = await _scheduleTimesRemote.fetch(
-            GitHubProjectUrls.lessonTimesLegacyRaw,
-            ifNoneMatch: null,
-            sendConditional: false,
-          );
-        }
-      }
-
-      _prefsManager.lessonTimesRemoteCheckedAt = nowMs;
-
-      if (outcome is ScheduleTimesFetchNotModified) {
-        _startRemoteLessonTimesAutoSync();
-        return true;
-      }
-      if (outcome is! ScheduleTimesFetchSuccess) {
-        return false;
-      }
-      final success = outcome;
-      _prefsManager.lessonTimesMinIntervalHours =
-          success.hints.minIntervalHours.clamp(1, 168);
-      _prefsManager.lessonTimesUseEtag = success.hints.useEtagIfPossible;
-      if (success.etag != null && success.etag!.trim().isNotEmpty) {
-        _prefsManager.lessonTimesRemoteEtag = success.etag!.trim();
-      }
-      final data = success.data;
-      final previousFingerprint = _prefsManager.lessonTimesRemoteFingerprint;
-      final isChanged = data.fingerprint != previousFingerprint;
-      if (!isChanged && !force) {
-        _startRemoteLessonTimesAutoSync();
-        return true;
-      }
-      for (final entry in data.byCollege.entries) {
-        if (entry.value.isEmpty) continue;
-        _prefsManager.setRemoteLessonTimes(entry.key, entry.value);
-      }
-      for (final college in const [
-        PreferencesManager.collegeDefault,
-        PreferencesManager.collegeZabgc,
-      ]) {
-        final effective = _prefsManager.getCustomLessonTimes(college) ??
-            _prefsManager.getRemoteLessonTimes(college);
-        if (effective != null && effective.isNotEmpty) {
-          LessonTimes.setCustomTimes(college: college, times: effective);
-        } else {
-          LessonTimes.clearCustomTimes(college);
-        }
-      }
-      _prefsManager.lessonTimesRemoteFingerprint = data.fingerprint;
-      _prefsManager.lessonTimesRemoteSyncedAt =
-          DateTime.now().millisecondsSinceEpoch;
+      final result = await _lessonTimesSync.run(force: force);
       _startRemoteLessonTimesAutoSync();
-      if (selectedGroup != null) {
-        await loadSchedule(useCache: true);
-      } else {
-        notifyListeners();
+      if (result.changed) {
+        if (selectedGroup != null) {
+          await loadSchedule(useCache: true);
+        } else {
+          notifyListeners();
+        }
       }
-      return true;
+      return result.ok;
     } catch (e) {
       if (!silent) {
         error = _humanReadableError(e);

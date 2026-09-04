@@ -3,6 +3,8 @@ import "package:flutter/material.dart";
 import "package:flutter/services.dart";
 import "package:flutter_staggered_animations/flutter_staggered_animations.dart";
 
+import "../../../core/widgets/app_action_button.dart";
+
 import "../../../app/theme.dart";
 import "../../../core/widgets/animated_app_bar.dart";
 import "../../../core/widgets/custom_refresh.dart";
@@ -663,8 +665,11 @@ class _DisciplineCard extends StatelessWidget {
                 ),
               ],
               const SizedBox(height: 16),
-              FilledButton.tonalIcon(
-                onPressed: () async {
+              AppActionButton(
+                primary: true,
+                icon: Icons.copy_rounded,
+                label: "Скопировать",
+                onTap: () async {
                   Navigator.pop(ctx);
                   await Clipboard.setData(ClipboardData(text: copyText));
                   if (!context.mounted) return;
@@ -675,8 +680,6 @@ class _DisciplineCard extends StatelessWidget {
                     ),
                   );
                 },
-                icon: const Icon(Icons.copy_rounded, size: 18),
-                label: const Text("Скопировать"),
               ),
             ],
           ),

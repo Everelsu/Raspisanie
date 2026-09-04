@@ -9,6 +9,7 @@ import "../widgets/home_widget_service.dart";
 import "app_update_background_worker.dart";
 import "../../features/schedule/data/express_schedule_repository.dart";
 import "../../features/schedule/data/groups_cache.dart";
+import "../../features/schedule/data/lesson_times_sync.dart";
 import "../../features/schedule/data/preferences_manager.dart";
 import "../../features/schedule/data/schedule_cache.dart";
 import "../../features/schedule/data/statistics_cache.dart";
@@ -69,6 +70,15 @@ void callbackDispatcher() {
     // Изолят воркера стартует с пустым кэшем LessonTimes — без этого виджет
     // и напоминания получили бы встроенное время пар вместо своего.
     prefs.applyStoredLessonTimes();
+
+    // И заодно проверяем, не сменилось ли время пар на сервере: иначе виджет
+    // с напоминаниями жили бы на старом до следующего запуска приложения.
+    // Гейт по интервалу и пауза после ошибок — внутри LessonTimesSync.
+    try {
+      await LessonTimesSync(prefs).run();
+    } catch (e) {
+      if (kDebugMode) debugPrint("Lesson times sync from worker failed: $e");
+    }
 
     final repository = ExpressScheduleRepository(
       scheduleCache: ScheduleCache(sp),

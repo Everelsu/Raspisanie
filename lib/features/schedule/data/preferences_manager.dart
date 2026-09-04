@@ -415,6 +415,17 @@ class PreferencesManager {
   set lessonTimesMinIntervalHours(int v) =>
       _prefs.setInt("lesson_times_min_interval_h", v.clamp(1, 168));
 
+  /// Сколько раз подряд не удалось скачать время пар и до какого момента
+  /// не пытаться снова (растущая пауза — см. LessonTimesSync).
+  int get lessonTimesFailCount =>
+      _prefs.getInt("lesson_times_fail_count") ?? 0;
+  set lessonTimesFailCount(int v) => _prefs.setInt("lesson_times_fail_count", v);
+
+  int get lessonTimesRetryAfter =>
+      _prefs.getInt("lesson_times_retry_after") ?? 0;
+  set lessonTimesRetryAfter(int v) =>
+      _prefs.setInt("lesson_times_retry_after", v);
+
   bool get lessonTimesUseEtag =>
       _prefs.getBool("lesson_times_use_etag") ?? true;
   set lessonTimesUseEtag(bool v) => _prefs.setBool("lesson_times_use_etag", v);

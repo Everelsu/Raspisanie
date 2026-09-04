@@ -1,4 +1,4 @@
-﻿import "dart:convert";
+import "dart:convert";
 import "dart:io";
 
 import "package:file_picker/file_picker.dart";
@@ -14,6 +14,7 @@ import "package:url_launcher/url_launcher.dart";
 import "../../../app/theme.dart"
     show AppThemes, contentBottomPadding, contentTopUnderAppBar;
 import "../../../core/database/schedule_database.dart";
+import "../../../core/widgets/app_action_button.dart";
 import "../../../core/widgets/app_icon_image.dart";
 import "../../../core/services/analytics_service.dart";
 import "../../../core/update/app_update_controller.dart";
@@ -212,7 +213,6 @@ class _SettingsPageState extends State<SettingsPage> {
       _lastDbBackupAt = parsedDbBackup;
     });
   }
-
 
   Widget _appearanceCard(ThemeData theme) {
     final themeName = AppThemes.allThemes[prefs.theme] ?? prefs.theme;
@@ -481,8 +481,7 @@ class _SettingsPageState extends State<SettingsPage> {
                             tooltip: "Добавить источник",
                             onPressed: () async {
                               _dismissKeyboard();
-                              final added =
-                                  await _showAddCollegeSourceDialog();
+                              final added = await _showAddCollegeSourceDialog();
                               if (!added || !mounted || !ctx.mounted) return;
                               ctrl.refreshCollegeSources();
                               setSheetState(() {});
@@ -1461,7 +1460,9 @@ class _SettingsPageState extends State<SettingsPage> {
             setState(() => prefs.showLunch = v);
           }),
           _divider(theme),
-          _switchTile(theme, "Показывать праздники",
+          _switchTile(
+              theme,
+              "Показывать праздники",
               "Карточка на 1 сентября, 8 марта и другие даты",
               prefs.showHolidays, (v) {
             setState(() => prefs.showHolidays = v);
@@ -1545,9 +1546,8 @@ class _SettingsPageState extends State<SettingsPage> {
     final picked = await showTimePicker(
       context: context,
       initialTime: initial,
-      helpText: start
-          ? "Начало $lessonNumber-й пары"
-          : "Конец $lessonNumber-й пары",
+      helpText:
+          start ? "Начало $lessonNumber-й пары" : "Конец $lessonNumber-й пары",
     );
     if (picked == null || !mounted) return;
     final newTime = _formatTimeOfDay(picked);
@@ -1797,8 +1797,7 @@ class _SettingsPageState extends State<SettingsPage> {
 
       if (i + 1 < numbers.length) {
         final next = _editingLessonTimes[numbers[i + 1]];
-        final nextStart =
-            next == null ? null : _timeToMinutes(next.startTime);
+        final nextStart = next == null ? null : _timeToMinutes(next.startTime);
         if (nextStart == null) return;
         final gap = nextStart - originalEnd;
         cursor = end + (gap < 0 ? 0 : gap);
@@ -1827,38 +1826,43 @@ class _SettingsPageState extends State<SettingsPage> {
     await _applyLessonDurationPreset(picked);
   }
 
-  /// Пресеты сокращённого дня: колледж иногда объявляет пары по 30–40 минут,
-  /// а перемены оставляет прежними.
+  /// Пресеты длительности пары. В быстром доступе только обычные 60 и 90 —
+  /// сокращённые (30–45) лежат в «Другая», чтобы строка не переносилась.
   Widget _lessonDurationPresets(ThemeData theme) {
-    const presets = [30, 35, 40, 45];
+    const presets = [60, 90];
     final uniform = _uniformLessonDuration;
     final cs = theme.colorScheme;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const SettingsSubsectionLabel("Сокращённый день"),
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
+        const SettingsSubsectionLabel("Длительность пары"),
+        Row(
           children: [
-            for (final preset in presets)
+            for (final preset in presets) ...[
               ChoiceChip(
                 label: Text("$preset мин"),
                 selected: uniform == preset,
                 onSelected: (_) => _applyLessonDurationPreset(preset),
+                visualDensity: VisualDensity.compact,
+                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
               ),
+              const SizedBox(width: 8),
+            ],
             ActionChip(
               avatar: const Icon(Icons.tune_rounded, size: 16),
               label: const Text("Другая"),
               onPressed: _pickCustomLessonDuration,
+              visualDensity: VisualDensity.compact,
+              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
             ),
           ],
         ),
         const SizedBox(height: 6),
         Text(
           "Задаёт одну длительность всем парам. Перемены и обед сохраняются.",
-          style: theme.textTheme.bodySmall?.copyWith(color: cs.onSurfaceVariant),
+          style:
+              theme.textTheme.bodySmall?.copyWith(color: cs.onSurfaceVariant),
         ),
       ],
     );
@@ -1924,59 +1928,6 @@ class _SettingsPageState extends State<SettingsPage> {
           ),
           Expanded(child: Divider(color: cs.onSurface.withAlpha(20))),
         ],
-      ),
-    );
-  }
-
-  /// Кнопка под списком пар: акцентная (filled) для основного действия,
-  /// приглушённая для второстепенного.
-  Widget _lessonTimesActionButton(
-    ThemeData theme, {
-    required IconData icon,
-    required String label,
-    required VoidCallback onTap,
-    bool primary = false,
-  }) {
-    final cs = theme.colorScheme;
-    final fg = primary ? cs.primary : cs.onSurfaceVariant;
-    final radius = BorderRadius.circular(14);
-    return Material(
-      color: primary ? cs.primary.withAlpha(22) : Colors.transparent,
-      borderRadius: radius,
-      child: InkWell(
-        onTap: () {
-          HapticFeedback.selectionClick();
-          onTap();
-        },
-        borderRadius: radius,
-        child: Container(
-          height: 46,
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            borderRadius: radius,
-            border: Border.all(
-              color:
-                  primary ? cs.primary.withAlpha(64) : cs.onSurface.withAlpha(30),
-            ),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(icon, size: 18, color: fg),
-              const SizedBox(width: 8),
-              Flexible(
-                child: Text(
-                  label,
-                  overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    fontWeight: FontWeight.w600,
-                    color: fg,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
       ),
     );
   }
@@ -2183,20 +2134,17 @@ class _SettingsPageState extends State<SettingsPage> {
             const SizedBox(height: 6),
             _lessonDurationPresets(theme),
             const SizedBox(height: 14),
-            _lessonTimesActionButton(
-              theme,
+            AppActionButton(
               icon: Icons.add_rounded,
               label: "Добавить пару",
               onTap: _addLessonTime,
               primary: true,
             ),
             const SizedBox(height: 10),
-            _lessonTimesActionButton(
-              theme,
+            AppActionButton(
               icon: Icons.restore_rounded,
-              label: hasCustom
-                  ? "Сбросить к стандартному"
-                  : "Обновить с сервера",
+              label:
+                  hasCustom ? "Сбросить к стандартному" : "Обновить с сервера",
               onTap: _resetLessonTimes,
             ),
           ],
@@ -2205,18 +2153,10 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 
-
   /// Ставит в лаунчере иконку, соответствующую настройке app_icon.
-
-
-
-
 
   /// Ряд кружков-свотчей тем: «Авто» + все темы. Общий для выбора
   /// иконки приложения и темы виджета.
-
-
-
 
   Widget _appIdentityCard(ThemeData theme) {
     return Card(
@@ -2317,10 +2257,11 @@ class _SettingsPageState extends State<SettingsPage> {
             padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
             child: SizedBox(
               width: double.infinity,
-              child: FilledButton.icon(
-                onPressed: () => _checkForUpdate(),
-                icon: const Icon(Icons.system_update_rounded, size: 20),
-                label: const Text("Проверить обновления"),
+              child: AppActionButton(
+                icon: Icons.system_update_rounded,
+                label: "Проверить обновления",
+                onTap: () => _checkForUpdate(),
+                primary: true,
               ),
             ),
           ),
@@ -2358,8 +2299,8 @@ class _SettingsPageState extends State<SettingsPage> {
             _creditPersonTile(
               theme,
               name: "@skromniyvadya",
-              role: "Бета‑тестер",
-              roleIcon: Icons.bug_report_rounded,
+              role: "Балбес",
+              roleIcon: Icons.sentiment_very_satisfied_rounded,
               avatarUrl: betaTesterAvatarUrl,
               onTap: () async {
                 final openedInTelegram = await launchUrl(
@@ -2370,15 +2311,15 @@ class _SettingsPageState extends State<SettingsPage> {
               },
             ),
             const SizedBox(height: 10),
-            OutlinedButton.icon(
-              onPressed: () async {
-                final uri = Uri.parse(releasesLink);
-                await launchUrl(uri, mode: LaunchMode.externalApplication);
-              },
-              icon: const Icon(Icons.code_rounded, size: 18),
-              label: const Text("Релизы на GitHub"),
-              style: OutlinedButton.styleFrom(
-                minimumSize: const Size(double.infinity, 44),
+            SizedBox(
+              width: double.infinity,
+              child: AppActionButton(
+                icon: Icons.code_rounded,
+                label: "Релизы на GitHub",
+                onTap: () async {
+                  final uri = Uri.parse(releasesLink);
+                  await launchUrl(uri, mode: LaunchMode.externalApplication);
+                },
               ),
             ),
           ],
@@ -2678,18 +2619,20 @@ class _SettingsPageState extends State<SettingsPage> {
                 Row(
                   children: [
                     Expanded(
-                      child: FilledButton.tonalIcon(
-                        onPressed: _dbTransferBusy ? null : _exportDatabase,
-                        icon: const Icon(Icons.upload_file_outlined, size: 18),
-                        label: const Text("Экспорт"),
+                      child: AppActionButton(
+                        icon: Icons.upload_file_outlined,
+                        label: "Экспорт",
+                        onTap: _dbTransferBusy ? null : _exportDatabase,
+                        primary: true,
                       ),
                     ),
                     const SizedBox(width: 8),
                     Expanded(
-                      child: FilledButton.tonalIcon(
-                        onPressed: _dbTransferBusy ? null : _importDatabase,
-                        icon: const Icon(Icons.download_outlined, size: 18),
-                        label: const Text("Импорт"),
+                      child: AppActionButton(
+                        icon: Icons.download_outlined,
+                        label: "Импорт",
+                        onTap: _dbTransferBusy ? null : _importDatabase,
+                        primary: true,
                       ),
                     ),
                   ],
@@ -2723,8 +2666,10 @@ class _SettingsPageState extends State<SettingsPage> {
                 Row(
                   children: [
                     Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: _dbBusy
+                      child: AppActionButton(
+                        icon: Icons.delete_outline,
+                        label: "База данных",
+                        onTap: _dbBusy
                             ? null
                             : () async {
                                 final confirmed = await _confirmDelete(
@@ -2739,14 +2684,14 @@ class _SettingsPageState extends State<SettingsPage> {
                                 await _loadDbSettings();
                                 if (mounted) setState(() => _dbBusy = false);
                               },
-                        icon: const Icon(Icons.delete_outline, size: 18),
-                        label: const Text("База данных"),
                       ),
                     ),
                     const SizedBox(width: 8),
                     Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: () async {
+                      child: AppActionButton(
+                        icon: Icons.cached_outlined,
+                        label: "Кэш",
+                        onTap: () async {
                           final confirmed = await _confirmDelete(
                             "Очистить кэш?",
                             "Кэш расписания будет удалён.",
@@ -2764,8 +2709,6 @@ class _SettingsPageState extends State<SettingsPage> {
                             );
                           }
                         },
-                        icon: const Icon(Icons.cached_outlined, size: 18),
-                        label: const Text("Кэш"),
                       ),
                     ),
                   ],
@@ -2773,8 +2716,10 @@ class _SettingsPageState extends State<SettingsPage> {
                 const SizedBox(height: 8),
                 SizedBox(
                   width: double.infinity,
-                  child: OutlinedButton.icon(
-                    onPressed: () async {
+                  child: AppActionButton(
+                    icon: Icons.folder_off_outlined,
+                    label: "Временные файлы",
+                    onTap: () async {
                       final confirmed = await _confirmDelete(
                         "Удалить временные файлы?",
                         "Все временные файлы будут удалены.",
@@ -2791,8 +2736,6 @@ class _SettingsPageState extends State<SettingsPage> {
                         );
                       }
                     },
-                    icon: const Icon(Icons.folder_off_outlined, size: 18),
-                    label: const Text("Временные файлы"),
                   ),
                 ),
               ],
@@ -2886,12 +2829,13 @@ class _SettingsPageState extends State<SettingsPage> {
     );
     if (merge == null) return;
 
+    // file_picker 12: pickFiles возвращает сам список, а не FilePickerResult.
     final picked = await FilePicker.pickFiles(
       type: FileType.custom,
       allowedExtensions: ["db", "sqlite", "sqlite3"],
     );
-    if (picked == null || picked.files.isEmpty) return;
-    final path = picked.files.single.path;
+    if (picked.isEmpty) return;
+    final path = picked.single.path;
     if (path == null || path.isEmpty) return;
 
     setState(() => _dbTransferBusy = true);
@@ -3166,9 +3110,8 @@ class _GroupSelectorSheetState extends State<_GroupSelectorSheet> {
                   icon: Icon(
                     isFav ? Icons.star_rounded : Icons.star_border_rounded,
                     size: 20,
-                    color: isFav
-                        ? cs.primary
-                        : cs.onSurfaceVariant.withAlpha(140),
+                    color:
+                        isFav ? cs.primary : cs.onSurfaceVariant.withAlpha(140),
                   ),
                 ),
               ],
@@ -3285,8 +3228,8 @@ class _MinutesDialogState extends State<_MinutesDialog> {
           const SizedBox(height: 12),
           Text(
             widget.hint(_minutes),
-            style: theme.textTheme.bodySmall
-                ?.copyWith(color: cs.onSurfaceVariant),
+            style:
+                theme.textTheme.bodySmall?.copyWith(color: cs.onSurfaceVariant),
           ),
         ],
       ),

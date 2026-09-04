@@ -1,5 +1,7 @@
 import "package:flutter/material.dart";
 
+import "../../../core/widgets/app_action_button.dart";
+
 import "../data/lesson_times.dart";
 import "../domain/models.dart";
 import "day_share_sheet.dart";
@@ -588,10 +590,11 @@ class _ErrorState extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 14),
-            FilledButton.tonalIcon(
-              onPressed: onRetry,
-              icon: const Icon(Icons.refresh_rounded),
-              label: const Text("Повторить"),
+            AppActionButton(
+              icon: Icons.refresh_rounded,
+              label: "Повторить",
+              primary: true,
+              onTap: onRetry,
             ),
           ],
         ),
