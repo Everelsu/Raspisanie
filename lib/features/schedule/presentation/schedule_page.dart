@@ -9,10 +9,12 @@ import "package:easy_refresh/easy_refresh.dart";
 
 import "../../../core/widgets/custom_refresh.dart";
 import "../../../core/widgets/empty_state_view.dart";
+import "../data/holidays.dart";
 import "../data/lesson_times.dart";
 import "../data/preferences_manager.dart";
 import "../domain/models.dart";
 import "day_share_sheet.dart";
+import "holiday_card.dart";
 import "schedule_controller.dart";
 import "sub_schedule_sheet.dart";
 
@@ -231,90 +233,114 @@ class _DayCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
+    final baseTheme = Theme.of(context);
     final items = day.items.toList()
       ..sort((a, b) => a.lessonNumber.compareTo(b.lessonNumber));
 
+    final holiday = prefs.showHolidays ? Holidays.forRawDate(day.date) : null;
+    // Праздничный день красим целиком: подменяем primary у темы поддерева,
+    // и полоска, чип и подсветка пар уезжают в цвет праздника вместе с фоном.
+    final theme = holiday == null
+        ? baseTheme
+        : baseTheme.copyWith(
+            colorScheme: baseTheme.colorScheme.copyWith(
+              primary: Color(holiday.color),
+            ),
+          );
+
     final cardColor = theme.cardTheme.color ?? theme.cardColor;
     final primary = theme.colorScheme.primary;
+    // Обычный день — едва заметная подложка; праздничный заливаем заметно.
+    int tint(int base) =>
+        holiday == null ? base : (base * 2.4).round().clamp(0, 255);
 
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 14),
-      child: Card(
-        clipBehavior: Clip.antiAlias,
-        child: Container(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment(-0.6, -0.8),
-              end: Alignment(0.8, 1.0),
-              stops: const [0.0, 0.4, 0.75, 1.0],
-              colors: [
-                Color.alphaBlend(primary.withAlpha(22), cardColor),
-                Color.alphaBlend(primary.withAlpha(12), cardColor),
-                Color.alphaBlend(primary.withAlpha(6), cardColor),
-                cardColor,
-              ],
-            ),
-          ),
-          child: InkWell(
-            borderRadius: BorderRadius.circular(20),
-            onLongPress: () => _showShareMenu(context, items),
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Container(
-                        width: 4,
-                        height: 20,
-                        decoration: BoxDecoration(
-                          color: primary,
-                          borderRadius: BorderRadius.circular(2),
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Text(
-                        _capitalizeDay(day.day),
-                        style: theme.textTheme.titleMedium
-                            ?.copyWith(fontWeight: FontWeight.w700),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          _formatDate(day.date),
-                          style: theme.textTheme.bodySmall,
-                        ),
-                      ),
-                      if (items.isNotEmpty)
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 8, vertical: 3),
-                          decoration: BoxDecoration(
-                            color: theme.colorScheme.onSurface.withAlpha(10),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Text(
-                            "${_lessonCount(items)} ${_lessonsWord(_lessonCount(items))}",
-                            style: theme.textTheme.bodySmall
-                                ?.copyWith(fontSize: 10),
-                          ),
-                        ),
-                    ],
-                  ),
-                  if (items.isEmpty) ...[
-                    const SizedBox(height: 12),
-                    Text(
-                      "Нет занятий",
-                      style: theme.textTheme.bodyMedium
-                          ?.copyWith(fontStyle: FontStyle.italic),
-                    ),
-                  ] else ...[
-                    const SizedBox(height: 10),
-                    ..._buildLessonList(context, items),
-                  ],
+    return Theme(
+      data: theme,
+      child: Padding(
+        padding: const EdgeInsets.only(bottom: 14),
+        child: Card(
+          clipBehavior: Clip.antiAlias,
+          shape: holiday == null
+              ? null
+              : RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(20),
+                  side: BorderSide(color: primary.withAlpha(90)),
+                ),
+          child: Container(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment(-0.6, -0.8),
+                end: Alignment(0.8, 1.0),
+                stops: const [0.0, 0.4, 0.75, 1.0],
+                colors: [
+                  Color.alphaBlend(primary.withAlpha(tint(22)), cardColor),
+                  Color.alphaBlend(primary.withAlpha(tint(12)), cardColor),
+                  Color.alphaBlend(primary.withAlpha(tint(6)), cardColor),
+                  cardColor,
                 ],
+              ),
+            ),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(20),
+              onLongPress: () => _showShareMenu(context, items),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          width: 4,
+                          height: 20,
+                          decoration: BoxDecoration(
+                            color: primary,
+                            borderRadius: BorderRadius.circular(2),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Text(
+                          _capitalizeDay(day.day),
+                          style: theme.textTheme.titleMedium
+                              ?.copyWith(fontWeight: FontWeight.w700),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            _formatDate(day.date),
+                            style: theme.textTheme.bodySmall,
+                          ),
+                        ),
+                        if (items.isNotEmpty)
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 8, vertical: 3),
+                            decoration: BoxDecoration(
+                              color: theme.colorScheme.onSurface.withAlpha(10),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Text(
+                              "${_lessonCount(items)} ${_lessonsWord(_lessonCount(items))}",
+                              style: theme.textTheme.bodySmall
+                                  ?.copyWith(fontSize: 10),
+                            ),
+                          ),
+                      ],
+                    ),
+                    if (holiday != null) HolidayCard(holiday),
+                    if (items.isEmpty) ...[
+                      const SizedBox(height: 12),
+                      Text(
+                        "Нет занятий",
+                        style: theme.textTheme.bodyMedium
+                            ?.copyWith(fontStyle: FontStyle.italic),
+                      ),
+                    ] else ...[
+                      const SizedBox(height: 10),
+                      ..._buildLessonList(context, items),
+                    ],
+                  ],
+                ),
               ),
             ),
           ),

@@ -8,8 +8,10 @@ import android.content.Intent
 import android.content.SharedPreferences
 import android.graphics.Color
 import android.appwidget.AppWidgetProvider
+import android.net.Uri
 import android.os.Bundle
 import android.widget.RemoteViews
+import es.antonborri.home_widget.HomeWidgetBackgroundReceiver
 import kotlin.math.roundToInt
 
 // Расширяем AppWidgetProvider напрямую, не через HomeWidgetProvider,
@@ -46,6 +48,25 @@ class ScheduleWidgetProvider : AppWidgetProvider() {
         )
         if (ids.isEmpty()) return
 
+        if (intent.action == ACTION_REFRESH) {
+            // Повторный тап, пока обновление идёт: второй Flutter-изолят и
+            // второй запрос в сеть только добавили бы лага.
+            if (isRefreshing(prefs)) return
+            // apply(), не commit(): commit() — синхронная запись на диск в
+            // главном потоке приёмника, из-за неё тап заметно подвисал.
+            prefs.edit()
+                .putString(KEY_REFRESHING_AT, System.currentTimeMillis().toString())
+                .apply()
+            // Частичное обновление вместо полной перерисовки: менять надо два
+            // элемента, а updateWidget перерисовывает все bitmap'ы шапки и
+            // дёргает notifyAppWidgetViewDataChanged на весь список пар.
+            for (id in ids) {
+                showRefreshingState(context, manager, id, prefs)
+            }
+            requestDartRefresh(context, prefs)
+            return
+        }
+
         // Some launchers/plugins dispatch non-standard actions for widget updates.
         // Force-refresh all existing instances on any broadcast received by provider.
         for (id in ids) {
@@ -69,11 +90,25 @@ class ScheduleWidgetProvider : AppWidgetProvider() {
     companion object {
         private const val PREFS_NAME = "HomeWidgetPreferences"
 
+        // Тап по кнопке обновления в шапке виджета (explicit broadcast сюда же).
+        const val ACTION_REFRESH = "com.relsev.raspisanie.action.WIDGET_REFRESH"
+        private const val KEY_REFRESHING_AT = "widget_refreshing_at"
+
+        // Дольше этого «Обновление…» не висит: если Dart-изолят не поднялся
+        // или упал молча, виджет не должен остаться в состоянии загрузки.
+        private const val REFRESH_TIMEOUT_MS = 60_000L
+
+        // Action, который слушает HomeWidgetBackgroundReceiver пакета home_widget.
+        private const val HOME_WIDGET_BACKGROUND_ACTION =
+            "es.antonborri.home_widget.action.BACKGROUND"
+
         // Фиксированные отступы вокруг текстовых полей — см. schedule_widget_layout.xml
         // и drawable/widget_background_*.xml (<padding> у shape-фона).
         private const val BG_PADDING_DP = 14
         private const val COUNT_CHIP_MARGIN_START_DP = 8
         private const val COUNT_CHIP_PADDING_H_DP = 8 // на сторону
+        private const val REFRESH_BUTTON_SIZE_DP = 30
+        private const val REFRESH_BUTTON_MARGIN_START_DP = 6
 
         private fun updateWidget(
             context: Context,
@@ -138,19 +173,11 @@ class ScheduleWidgetProvider : AppWidgetProvider() {
                 "dark" -> Color.parseColor("#B8B8B8")
                 else -> Color.parseColor("#B8B8B8")
             }
-            val footerColor = when (themeKey) {
-                "light" -> Color.parseColor("#3A3A3A")
-                "green" -> Color.parseColor("#A7F3D0")
-                "pink" -> Color.parseColor("#FBCFE8")
-                "blue" -> Color.parseColor("#93C5FD")
-                "gray" -> Color.parseColor("#D1D5DB")
-                "purple" -> Color.parseColor("#E9D5FF")
-                "orange" -> Color.parseColor("#FED7AA")
-                "red" -> Color.parseColor("#FDA4AF")
-                "teal" -> Color.parseColor("#E8E37A")
-                "dark" -> Color.parseColor("#9A9A9A")
-                else -> Color.parseColor("#9A9A9A")
-            }
+            val footerColor = footerColorFor(themeKey)
+
+            // Обновление по кнопке: пока метка свежая — вместо «Обновлено HH:MM»
+            // показываем «Обновление…» и приглушаем саму кнопку.
+            val isRefreshing = isRefreshing(prefs)
 
             val density = context.resources.displayMetrics.density
             fun dp(v: Int) = (v * density).roundToInt()
@@ -185,9 +212,13 @@ class ScheduleWidgetProvider : AppWidgetProvider() {
                 views.setViewVisibility(R.id.widget_count, android.view.View.GONE)
             }
 
+            views.setInt(R.id.widget_refresh, "setColorFilter", subColor)
+            views.setInt(R.id.widget_refresh, "setImageAlpha", if (isRefreshing) 90 else 255)
+
             val titleMaxWidthPx = (
                 contentWidthPx -
-                    if (chipWidthPx > 0) chipWidthPx + dp(COUNT_CHIP_MARGIN_START_DP) else 0
+                    (if (chipWidthPx > 0) chipWidthPx + dp(COUNT_CHIP_MARGIN_START_DP) else 0) -
+                    dp(REFRESH_BUTTON_SIZE_DP) - dp(REFRESH_BUTTON_MARGIN_START_DP)
                 ).coerceAtLeast(dp(40))
 
             views.setImageViewBitmap(
@@ -209,7 +240,9 @@ class ScheduleWidgetProvider : AppWidgetProvider() {
                 views.setImageViewBitmap(
                     R.id.widget_footer,
                     WidgetTextRenderer.render(
-                        context, footer, regularTypeface, 10f, footerColor,
+                        context,
+                        if (isRefreshing) "Обновление…" else footer,
+                        regularTypeface, 10f, footerColor,
                         maxWidthPx = contentWidthPx, maxLines = 1, fontScale = fontScale,
                     ),
                 )
@@ -278,8 +311,98 @@ class ScheduleWidgetProvider : AppWidgetProvider() {
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             )
             views.setOnClickPendingIntent(R.id.widget_root, pendingIntent)
+
+            // Кнопка обновления: broadcast на этот же провайдер. data делает
+            // PendingIntent уникальным на каждый экземпляр виджета.
+            val refreshIntent = Intent(context, ScheduleWidgetProvider::class.java).apply {
+                action = ACTION_REFRESH
+                putExtra(EXTRA_APPWIDGET_ID, appWidgetId)
+                data = Uri.parse("widget://${context.packageName}/refresh/$appWidgetId")
+            }
+            views.setOnClickPendingIntent(
+                R.id.widget_refresh,
+                PendingIntent.getBroadcast(
+                    context,
+                    appWidgetId,
+                    refreshIntent,
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                )
+            )
             appWidgetManager.updateAppWidget(appWidgetId, views)
             appWidgetManager.notifyAppWidgetViewDataChanged(appWidgetId, R.id.widget_list)
+        }
+
+        private fun footerColorFor(themeKey: String): Int = when (themeKey) {
+            "light" -> Color.parseColor("#3A3A3A")
+            "green" -> Color.parseColor("#A7F3D0")
+            "pink" -> Color.parseColor("#FBCFE8")
+            "blue" -> Color.parseColor("#93C5FD")
+            "gray" -> Color.parseColor("#D1D5DB")
+            "purple" -> Color.parseColor("#E9D5FF")
+            "orange" -> Color.parseColor("#FED7AA")
+            "red" -> Color.parseColor("#FDA4AF")
+            "teal" -> Color.parseColor("#E8E37A")
+            "dark" -> Color.parseColor("#9A9A9A")
+            else -> Color.parseColor("#9A9A9A")
+        }
+
+        private fun isRefreshing(prefs: SharedPreferences): Boolean {
+            val at = prefs.getString(KEY_REFRESHING_AT, "0")?.toLongOrNull() ?: 0L
+            if (at <= 0L) return false
+            val elapsed = System.currentTimeMillis() - at
+            return elapsed >= 0L && elapsed < REFRESH_TIMEOUT_MS
+        }
+
+        // Дешёвая обратная связь на тап: приглушаем кнопку и подменяем футер,
+        // остальные вью RemoteViews не трогает (partiallyUpdateAppWidget
+        // применяет только перечисленные здесь действия).
+        private fun showRefreshingState(
+            context: Context,
+            appWidgetManager: AppWidgetManager,
+            appWidgetId: Int,
+            prefs: SharedPreferences,
+        ) {
+            val views = RemoteViews(context.packageName, R.layout.schedule_widget_layout)
+            views.setInt(R.id.widget_refresh, "setImageAlpha", 90)
+            if (prefs.getString("widget_show_footer", "1") != "0") {
+                val themeKey = prefs.getString("widget_theme", "dark") ?: "dark"
+                val fontKey = prefs.getString("widget_font", "") ?: ""
+                val density = context.resources.displayMetrics.density
+                val contentWidthPx = prefs.getInt("widget_last_content_width_px", 0)
+                    .takeIf { it > 0 }
+                    ?: ((250 - BG_PADDING_DP * 2) * density).roundToInt()
+                views.setImageViewBitmap(
+                    R.id.widget_footer,
+                    WidgetTextRenderer.render(
+                        context,
+                        "Обновление…",
+                        WidgetTextRenderer.typeface(context, fontKey, bold = false),
+                        10f,
+                        footerColorFor(themeKey),
+                        maxWidthPx = contentWidthPx,
+                        maxLines = 1,
+                        fontScale = readFontScale(prefs),
+                    ),
+                )
+            }
+            appWidgetManager.partiallyUpdateAppWidget(appWidgetId, views)
+        }
+
+        // Поднимает фоновый Dart-изолят (home_widget): он тянет расписание из
+        // сети и сам перерисовывает виджет — см. homeWidgetInteractivityCallback.
+        private fun requestDartRefresh(context: Context, prefs: SharedPreferences) {
+            try {
+                context.sendBroadcast(
+                    Intent(context, HomeWidgetBackgroundReceiver::class.java).apply {
+                        action = HOME_WIDGET_BACKGROUND_ACTION
+                        data = Uri.parse("raspisanie://refresh")
+                    }
+                )
+            } catch (_: Exception) {
+                // Изолят не поднялся — снимаем метку, иначе виджет останется
+                // в «Обновление…» до истечения REFRESH_TIMEOUT_MS.
+                prefs.edit().putString(KEY_REFRESHING_AT, "0").commit()
+            }
         }
 
         private fun readFontScale(prefs: SharedPreferences): Float {

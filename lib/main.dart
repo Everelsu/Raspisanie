@@ -18,6 +18,8 @@ import "core/widgets/home_widget_service.dart";
 import "features/schedule/data/preferences_manager.dart";
 import "core/background/app_update_background_worker.dart";
 import "core/background/schedule_background_worker.dart";
+import "core/background/widget_refresh_task.dart";
+import "package:home_widget/home_widget.dart" show HomeWidget;
 import "package:workmanager/workmanager.dart";
 import "firebase_options.dart";
 
@@ -104,6 +106,15 @@ void main() async {
       debugPrint("Notification startup (postFrame) error: $e");
     }
     await HomeWidgetService.init();
+    // Кнопка «Обновить» на домашнем виджете поднимает фоновый изолят и
+    // вызывает этот колбэк — без регистрации тап просто ничего не делает.
+    try {
+      await HomeWidget.registerInteractivityCallback(
+        homeWidgetInteractivityCallback,
+      );
+    } catch (e) {
+      debugPrint("Widget interactivity callback registration failed: $e");
+    }
     StorageCleanup.runPeriodicCleanup(prefs);
   });
 }

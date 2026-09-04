@@ -146,6 +146,9 @@ class PreferencesManager {
   bool get showLunch => _prefs.getBool("show_lunch") ?? true;
   set showLunch(bool v) => _prefs.setBool("show_lunch", v);
 
+  bool get showHolidays => _prefs.getBool("show_holidays") ?? true;
+  set showHolidays(bool v) => _prefs.setBool("show_holidays", v);
+
   bool get showTime => _prefs.getBool("show_time") ?? true;
   set showTime(bool v) => _prefs.setBool("show_time", v);
 
@@ -480,6 +483,22 @@ class PreferencesManager {
 
   void clearCustomLessonTimes(String college) {
     _prefs.remove("lesson_times_$college");
+  }
+
+  /// Загружает сохранённое время пар (своё → синхронизированное с сервера)
+  /// в статический кэш [LessonTimes]. Вызывать в каждом изоляте, который
+  /// строит расписание: фоновый воркер и колбэк виджета стартуют с чистым
+  /// кэшем и иначе считали бы время по встроенным дефолтам.
+  void applyStoredLessonTimes() {
+    for (final college in const [collegeDefault, collegeZabgc]) {
+      final effective =
+          getCustomLessonTimes(college) ?? getRemoteLessonTimes(college);
+      if (effective == null || effective.isEmpty) {
+        LessonTimes.clearCustomTimes(college);
+      } else {
+        LessonTimes.setCustomTimes(college: college, times: effective);
+      }
+    }
   }
 
   /// Remote-synced times (from GitHub). Used when user taps "Сбросить" so we restore to remote, not built-in.

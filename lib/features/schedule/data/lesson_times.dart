@@ -9,6 +9,10 @@ class LessonTimes {
   static final _custom = <String, Map<int, LessonTime>>{};
   static const _lunchGapMinutes = 20;
 
+  /// С этой длины перерыв между парами считается обедом, а не переменой.
+  /// Редактор перемен в настройках показывает ту же границу.
+  static int get lunchGapMinutes => _lunchGapMinutes;
+
   static const _chtotib = <int, LessonTime>{
     1: LessonTime(1, "8:15", "9:15"),
     2: LessonTime(2, "9:25", "10:25"),

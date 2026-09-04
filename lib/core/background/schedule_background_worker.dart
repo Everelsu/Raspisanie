@@ -66,6 +66,10 @@ void callbackDispatcher() {
       return true;
     }
 
+    // Изолят воркера стартует с пустым кэшем LessonTimes — без этого виджет
+    // и напоминания получили бы встроенное время пар вместо своего.
+    prefs.applyStoredLessonTimes();
+
     final repository = ExpressScheduleRepository(
       scheduleCache: ScheduleCache(sp),
       groupsCache: GroupsCache(sp),

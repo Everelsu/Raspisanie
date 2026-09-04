@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Кнопка обновления в шапке домашнего виджета (для TalkBack). -->
+    <string name="widget_refresh_description">Обновить расписание</string>
+</resources>

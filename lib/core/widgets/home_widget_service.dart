@@ -1,3 +1,5 @@
+import "dart:async";
+
 import "package:home_widget/home_widget.dart";
 import "package:shared_preferences/shared_preferences.dart";
 
@@ -26,6 +28,10 @@ class HomeWidgetService {
   static const _androidProviderShort = "ScheduleWidgetProvider";
   static const _iosWidgetKind = "ScheduleWidget";
   static const _appGroupId = "group.com.relsev.raspisanie";
+
+  /// Метка времени тапа по кнопке обновления на виджете (мс). Пока она свежая,
+  /// Kotlin-сторона рисует «Обновление…» вместо строки «Обновлено HH:MM».
+  static const _refreshingKey = "widget_refreshing_at";
   static const _itemSeparator = "\u241E";
   static const _fieldSeparator = "\u241F";
 
@@ -129,6 +135,8 @@ class HomeWidgetService {
         HomeWidget.saveWidgetData<String>("widget_theme", themeKey),
         HomeWidget.saveWidgetData<String>(
             "widget_accent_color", accentColorValue?.toString() ?? ""),
+        // Данные доехали — снимаем индикатор обновления по кнопке.
+        HomeWidget.saveWidgetData<String>(_refreshingKey, "0"),
       ]);
     } catch (_) {}
     // Отдельные try/catch ниже: сбой на любом из шагов выше (например,
@@ -226,15 +234,40 @@ class HomeWidgetService {
     );
   }
 
+  /// Снимает индикатор «Обновление…» и перерисовывает виджет. Вызывать после
+  /// обновления по кнопке — в том числе когда оно не удалось, иначе виджет
+  /// останется в состоянии загрузки до следующего запуска приложения.
+  static Future<void> finishRefresh() async {
+    try {
+      await HomeWidget.saveWidgetData<String>(_refreshingKey, "0");
+    } catch (_) {}
+    try {
+      await _bumpWidgetRefreshToken();
+    } catch (_) {}
+    await _forceRefreshWidget();
+  }
+
   static DateTime? _lastRefresh;
+  static Timer? _pendingRefresh;
   static const _minRefreshInterval = Duration(seconds: 3);
 
   static Future<void> _forceRefreshWidget() async {
     final now = DateTime.now();
-    if (_lastRefresh != null &&
-        now.difference(_lastRefresh!) < _minRefreshInterval) {
+    final last = _lastRefresh;
+    if (last != null && now.difference(last) < _minRefreshInterval) {
+      // Не выбрасываем обновление, а досылаем его по истечении окна: при
+      // быстрых правках (время пар, тема) последнее изменение иначе не
+      // доезжало до виджета до следующей загрузки расписания.
+      _pendingRefresh?.cancel();
+      _pendingRefresh = Timer(_minRefreshInterval - now.difference(last), () {
+        _pendingRefresh = null;
+        _lastRefresh = DateTime.now();
+        unawaited(_updateWidgetByKnownNames());
+      });
       return;
     }
+    _pendingRefresh?.cancel();
+    _pendingRefresh = null;
     _lastRefresh = now;
     await _updateWidgetByKnownNames();
   }

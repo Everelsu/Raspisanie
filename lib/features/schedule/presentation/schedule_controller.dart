@@ -444,18 +444,7 @@ class ScheduleController extends ChangeNotifier {
   }
 
   void _applyCustomLessonTimes() {
-    for (final college in const [
-      PreferencesManager.collegeDefault,
-      PreferencesManager.collegeZabgc,
-    ]) {
-      final effective = _prefsManager.getCustomLessonTimes(college) ??
-          _prefsManager.getRemoteLessonTimes(college);
-      if (effective == null || effective.isEmpty) {
-        LessonTimes.clearCustomTimes(college);
-      } else {
-        LessonTimes.setCustomTimes(college: college, times: effective);
-      }
-    }
+    _prefsManager.applyStoredLessonTimes();
   }
 
   void _applyCustomBaseUrls() {

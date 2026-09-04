@@ -3,8 +3,10 @@ import 'package:flutter/services.dart';
 import 'package:table_calendar/table_calendar.dart';
 
 import '../../../core/database/schedule_database.dart';
+import '../data/holidays.dart';
 import '../domain/models.dart';
 import 'day_share_sheet.dart';
+import 'holiday_card.dart';
 import 'schedule_controller.dart';
 
 class HistoryCalendarSheet extends StatefulWidget {
@@ -257,6 +259,9 @@ class _HistoryCalendarSheetState extends State<HistoryCalendarSheet>
                             key: ValueKey('day_$_selectedDay'),
                             day: _selectedSchedule!,
                             college: widget.controller.college,
+                            holiday: widget.controller.prefs.showHolidays
+                                ? Holidays.forRawDate(_selectedSchedule!.date)
+                                : null,
                             selectedDay: _selectedDay ?? DateTime.now(),
                             onBack: _backToCalendar,
                             primary: primary,
@@ -961,6 +966,7 @@ class _DayView extends StatelessWidget {
     super.key,
     required this.day,
     required this.college,
+    required this.holiday,
     required this.selectedDay,
     required this.onBack,
     required this.primary,
@@ -973,6 +979,7 @@ class _DayView extends StatelessWidget {
 
   final DaySchedule day;
   final String college;
+  final Holiday? holiday;
   final DateTime selectedDay;
   final VoidCallback onBack;
   final Color primary;
@@ -986,6 +993,14 @@ class _DayView extends StatelessWidget {
   Widget build(BuildContext context) {
     final items = day.items.toList()
       ..sort((a, b) => a.lessonNumber.compareTo(b.lessonNumber));
+
+    // Праздничный день красим целиком — как на основном расписании.
+    final accent = holiday == null ? primary : Color(holiday!.color);
+    final dayTheme = holiday == null
+        ? theme
+        : theme.copyWith(
+            colorScheme: theme.colorScheme.copyWith(primary: accent),
+          );
 
     return GestureDetector(
       behavior: HitTestBehavior.translucent,
@@ -1009,15 +1024,18 @@ class _DayView extends StatelessWidget {
             parent: AlwaysScrollableScrollPhysics()),
         padding: const EdgeInsets.fromLTRB(14, 8, 14, 24),
         children: [
-          if (items.isEmpty)
-            _EmptyDay(primary: primary, theme: theme, isDark: isDark)
-          else
+          // В пустой день карточки дня нет — праздник показываем сам по себе.
+          if (items.isEmpty) ...[
+            if (holiday != null) HolidayCard(holiday!),
+            _EmptyDay(primary: accent, theme: dayTheme, isDark: isDark),
+          ] else
             _DayCard(
               day: day,
               college: college,
+              holiday: holiday,
               items: items,
-              primary: primary,
-              theme: theme,
+              primary: accent,
+              theme: dayTheme,
               isDark: isDark,
             ),
         ],
@@ -1128,6 +1146,7 @@ class _DayCard extends StatelessWidget {
   const _DayCard({
     required this.day,
     required this.college,
+    required this.holiday,
     required this.items,
     required this.primary,
     required this.theme,
@@ -1136,6 +1155,7 @@ class _DayCard extends StatelessWidget {
 
   final DaySchedule day;
   final String college;
+  final Holiday? holiday;
   final List<ScheduleItem> items;
   final Color primary;
   final ThemeData theme;
@@ -1144,6 +1164,9 @@ class _DayCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cardColor = theme.cardTheme.color ?? theme.colorScheme.surface;
+    // Обычный день — едва заметная подложка; праздничный заливаем заметно.
+    int tint(int base) =>
+        holiday == null ? base : (base * 2.4).round().clamp(0, 255);
 
     return Material(
       color: Colors.transparent,
@@ -1165,16 +1188,17 @@ class _DayCard extends StatelessWidget {
               stops: const [0.0, 0.35, 0.75, 1.0],
               colors: [
                 Color.alphaBlend(
-                    primary.withAlpha(isDark ? 42 : 28), cardColor),
+                    primary.withAlpha(tint(isDark ? 42 : 28)), cardColor),
                 Color.alphaBlend(
-                    primary.withAlpha(isDark ? 22 : 14), cardColor),
-                Color.alphaBlend(primary.withAlpha(isDark ? 10 : 6), cardColor),
+                    primary.withAlpha(tint(isDark ? 22 : 14)), cardColor),
+                Color.alphaBlend(
+                    primary.withAlpha(tint(isDark ? 10 : 6)), cardColor),
                 cardColor,
               ],
             ),
             borderRadius: BorderRadius.circular(20),
             border: Border.all(
-              color: primary.withAlpha(isDark ? 35 : 22),
+              color: primary.withAlpha(tint(isDark ? 35 : 22)),
               width: 0.8,
             ),
           ),
@@ -1259,6 +1283,12 @@ class _DayCard extends StatelessWidget {
                   ),
                 ),
               ),
+
+              if (holiday != null)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(14, 0, 14, 0),
+                  child: HolidayCard(holiday!),
+                ),
 
               // Список пар (как на основном расписании: одна цифра — несколько подгрупп)
               Padding(

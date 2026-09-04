@@ -166,6 +166,18 @@
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
             </intent-filter>
         </receiver>
+        <!--
+          Приёмник home_widget: поднимает фоновый Dart-изолят по тапу на
+          кнопку обновления в виджете (ScheduleWidgetProvider шлёт сюда
+          explicit broadcast). Плагин свой манифест не декларирует.
+        -->
+        <receiver
+            android:name="es.antonborri.home_widget.HomeWidgetBackgroundReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="es.antonborri.home_widget.action.BACKGROUND" />
+            </intent-filter>
+        </receiver>
         <receiver
             android:name=".ScheduleWidgetProvider"
             android:exported="true">

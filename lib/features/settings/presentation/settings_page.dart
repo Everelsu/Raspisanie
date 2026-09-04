@@ -1461,6 +1461,12 @@ class _SettingsPageState extends State<SettingsPage> {
             setState(() => prefs.showLunch = v);
           }),
           _divider(theme),
+          _switchTile(theme, "Показывать праздники",
+              "Карточка на 1 сентября, 8 марта и другие даты",
+              prefs.showHolidays, (v) {
+            setState(() => prefs.showHolidays = v);
+          }),
+          _divider(theme),
           _switchTile(theme, "Показывать время", "Время начала и окончания пар",
               prefs.showTime, (v) {
             setState(() => prefs.showTime = v);
@@ -1547,6 +1553,12 @@ class _SettingsPageState extends State<SettingsPage> {
     final newTime = _formatTimeOfDay(picked);
     final newStart = start ? newTime : current.startTime;
     final newEnd = start ? current.endTime : newTime;
+    // Выбрал то же самое — ничего не трогаем, иначе расписание помечалось
+    // «своим» после отмены правки.
+    if (_sameTime(newStart, current.startTime) &&
+        _sameTime(newEnd, current.endTime)) {
+      return;
+    }
     // Начало позже конца — не применяем, объясняем.
     final sm = _timeToMinutes(newStart);
     final em = _timeToMinutes(newEnd);
@@ -1562,11 +1574,411 @@ class _SettingsPageState extends State<SettingsPage> {
       _editingLessonTimes[lessonNumber] =
           LessonTime(lessonNumber, newStart, newEnd);
     });
-    // Автосохранение: отдельная кнопка «Сохранить» не нужна.
+    await _persistLessonTimes();
+  }
+
+  /// Автосохранение правок: отдельная кнопка «Сохранить» не нужна.
+  /// Перезагружаем расписание, чтобы карточки, уведомления и виджет
+  /// подхватили новое время сразу.
+  Future<void> _persistLessonTimes() async {
     final college = ctrl.college;
-    prefs.setCustomLessonTimes(college, _editingLessonTimes);
-    LessonTimes.setCustomTimes(college: college, times: _editingLessonTimes);
+    final base = prefs.getRemoteLessonTimes(college) ??
+        LessonTimes.getBuiltInTimes(college);
+    if (_lessonTimesEqual(_editingLessonTimes, base)) {
+      // Значения вернулись к базовым — снимаем пометку «своё время», иначе
+      // карточка так и предлагала бы «Сбросить к стандартному» без причины.
+      prefs.clearCustomLessonTimes(college);
+      final remote = prefs.getRemoteLessonTimes(college);
+      if (remote != null && remote.isNotEmpty) {
+        LessonTimes.setCustomTimes(college: college, times: remote);
+      } else {
+        LessonTimes.clearCustomTimes(college);
+      }
+    } else {
+      prefs.setCustomLessonTimes(college, _editingLessonTimes);
+      LessonTimes.setCustomTimes(college: college, times: _editingLessonTimes);
+    }
     await ctrl.loadSchedule(useCache: true);
+    // Подзаголовок и подпись кнопки зависят от того, осталось ли «своё время».
+    if (mounted) setState(() {});
+  }
+
+  /// Одно ли это время. Сравниваем в минутах: встроенные значения записаны
+  /// как «8:15», а из пикера приходит «08:15».
+  bool _sameTime(String a, String b) {
+    final ma = _timeToMinutes(a);
+    final mb = _timeToMinutes(b);
+    if (ma == null || mb == null) return a == b;
+    return ma == mb;
+  }
+
+  bool _lessonTimesEqual(Map<int, LessonTime> a, Map<int, LessonTime> b) {
+    if (a.length != b.length) return false;
+    for (final entry in a.entries) {
+      final other = b[entry.key];
+      if (other == null) return false;
+      if (!_sameTime(entry.value.startTime, other.startTime) ||
+          !_sameTime(entry.value.endTime, other.endTime)) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  /// Добавляет пару следующим номером. Время — от конца последней пары
+  /// с той же длительностью и переменой, чтобы не заполнять руками.
+  Future<void> _addLessonTime() async {
+    final numbers = _editingLessonTimes.keys.toList()..sort();
+    final nextNumber = numbers.isEmpty ? 1 : numbers.last + 1;
+    final last = numbers.isEmpty ? null : _editingLessonTimes[numbers.last];
+
+    var startMinutes = 8 * 60 + 15;
+    var durationMinutes = 60;
+    if (last != null) {
+      final lastStart = _timeToMinutes(last.startTime);
+      final lastEnd = _timeToMinutes(last.endTime);
+      if (lastStart != null && lastEnd != null && lastEnd > lastStart) {
+        durationMinutes = lastEnd - lastStart;
+      }
+      if (lastEnd != null) startMinutes = lastEnd + 10;
+    }
+    // За полночь не переносим — упираемся в конец суток.
+    if (startMinutes + durationMinutes > 24 * 60 - 1) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Пара не помещается в сутки")),
+      );
+      return;
+    }
+
+    setState(() {
+      _editingLessonTimes[nextNumber] = LessonTime(
+        nextNumber,
+        _formatMinutes(startMinutes),
+        _formatMinutes(startMinutes + durationMinutes),
+      );
+    });
+    HapticFeedback.selectionClick();
+    await _persistLessonTimes();
+  }
+
+  /// Удаляет пару. Номера остальных не сдвигаем — они привязаны к номерам
+  /// пар в разобранном расписании.
+  Future<void> _deleteLessonTime(int lessonNumber) async {
+    if (_editingLessonTimes.length <= 1) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Нужна хотя бы одна пара")),
+      );
+      return;
+    }
+    setState(() => _editingLessonTimes.remove(lessonNumber));
+    HapticFeedback.selectionClick();
+    await _persistLessonTimes();
+  }
+
+  String _formatMinutes(int minutes) {
+    final h = (minutes ~/ 60).toString().padLeft(2, "0");
+    final m = (minutes % 60).toString().padLeft(2, "0");
+    return "$h:$m";
+  }
+
+  /// Длина перерыва между парами [beforeNumber] и [afterNumber] в минутах.
+  /// Отрицательная — пары накладываются.
+  int? _breakMinutes(int beforeNumber, int afterNumber) {
+    final before = _editingLessonTimes[beforeNumber];
+    final after = _editingLessonTimes[afterNumber];
+    if (before == null || after == null) return null;
+    final end = _timeToMinutes(before.endTime);
+    final start = _timeToMinutes(after.startTime);
+    if (end == null || start == null) return null;
+    return start - end;
+  }
+
+  /// Редактор перемены: меняет длину перерыва и сдвигает все последующие пары
+  /// на ту же дельту — их длительность и перемены между ними сохраняются.
+  Future<void> _editBreak(int beforeNumber, int afterNumber) async {
+    final current = _breakMinutes(beforeNumber, afterNumber);
+    if (current == null) return;
+
+    final picked = await showDialog<int>(
+      context: context,
+      builder: (_) => _MinutesDialog(
+        title: "Перемена после $beforeNumber-й пары",
+        initialMinutes: current < 0 ? 0 : current,
+        presets: const [5, 10, 15, 20, 30, 40, 60],
+        hint: (m) => m >= LessonTimes.lunchGapMinutes
+            ? "От ${LessonTimes.lunchGapMinutes} минут перерыв "
+                "показывается в расписании как обед."
+            : "Следующие пары сдвинутся вместе с переменой.",
+      ),
+    );
+    if (picked == null || !mounted || picked == current) return;
+
+    final delta = picked - current;
+    final numbers = _editingLessonTimes.keys.toList()..sort();
+    final shifted = <int, LessonTime>{};
+    for (final n in numbers) {
+      final t = _editingLessonTimes[n];
+      if (t == null) continue;
+      if (n < afterNumber) {
+        shifted[n] = t;
+        continue;
+      }
+      final start = _timeToMinutes(t.startTime);
+      final end = _timeToMinutes(t.endTime);
+      if (start == null || end == null) {
+        shifted[n] = t;
+        continue;
+      }
+      // За полночь не переносим — иначе время пар перестанет сортироваться.
+      if (start + delta < 0 || end + delta > 24 * 60 - 1) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Пары не помещаются в сутки")),
+        );
+        return;
+      }
+      shifted[n] = LessonTime(
+        n,
+        _formatMinutes(start + delta),
+        _formatMinutes(end + delta),
+      );
+    }
+
+    setState(() => _editingLessonTimes = shifted);
+    HapticFeedback.selectionClick();
+    await _persistLessonTimes();
+  }
+
+  /// Одинаковая ли длительность у всех пар — по ней подсвечивается
+  /// выбранный пресет. null, если день «рваный».
+  int? get _uniformLessonDuration {
+    int? uniform;
+    for (final t in _editingLessonTimes.values) {
+      final start = _timeToMinutes(t.startTime);
+      final end = _timeToMinutes(t.endTime);
+      if (start == null || end == null || end <= start) return null;
+      final d = end - start;
+      if (uniform == null) {
+        uniform = d;
+      } else if (uniform != d) {
+        return null;
+      }
+    }
+    return uniform;
+  }
+
+  /// Пресет сокращённого дня: у всех пар одна длительность [minutes].
+  /// Перемены и обед сохраняются как есть — сдвигаются только начала пар,
+  /// поэтому структура дня (в том числе длинный обеденный перерыв) не едет.
+  Future<void> _applyLessonDurationPreset(int minutes) async {
+    final numbers = _editingLessonTimes.keys.toList()..sort();
+    if (numbers.isEmpty) return;
+
+    final result = <int, LessonTime>{};
+    int? cursor;
+    for (var i = 0; i < numbers.length; i++) {
+      final number = numbers[i];
+      final lesson = _editingLessonTimes[number];
+      if (lesson == null) return;
+      final originalStart = _timeToMinutes(lesson.startTime);
+      final originalEnd = _timeToMinutes(lesson.endTime);
+      if (originalStart == null || originalEnd == null) return;
+
+      final start = cursor ?? originalStart;
+      final end = start + minutes;
+      if (end > 24 * 60 - 1) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Пары не помещаются в сутки")),
+        );
+        return;
+      }
+      result[number] =
+          LessonTime(number, _formatMinutes(start), _formatMinutes(end));
+
+      if (i + 1 < numbers.length) {
+        final next = _editingLessonTimes[numbers[i + 1]];
+        final nextStart =
+            next == null ? null : _timeToMinutes(next.startTime);
+        if (nextStart == null) return;
+        final gap = nextStart - originalEnd;
+        cursor = end + (gap < 0 ? 0 : gap);
+      }
+    }
+
+    setState(() => _editingLessonTimes = result);
+    HapticFeedback.selectionClick();
+    await _persistLessonTimes();
+  }
+
+  Future<void> _pickCustomLessonDuration() async {
+    final picked = await showDialog<int>(
+      context: context,
+      builder: (_) => _MinutesDialog(
+        title: "Длительность пары",
+        initialMinutes: _uniformLessonDuration ?? 60,
+        presets: const [30, 35, 40, 45, 60, 90],
+        minMinutes: 5,
+        maxMinutes: 240,
+        hint: (_) => "Перемены и обед останутся прежними — "
+            "сдвинется только начало каждой пары.",
+      ),
+    );
+    if (picked == null || !mounted) return;
+    await _applyLessonDurationPreset(picked);
+  }
+
+  /// Пресеты сокращённого дня: колледж иногда объявляет пары по 30–40 минут,
+  /// а перемены оставляет прежними.
+  Widget _lessonDurationPresets(ThemeData theme) {
+    const presets = [30, 35, 40, 45];
+    final uniform = _uniformLessonDuration;
+    final cs = theme.colorScheme;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SettingsSubsectionLabel("Сокращённый день"),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            for (final preset in presets)
+              ChoiceChip(
+                label: Text("$preset мин"),
+                selected: uniform == preset,
+                onSelected: (_) => _applyLessonDurationPreset(preset),
+              ),
+            ActionChip(
+              avatar: const Icon(Icons.tune_rounded, size: 16),
+              label: const Text("Другая"),
+              onPressed: _pickCustomLessonDuration,
+            ),
+          ],
+        ),
+        const SizedBox(height: 6),
+        Text(
+          "Задаёт одну длительность всем парам. Перемены и обед сохраняются.",
+          style: theme.textTheme.bodySmall?.copyWith(color: cs.onSurfaceVariant),
+        ),
+      ],
+    );
+  }
+
+  /// Строка перерыва между парами: разделитель с нажимаемым чипом.
+  /// Обед (перерыв от LessonTimes.lunchGapMinutes) подписан отдельно —
+  /// расписание тоже показывает его как обед, а не перемену.
+  Widget _breakRow(ThemeData theme, int before, int after, int gap) {
+    final cs = theme.colorScheme;
+    final isOverlap = gap < 0;
+    final isLunch = gap >= LessonTimes.lunchGapMinutes;
+    final label = switch (gap) {
+      < 0 => "накладка ${-gap} мин",
+      0 => "без перемены",
+      _ => isLunch ? "обед $gap мин" : "перемена $gap мин",
+    };
+    final color = isOverlap ? cs.error : cs.onSurfaceVariant;
+    final icon = isOverlap
+        ? Icons.error_outline_rounded
+        : (isLunch ? Icons.restaurant_rounded : Icons.coffee_rounded);
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        children: [
+          const SizedBox(width: 44),
+          Expanded(child: Divider(color: cs.onSurface.withAlpha(20))),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            child: InkWell(
+              onTap: () {
+                HapticFeedback.selectionClick();
+                _editBreak(before, after);
+              },
+              borderRadius: BorderRadius.circular(20),
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: isOverlap
+                      ? cs.error.withAlpha(20)
+                      : cs.onSurface.withAlpha(12),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(icon, size: 12, color: color),
+                    const SizedBox(width: 5),
+                    Text(
+                      label,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: color,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          Expanded(child: Divider(color: cs.onSurface.withAlpha(20))),
+        ],
+      ),
+    );
+  }
+
+  /// Кнопка под списком пар: акцентная (filled) для основного действия,
+  /// приглушённая для второстепенного.
+  Widget _lessonTimesActionButton(
+    ThemeData theme, {
+    required IconData icon,
+    required String label,
+    required VoidCallback onTap,
+    bool primary = false,
+  }) {
+    final cs = theme.colorScheme;
+    final fg = primary ? cs.primary : cs.onSurfaceVariant;
+    final radius = BorderRadius.circular(14);
+    return Material(
+      color: primary ? cs.primary.withAlpha(22) : Colors.transparent,
+      borderRadius: radius,
+      child: InkWell(
+        onTap: () {
+          HapticFeedback.selectionClick();
+          onTap();
+        },
+        borderRadius: radius,
+        child: Container(
+          height: 46,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            borderRadius: radius,
+            border: Border.all(
+              color:
+                  primary ? cs.primary.withAlpha(64) : cs.onSurface.withAlpha(30),
+            ),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 18, color: fg),
+              const SizedBox(width: 8),
+              Flexible(
+                child: Text(
+                  label,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    fontWeight: FontWeight.w600,
+                    color: fg,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   int? _timeToMinutes(String value) {
@@ -1682,7 +2094,8 @@ class _SettingsPageState extends State<SettingsPage> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Text(
-              "Нажми на время, чтобы изменить — сохранится само.",
+              "Нажми на время пары или на перемену, чтобы изменить — "
+              "сохранится само. Пары можно добавлять и удалять.",
               style: theme.textTheme.bodySmall
                   ?.copyWith(color: cs.onSurfaceVariant),
             ),
@@ -1692,15 +2105,12 @@ class _SettingsPageState extends State<SettingsPage> {
                 final entry = entries[i];
                 final lesson = entry.value;
                 final dur = durationLabel(lesson);
-                // Перемена до следующей пары.
-                String breakLabel = "";
-                if (i + 1 < entries.length) {
-                  final e = _timeToMinutes(lesson.endTime);
-                  final ns = _timeToMinutes(entries[i + 1].value.startTime);
-                  if (e != null && ns != null && ns > e) {
-                    breakLabel = "перемена ${ns - e} мин";
-                  }
-                }
+                // Перерыв до следующей пары — нажимается, редактируется.
+                final nextNumber =
+                    i + 1 < entries.length ? entries[i + 1].key : null;
+                final gap = nextNumber == null
+                    ? null
+                    : _breakMinutes(entry.key, nextNumber);
                 return Column(
                   children: [
                     Row(
@@ -1738,63 +2148,56 @@ class _SettingsPageState extends State<SettingsPage> {
                               lessonNumber: entry.key, start: false),
                         ),
                         const Spacer(),
-                        Text(
-                          dur,
-                          style: theme.textTheme.bodySmall
-                              ?.copyWith(color: cs.onSurfaceVariant),
+                        Flexible(
+                          child: Text(
+                            dur,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.textTheme.bodySmall
+                                ?.copyWith(color: cs.onSurfaceVariant),
+                          ),
+                        ),
+                        IconButton(
+                          onPressed: entries.length > 1
+                              ? () => _deleteLessonTime(entry.key)
+                              : null,
+                          icon: const Icon(Icons.close_rounded, size: 18),
+                          tooltip: "Удалить пару",
+                          visualDensity: VisualDensity.compact,
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(
+                            minWidth: 32,
+                            minHeight: 32,
+                          ),
+                          color: cs.onSurfaceVariant,
                         ),
                       ],
                     ),
-                    if (breakLabel.isNotEmpty)
-                      Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 4),
-                        child: Row(
-                          children: [
-                            const SizedBox(width: 44),
-                            Expanded(
-                              child: Row(
-                                children: [
-                                  Expanded(
-                                    child: Divider(
-                                      color: cs.onSurface.withAlpha(20),
-                                    ),
-                                  ),
-                                  Padding(
-                                    padding: const EdgeInsets.symmetric(
-                                        horizontal: 8),
-                                    child: Text(
-                                      breakLabel,
-                                      style: theme.textTheme.bodySmall
-                                          ?.copyWith(
-                                        fontSize: 11,
-                                        color: cs.onSurfaceVariant,
-                                      ),
-                                    ),
-                                  ),
-                                  Expanded(
-                                    child: Divider(
-                                      color: cs.onSurface.withAlpha(20),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                      )
+                    if (nextNumber != null && gap != null)
+                      _breakRow(theme, entry.key, nextNumber, gap)
                     else
                       const SizedBox(height: 8),
                   ],
                 );
               }),
             ],
-            const SizedBox(height: 4),
-            OutlinedButton.icon(
-              onPressed: _resetLessonTimes,
-              icon: const Icon(Icons.restore_rounded, size: 18),
-              label: Text(hasCustom
+            const SizedBox(height: 6),
+            _lessonDurationPresets(theme),
+            const SizedBox(height: 14),
+            _lessonTimesActionButton(
+              theme,
+              icon: Icons.add_rounded,
+              label: "Добавить пару",
+              onTap: _addLessonTime,
+              primary: true,
+            ),
+            const SizedBox(height: 10),
+            _lessonTimesActionButton(
+              theme,
+              icon: Icons.restore_rounded,
+              label: hasCustom
                   ? "Сбросить к стандартному"
-                  : "Обновить с сервера"),
+                  : "Обновить с сервера",
+              onTap: _resetLessonTimes,
             ),
           ],
         ),
@@ -2777,4 +3180,126 @@ class _GroupSelectorSheetState extends State<_GroupSelectorSheet> {
   }
 }
 
+/// Ввод количества минут: шаг ±5, быстрые пресеты. Возвращает новое значение
+/// или null, если пользователь отменил. Общий для длины перемены и
+/// длительности пары — диалоги отличаются только подписями и границами.
+class _MinutesDialog extends StatefulWidget {
+  const _MinutesDialog({
+    required this.title,
+    required this.initialMinutes,
+    required this.presets,
+    required this.hint,
+    this.minMinutes = 0,
+    this.maxMinutes = 180,
+  });
 
+  final String title;
+  final int initialMinutes;
+  final List<int> presets;
+
+  /// Подсказка под пресетами — зависит от выбранного значения.
+  final String Function(int minutes) hint;
+  final int minMinutes;
+  final int maxMinutes;
+
+  @override
+  State<_MinutesDialog> createState() => _MinutesDialogState();
+}
+
+class _MinutesDialogState extends State<_MinutesDialog> {
+  late int _minutes =
+      widget.initialMinutes.clamp(widget.minMinutes, widget.maxMinutes);
+
+  void _set(int value) {
+    final next = value.clamp(widget.minMinutes, widget.maxMinutes);
+    if (next == _minutes) return;
+    HapticFeedback.selectionClick();
+    setState(() => _minutes = next);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+
+    return AlertDialog(
+      title: Text(widget.title),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              IconButton.filledTonal(
+                onPressed: _minutes > widget.minMinutes
+                    ? () => _set(_minutes - 5)
+                    : null,
+                icon: const Icon(Icons.remove_rounded),
+                tooltip: "Минус 5 минут",
+              ),
+              Expanded(
+                child: Column(
+                  children: [
+                    Text(
+                      "$_minutes",
+                      textAlign: TextAlign.center,
+                      style: theme.textTheme.headlineMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                        color: cs.primary,
+                        fontFeatures: const [FontFeature.tabularFigures()],
+                      ),
+                    ),
+                    Text(
+                      "минут",
+                      textAlign: TextAlign.center,
+                      style: theme.textTheme.bodySmall
+                          ?.copyWith(color: cs.onSurfaceVariant),
+                    ),
+                  ],
+                ),
+              ),
+              IconButton.filledTonal(
+                onPressed: _minutes < widget.maxMinutes
+                    ? () => _set(_minutes + 5)
+                    : null,
+                icon: const Icon(Icons.add_rounded),
+                tooltip: "Плюс 5 минут",
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Wrap(
+            alignment: WrapAlignment.center,
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final preset in widget.presets)
+                ChoiceChip(
+                  label: Text("$preset"),
+                  selected: _minutes == preset,
+                  onSelected: (_) => _set(preset),
+                ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Text(
+            widget.hint(_minutes),
+            style: theme.textTheme.bodySmall
+                ?.copyWith(color: cs.onSurfaceVariant),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text("Отмена"),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.of(context).pop(_minutes),
+          child: const Text("Готово"),
+        ),
+      ],
+    );
+  }
+}
