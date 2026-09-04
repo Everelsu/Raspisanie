@@ -1,4 +1,5 @@
 import "dart:io";
+import "../../../core/widgets/app_snack.dart";
 import "dart:ui" as ui;
 
 import "package:flutter/material.dart";
@@ -108,11 +109,10 @@ Future<void> showDayShareSheet(
               Navigator.pop(ctx);
               await Clipboard.setData(ClipboardData(text: shareText));
               if (!context.mounted) return;
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text("Скопировано"),
-                  duration: Duration(seconds: 1),
-                ),
+              showAppSnack(
+                context,
+                "Скопировано",
+                duration: const Duration(seconds: 1),
               );
             },
           ),
@@ -180,8 +180,10 @@ Future<void> _shareDayAsImage(
     );
   } catch (_) {
     if (!context.mounted || messenger == null) return;
-    messenger.showSnackBar(
-      const SnackBar(content: Text("Не удалось сформировать изображение")),
+    showAppSnack(
+      context,
+      "Не удалось сформировать изображение",
+      isError: true,
     );
   } finally {
     image?.dispose();

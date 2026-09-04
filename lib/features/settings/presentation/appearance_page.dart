@@ -110,175 +110,174 @@ class _AppearanceSectionsState extends State<AppearanceSections> {
       builder: (context, _) {
         final selectedFont = widget.fontService.current;
         return Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    GridView.builder(
-                      primary: false,
-                      shrinkWrap: true,
-                      physics: const NeverScrollableScrollPhysics(),
-                      padding: EdgeInsets.zero,
-                      itemCount: AppFont.values.length,
-                      gridDelegate:
-                          const SliverGridDelegateWithFixedCrossAxisCount(
-                        crossAxisCount: 2,
-                        crossAxisSpacing: 10,
-                        mainAxisSpacing: 10,
-                        mainAxisExtent: 60,
-                      ),
-                      itemBuilder: (context, index) {
-                        final font = AppFont.values[index];
-                        final selected = selectedFont == font;
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  GridView.builder(
+                    primary: false,
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    padding: EdgeInsets.zero,
+                    itemCount: AppFont.values.length,
+                    gridDelegate:
+                        const SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: 2,
+                      crossAxisSpacing: 10,
+                      mainAxisSpacing: 10,
+                      mainAxisExtent: 60,
+                    ),
+                    itemBuilder: (context, index) {
+                      final font = AppFont.values[index];
+                      final selected = selectedFont == font;
 
-                        return Material(
-                          color: Colors.transparent,
-                          child: InkWell(
-                            borderRadius: BorderRadius.circular(12),
-                            onTap: () async {
-                              HapticFeedback.lightImpact();
-                              await widget.fontService.setFont(font);
-                              // Виджет тоже перерисовываем выбранным шрифтом.
-                              widget.controller.refreshHomeWidgetTheme();
-                              await AnalyticsService.instance.logFontChanged(
-                                  widget.fontService.displayName(font));
-                            },
-                            child: AnimatedContainer(
-                              duration: const Duration(milliseconds: 200),
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 12,
-                                vertical: 8,
-                              ),
-                              decoration: BoxDecoration(
-                                borderRadius: BorderRadius.circular(12),
+                      return Material(
+                        color: Colors.transparent,
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(12),
+                          onTap: () async {
+                            HapticFeedback.lightImpact();
+                            await widget.fontService.setFont(font);
+                            // Виджет тоже перерисовываем выбранным шрифтом.
+                            widget.controller.refreshHomeWidgetTheme();
+                            await AnalyticsService.instance.logFontChanged(
+                                widget.fontService.displayName(font));
+                          },
+                          child: AnimatedContainer(
+                            duration: const Duration(milliseconds: 200),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 8,
+                            ),
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(12),
+                              color: selected
+                                  ? cs.primary.withAlpha(25)
+                                  : theme.scaffoldBackgroundColor,
+                              border: Border.all(
                                 color: selected
-                                    ? cs.primary.withAlpha(25)
-                                    : theme.scaffoldBackgroundColor,
-                                border: Border.all(
-                                  color: selected
-                                      ? cs.primary
-                                      : cs.onSurface.withAlpha(30),
-                                  width: selected ? 2 : 1,
-                                ),
+                                    ? cs.primary
+                                    : cs.onSurface.withAlpha(30),
+                                width: selected ? 2 : 1,
                               ),
-                              child: Row(
-                                children: [
-                                  Text(
-                                    "Аа",
+                            ),
+                            child: Row(
+                              children: [
+                                Text(
+                                  "Аа",
+                                  style: widget.fontService.previewStyle(
+                                    font,
+                                    color: selected ? cs.primary : cs.onSurface,
+                                    fontSize: 17,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    widget.fontService.displayName(font),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
                                     style: widget.fontService.previewStyle(
                                       font,
-                                      color:
-                                          selected ? cs.primary : cs.onSurface,
-                                      fontSize: 17,
-                                      fontWeight: FontWeight.w700,
+                                      color: selected
+                                          ? cs.primary
+                                          : cs.onSurface.withAlpha(200),
+                                      fontSize: 12,
+                                      fontWeight: selected
+                                          ? FontWeight.w700
+                                          : FontWeight.w500,
                                     ),
                                   ),
-                                  const SizedBox(width: 8),
-                                  Expanded(
-                                    child: Text(
-                                      widget.fontService.displayName(font),
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: widget.fontService.previewStyle(
-                                        font,
-                                        color: selected
-                                            ? cs.primary
-                                            : cs.onSurface.withAlpha(200),
-                                        fontSize: 12,
-                                        fontWeight: selected
-                                            ? FontWeight.w700
-                                            : FontWeight.w500,
-                                      ),
-                                    ),
+                                ),
+                                if (selected)
+                                  Icon(
+                                    Icons.check_circle_rounded,
+                                    size: 16,
+                                    color: cs.primary,
                                   ),
-                                  if (selected)
-                                    Icon(
-                                      Icons.check_circle_rounded,
-                                      size: 16,
-                                      color: cs.primary,
-                                    ),
-                                ],
-                              ),
+                              ],
                             ),
                           ),
-                        );
-                      },
-                    ),
-                  ],
-                ),
+                        ),
+                      );
+                    },
+                  ),
+                ],
               ),
-              _divider(theme),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const SettingsSubsectionLabel("Размер шрифта"),
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                "Размер текста",
-                                style: theme.textTheme.bodyLarge,
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                              Text(
-                                "Масштаб в расписании и настройках",
-                                style: theme.textTheme.bodySmall,
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Text(
-                          fontSizeLabels[sizeIdx],
-                          style: theme.textTheme.bodyLarge?.copyWith(
-                            color: cs.primary,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ],
-                    ),
-                    Slider(
-                      value: sizeIdx.toDouble(),
-                      min: 0,
-                      max: 3,
-                      divisions: 3,
-                      onChanged: (v) {
-                        setState(
-                          () => prefs.fontSize = fontSizeKeys[v.round()],
-                        );
-                      },
-                      onChangeEnd: (_) => widget.onThemeChanged(),
-                    ),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: fontSizeLabels
-                          .map(
-                            (l) => Text(
-                              l,
-                              style: theme.textTheme.bodySmall?.copyWith(
-                                color: theme.colorScheme.onSurfaceVariant,
-                              ),
+            ),
+            _divider(theme),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const SettingsSubsectionLabel("Размер шрифта"),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              "Размер текста",
+                              style: theme.textTheme.bodyLarge,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
                             ),
-                          )
-                          .toList(),
-                    ),
-                  ],
-                ),
+                            Text(
+                              "Масштаб в расписании и настройках",
+                              style: theme.textTheme.bodySmall,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        fontSizeLabels[sizeIdx],
+                        style: theme.textTheme.bodyLarge?.copyWith(
+                          color: cs.primary,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                  Slider(
+                    value: sizeIdx.toDouble(),
+                    min: 0,
+                    max: 3,
+                    divisions: 3,
+                    onChanged: (v) {
+                      setState(
+                        () => prefs.fontSize = fontSizeKeys[v.round()],
+                      );
+                    },
+                    onChangeEnd: (_) => widget.onThemeChanged(),
+                  ),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: fontSizeLabels
+                        .map(
+                          (l) => Text(
+                            l,
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: theme.colorScheme.onSurfaceVariant,
+                            ),
+                          ),
+                        )
+                        .toList(),
+                  ),
+                ],
               ),
-            ],
-          );
+            ),
+          ],
+        );
       },
     );
   }
@@ -344,115 +343,115 @@ class _AppearanceSectionsState extends State<AppearanceSections> {
     final entries = AppThemes.allThemes.entries.toList();
 
     return Padding(
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const SettingsSubsectionLabel("Удержи тему для выбора акцента"),
-            LayoutBuilder(
-              builder: (context, constraints) {
-                final tileWidth = (constraints.maxWidth - 10) / 2;
-                return Wrap(
-                  spacing: 10,
-                  runSpacing: 10,
-                  children: entries.map((entry) {
-                    final isSelected = entry.key == currentTheme;
-                    final colors = AppThemes.colorsFor(entry.key);
-                    final primary = _effectivePrimaryForTheme(entry.key, colors);
-                    final name = entry.value;
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const SettingsSubsectionLabel("Удержи тему для выбора акцента"),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final tileWidth = (constraints.maxWidth - 10) / 2;
+              return Wrap(
+                spacing: 10,
+                runSpacing: 10,
+                children: entries.map((entry) {
+                  final isSelected = entry.key == currentTheme;
+                  final colors = AppThemes.colorsFor(entry.key);
+                  final primary = _effectivePrimaryForTheme(entry.key, colors);
+                  final name = entry.value;
 
-                    return GestureDetector(
-                      onTap: () {
-                        HapticFeedback.lightImpact();
-                        prefs.theme = entry.key;
-                        widget.onThemeChanged();
-                        ctrl.refreshHomeWidgetTheme();
-                        _syncAppIcon();
-                        AnalyticsService.instance.logThemeChanged(entry.key);
-                      },
-                      onLongPress: () {
-                        HapticFeedback.mediumImpact();
-                        _showThemeOptionsSheet(theme, entry.key, name, colors);
-                      },
-                      child: SizedBox(
-                        width: tileWidth,
-                        child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 200),
-                          padding: const EdgeInsets.all(10),
-                          decoration: BoxDecoration(
-                            color: theme.cardTheme.color,
-                            borderRadius: BorderRadius.circular(14),
-                            border: isSelected
-                                ? Border.all(color: primary, width: 2)
-                                : Border.all(
-                                    color: theme.colorScheme.onSurface
-                                        .withAlpha(20)),
-                          ),
-                          child: Column(
-                            children: [
-                              Container(
-                                height: 48,
-                                width: double.infinity,
-                                decoration: BoxDecoration(
-                                  color: colors.surface,
-                                  borderRadius: BorderRadius.circular(10),
-                                ),
-                                child: Row(
-                                  children: [
-                                    Expanded(
-                                      flex: 3,
-                                      child: Container(
-                                        decoration: BoxDecoration(
-                                          color: colors.surface,
-                                          borderRadius:
-                                              const BorderRadius.horizontal(
-                                                  left: Radius.circular(10)),
-                                        ),
-                                      ),
-                                    ),
-                                    Expanded(
-                                      flex: 4,
-                                      child: Container(color: colors.card),
-                                    ),
-                                    Expanded(
-                                      flex: 3,
-                                      child: Container(
-                                        decoration: BoxDecoration(
-                                          color: primary,
-                                          borderRadius:
-                                              const BorderRadius.horizontal(
-                                                  right: Radius.circular(10)),
-                                        ),
-                                        child: isSelected
-                                            ? Icon(Icons.check,
-                                                size: 16,
-                                                color: primary
-                                                            .computeLuminance() >
-                                                        0.5
-                                                    ? Colors.black87
-                                                    : Colors.white)
-                                            : null,
-                                      ),
-                                    ),
-                                  ],
-                                ),
+                  return GestureDetector(
+                    onTap: () {
+                      HapticFeedback.lightImpact();
+                      prefs.theme = entry.key;
+                      widget.onThemeChanged();
+                      ctrl.refreshHomeWidgetTheme();
+                      _syncAppIcon();
+                      AnalyticsService.instance.logThemeChanged(entry.key);
+                    },
+                    onLongPress: () {
+                      HapticFeedback.mediumImpact();
+                      _showThemeOptionsSheet(theme, entry.key, name, colors);
+                    },
+                    child: SizedBox(
+                      width: tileWidth,
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 200),
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: theme.cardTheme.color,
+                          borderRadius: BorderRadius.circular(14),
+                          border: isSelected
+                              ? Border.all(color: primary, width: 2)
+                              : Border.all(
+                                  color: theme.colorScheme.onSurface
+                                      .withAlpha(20)),
+                        ),
+                        child: Column(
+                          children: [
+                            Container(
+                              height: 48,
+                              width: double.infinity,
+                              decoration: BoxDecoration(
+                                color: colors.surface,
+                                borderRadius: BorderRadius.circular(10),
                               ),
-                              const SizedBox(height: 8),
-                              Text(name,
-                                  style: theme.textTheme.bodyMedium?.copyWith(
-                                      fontWeight: FontWeight.w600)),
-                            ],
-                          ),
+                              child: Row(
+                                children: [
+                                  Expanded(
+                                    flex: 3,
+                                    child: Container(
+                                      decoration: BoxDecoration(
+                                        color: colors.surface,
+                                        borderRadius:
+                                            const BorderRadius.horizontal(
+                                                left: Radius.circular(10)),
+                                      ),
+                                    ),
+                                  ),
+                                  Expanded(
+                                    flex: 4,
+                                    child: Container(color: colors.card),
+                                  ),
+                                  Expanded(
+                                    flex: 3,
+                                    child: Container(
+                                      decoration: BoxDecoration(
+                                        color: primary,
+                                        borderRadius:
+                                            const BorderRadius.horizontal(
+                                                right: Radius.circular(10)),
+                                      ),
+                                      child: isSelected
+                                          ? Icon(Icons.check,
+                                              size: 16,
+                                              color:
+                                                  primary.computeLuminance() >
+                                                          0.5
+                                                      ? Colors.black87
+                                                      : Colors.white)
+                                          : null,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(name,
+                                style: theme.textTheme.bodyMedium
+                                    ?.copyWith(fontWeight: FontWeight.w600)),
+                          ],
                         ),
                       ),
-                    );
-                  }).toList(),
-                );
-              },
-            ),
-          ],
-        ),
-      );
+                    ),
+                  );
+                }).toList(),
+              );
+            },
+          ),
+        ],
+      ),
+    );
   }
 
   void _showThemeOptionsSheet(
@@ -597,8 +596,7 @@ class _AppearanceSectionsState extends State<AppearanceSections> {
 
             void apply(Color? color, String source) {
               HapticFeedback.lightImpact();
-              prefs.setAccentColorForTheme(
-                  targetThemeKey, color?.toARGB32());
+              prefs.setAccentColorForTheme(targetThemeKey, color?.toARGB32());
               widget.onThemeChanged();
               ctrl.refreshHomeWidgetTheme();
               AnalyticsService.instance.logAccentChanged(
@@ -645,8 +643,7 @@ class _AppearanceSectionsState extends State<AppearanceSections> {
                             child: accentValue == null
                                 ? Icon(Icons.palette_rounded,
                                     size: 18,
-                                    color: customColor.computeLuminance() >
-                                            0.5
+                                    color: customColor.computeLuminance() > 0.5
                                         ? Colors.black87
                                         : Colors.white)
                                 : null,
@@ -835,115 +832,114 @@ class _AppearanceSectionsState extends State<AppearanceSections> {
 
   Widget _widgetSection(ThemeData theme) {
     return Padding(
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const SettingsSubsectionLabel("Тема виджета"),
-            _themeSwatchRow(
-              theme,
-              selected:
-                  prefs.widgetUseAppTheme ? "auto" : prefs.widgetTheme,
-              onSelect: (key) {
-                setState(() {
-                  if (key == "auto") {
-                    prefs.widgetUseAppTheme = true;
-                  } else {
-                    prefs.widgetUseAppTheme = false;
-                    prefs.widgetTheme = key;
-                  }
-                });
-                ctrl.refreshHomeWidgetTheme();
-              },
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const SettingsSubsectionLabel("Тема виджета"),
+          _themeSwatchRow(
+            theme,
+            selected: prefs.widgetUseAppTheme ? "auto" : prefs.widgetTheme,
+            onSelect: (key) {
+              setState(() {
+                if (key == "auto") {
+                  prefs.widgetUseAppTheme = true;
+                } else {
+                  prefs.widgetUseAppTheme = false;
+                  prefs.widgetTheme = key;
+                }
+              });
+              ctrl.refreshHomeWidgetTheme();
+            },
+          ),
+          const SizedBox(height: 8),
+          Text(
+            prefs.widgetUseAppTheme
+                ? "Виджет следует выбранной теме"
+                : "Тема виджета: ${AppThemes.allThemes[prefs.widgetTheme] ?? prefs.widgetTheme}",
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
             ),
-            const SizedBox(height: 8),
-            Text(
-              prefs.widgetUseAppTheme
-                  ? "Виджет следует выбранной теме"
-                  : "Тема виджета: ${AppThemes.allThemes[prefs.widgetTheme] ?? prefs.widgetTheme}",
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
+          ),
+          const SizedBox(height: 16),
+          const SettingsSubsectionLabel("Что показывать"),
+          _widgetToggleRow(
+            theme,
+            "Время пар",
+            prefs.widgetShowTime,
+            (v) {
+              setState(() => prefs.widgetShowTime = v);
+              ctrl.refreshHomeWidgetTheme();
+            },
+          ),
+          _widgetToggleRow(
+            theme,
+            "Аудитория и преподаватель",
+            prefs.widgetShowDetails,
+            (v) {
+              setState(() => prefs.widgetShowDetails = v);
+              ctrl.refreshHomeWidgetTheme();
+            },
+          ),
+          _widgetToggleRow(
+            theme,
+            "Строка «Обновлено»",
+            prefs.widgetShowFooter,
+            (v) {
+              setState(() => prefs.widgetShowFooter = v);
+              ctrl.refreshHomeWidgetTheme();
+            },
+          ),
+          const SizedBox(height: 16),
+          const SettingsSubsectionLabel("Размер текста"),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text("Размер шрифта в виджете",
+                        style: theme.textTheme.bodyLarge),
+                    Text(
+                      "Масштаб текста на экране телефона",
+                      style: theme.textTheme.bodySmall,
+                    ),
+                  ],
+                ),
               ),
-            ),
-            const SizedBox(height: 16),
-            const SettingsSubsectionLabel("Что показывать"),
-            _widgetToggleRow(
-              theme,
-              "Время пар",
-              prefs.widgetShowTime,
-              (v) {
-                setState(() => prefs.widgetShowTime = v);
-                ctrl.refreshHomeWidgetTheme();
-              },
-            ),
-            _widgetToggleRow(
-              theme,
-              "Аудитория и преподаватель",
-              prefs.widgetShowDetails,
-              (v) {
-                setState(() => prefs.widgetShowDetails = v);
-                ctrl.refreshHomeWidgetTheme();
-              },
-            ),
-            _widgetToggleRow(
-              theme,
-              "Строка «Обновлено»",
-              prefs.widgetShowFooter,
-              (v) {
-                setState(() => prefs.widgetShowFooter = v);
-                ctrl.refreshHomeWidgetTheme();
-              },
-            ),
-            const SizedBox(height: 16),
-            const SettingsSubsectionLabel("Размер текста"),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text("Размер шрифта в виджете",
-                          style: theme.textTheme.bodyLarge),
-                      Text(
-                        "Масштаб текста на экране телефона",
-                        style: theme.textTheme.bodySmall,
-                      ),
-                    ],
-                  ),
+              const SizedBox(width: 8),
+              Text(
+                "${(prefs.widgetFontScale * 100).round()}%",
+                style: theme.textTheme.bodyLarge?.copyWith(
+                  color: theme.colorScheme.primary,
+                  fontWeight: FontWeight.w600,
                 ),
-                const SizedBox(width: 8),
-                Text(
-                  "${(prefs.widgetFontScale * 100).round()}%",
-                  style: theme.textTheme.bodyLarge?.copyWith(
-                    color: theme.colorScheme.primary,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ],
-            ),
-            Slider(
-              value: prefs.widgetFontScale.clamp(0.9, 1.35).toDouble(),
-              min: 0.9,
-              max: 1.35,
-              divisions: 9,
-              onChanged: (v) => setState(() => prefs.widgetFontScale = v),
-              onChangeEnd: (_) => ctrl.refreshHomeWidgetTheme(),
-            ),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text("90%",
-                    style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant)),
-                Text("135%",
-                    style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant)),
-              ],
-            ),
-          ],
-        ),
-      );
+              ),
+            ],
+          ),
+          Slider(
+            value: prefs.widgetFontScale.clamp(0.9, 1.35).toDouble(),
+            min: 0.9,
+            max: 1.35,
+            divisions: 9,
+            onChanged: (v) => setState(() => prefs.widgetFontScale = v),
+            onChangeEnd: (_) => ctrl.refreshHomeWidgetTheme(),
+          ),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text("90%",
+                  style: theme.textTheme.bodySmall
+                      ?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+              Text("135%",
+                  style: theme.textTheme.bodySmall
+                      ?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+            ],
+          ),
+        ],
+      ),
+    );
   }
 }
 

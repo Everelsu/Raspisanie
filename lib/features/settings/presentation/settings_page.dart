@@ -1,4 +1,5 @@
 import "dart:convert";
+import "../../../core/widgets/app_snack.dart";
 import "dart:io";
 
 import "package:file_picker/file_picker.dart";
@@ -15,6 +16,7 @@ import "../../../app/theme.dart"
     show AppThemes, contentBottomPadding, contentTopUnderAppBar;
 import "../../../core/database/schedule_database.dart";
 import "../../../core/widgets/app_action_button.dart";
+import "../../../core/widgets/app_dialog.dart";
 import "../../../core/widgets/app_icon_image.dart";
 import "../../../core/services/analytics_service.dart";
 import "../../../core/update/app_update_controller.dart";
@@ -128,24 +130,11 @@ class _SettingsPageState extends State<SettingsPage> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       prefs.sharedPreferences.setBool("hint_accent_longpress", true);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Row(
-            children: [
-              Icon(Icons.touch_app_outlined, size: 16, color: Colors.white),
-              SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                    "Удержи карточку темы — откроется выбор акцентного цвета"),
-              ),
-            ],
-          ),
-          duration: const Duration(seconds: 5),
-          behavior: SnackBarBehavior.floating,
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          margin: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-        ),
+      showAppSnack(
+        context,
+        "Удержи карточку темы — откроется выбор акцентного цвета",
+        icon: Icons.touch_app_outlined,
+        duration: const Duration(seconds: 5),
       );
     });
   }
@@ -720,12 +709,9 @@ class _SettingsPageState extends State<SettingsPage> {
                                                     ClipboardData(
                                                         text: s.baseUrl));
                                                 if (ctx.mounted) {
-                                                  ScaffoldMessenger.of(ctx)
-                                                      .showSnackBar(
-                                                    const SnackBar(
-                                                      content: Text(
-                                                          "Ссылка скопирована"),
-                                                    ),
+                                                  showAppSnack(
+                                                    ctx,
+                                                    "Ссылка скопирована",
                                                   );
                                                 }
                                               case "open":
@@ -868,18 +854,22 @@ class _SettingsPageState extends State<SettingsPage> {
                     Row(
                       children: [
                         Expanded(
-                          child: OutlinedButton(
-                            onPressed: () {
+                          child: AppActionButton(
+                            icon: Icons.close_rounded,
+                            label: "Отмена",
+                            onTap: () {
                               _dismissKeyboard();
                               Navigator.pop(ctx, false);
                             },
-                            child: const Text("Отмена"),
                           ),
                         ),
                         const SizedBox(width: 10),
                         Expanded(
-                          child: FilledButton(
-                            onPressed: () {
+                          child: AppActionButton(
+                            icon: Icons.add_rounded,
+                            label: "Добавить",
+                            primary: true,
+                            onTap: () {
                               _dismissKeyboard();
                               final safeName = name.trim();
                               final safeId = _buildUniqueCollegeId(safeName);
@@ -915,7 +905,6 @@ class _SettingsPageState extends State<SettingsPage> {
                               prefs.saveCustomCollegeSources(updated);
                               Navigator.pop(ctx, true);
                             },
-                            child: const Text("Добавить"),
                           ),
                         ),
                       ],
@@ -1151,18 +1140,22 @@ class _SettingsPageState extends State<SettingsPage> {
                       Row(
                         children: [
                           Expanded(
-                            child: OutlinedButton(
-                              onPressed: () {
+                            child: AppActionButton(
+                              icon: Icons.close_rounded,
+                              label: "Отмена",
+                              onTap: () {
                                 _dismissKeyboard();
                                 Navigator.pop(ctx, false);
                               },
-                              child: const Text("Отмена"),
                             ),
                           ),
                           const SizedBox(width: 10),
                           Expanded(
-                            child: FilledButton(
-                              onPressed: () {
+                            child: AppActionButton(
+                              icon: Icons.check_rounded,
+                              label: "Сохранить",
+                              primary: true,
+                              onTap: () {
                                 _dismissKeyboard();
                                 final safeName = nameCtrl.text.trim();
                                 final safeUrl = _normalizeBaseUrl(urlCtrl.text);
@@ -1191,7 +1184,6 @@ class _SettingsPageState extends State<SettingsPage> {
                                 prefs.saveCustomCollegeSources(updated);
                                 Navigator.pop(ctx, true);
                               },
-                              child: const Text("Сохранить"),
                             ),
                           ),
                         ],
@@ -1563,10 +1555,10 @@ class _SettingsPageState extends State<SettingsPage> {
     final sm = _timeToMinutes(newStart);
     final em = _timeToMinutes(newEnd);
     if (sm != null && em != null && em <= sm) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("Конец пары должен быть позже начала"),
-        ),
+      showAppSnack(
+        context,
+        "Конец пары должен быть позже начала",
+        isError: true,
       );
       return;
     }
@@ -1645,8 +1637,10 @@ class _SettingsPageState extends State<SettingsPage> {
     // За полночь не переносим — упираемся в конец суток.
     if (startMinutes + durationMinutes > 24 * 60 - 1) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Пара не помещается в сутки")),
+      showAppSnack(
+        context,
+        "Пара не помещается в сутки",
+        isError: true,
       );
       return;
     }
@@ -1666,8 +1660,10 @@ class _SettingsPageState extends State<SettingsPage> {
   /// пар в разобранном расписании.
   Future<void> _deleteLessonTime(int lessonNumber) async {
     if (_editingLessonTimes.length <= 1) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Нужна хотя бы одна пара")),
+      showAppSnack(
+        context,
+        "Нужна хотя бы одна пара",
+        isError: true,
       );
       return;
     }
@@ -1732,8 +1728,10 @@ class _SettingsPageState extends State<SettingsPage> {
       }
       // За полночь не переносим — иначе время пар перестанет сортироваться.
       if (start + delta < 0 || end + delta > 24 * 60 - 1) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Пары не помещаются в сутки")),
+        showAppSnack(
+          context,
+          "Пары не помещаются в сутки",
+          isError: true,
         );
         return;
       }
@@ -1787,8 +1785,10 @@ class _SettingsPageState extends State<SettingsPage> {
       final start = cursor ?? originalStart;
       final end = start + minutes;
       if (end > 24 * 60 - 1) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Пары не помещаются в сутки")),
+        showAppSnack(
+          context,
+          "Пары не помещаются в сутки",
+          isError: true,
         );
         return;
       }
@@ -1968,16 +1968,19 @@ class _SettingsPageState extends State<SettingsPage> {
     await ctrl.loadSchedule(useCache: true);
     if (!mounted) return;
     if (ok && remote != null && remote.isNotEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Время пар загружено и применено")),
+      showAppSnack(
+        context,
+        "Время пар загружено и применено",
       );
     } else if (remote != null && remote.isNotEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Восстановлено сохранённое время пар")),
+      showAppSnack(
+        context,
+        "Восстановлено сохранённое время пар",
       );
     } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Возвращено стандартное время пар")),
+      showAppSnack(
+        context,
+        "Возвращено стандартное время пар",
       );
     }
   }
@@ -2337,11 +2340,10 @@ class _SettingsPageState extends State<SettingsPage> {
     if (opened || !mounted) return;
     await Clipboard.setData(ClipboardData(text: link));
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text("Ссылка скопирована"),
-        duration: Duration(seconds: 1),
-      ),
+    showAppSnack(
+      context,
+      "Ссылка скопирована",
+      duration: const Duration(seconds: 1),
     );
   }
 
@@ -2429,20 +2431,21 @@ class _SettingsPageState extends State<SettingsPage> {
   Future<bool> _confirmDelete(String title, String message) async {
     final result = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(title),
-        content: Text(message),
+      builder: (ctx) => AppDialog(
+        icon: Icons.delete_outline_rounded,
+        title: title,
+        content: Text(message, style: Theme.of(ctx).textTheme.bodyMedium),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text("Отмена"),
+          AppActionButton(
+            icon: Icons.close_rounded,
+            label: "Отмена",
+            onTap: () => Navigator.pop(ctx, false),
           ),
-          FilledButton(
-            style: FilledButton.styleFrom(
-              backgroundColor: Colors.red,
-            ),
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text("Удалить"),
+          AppActionButton(
+            icon: Icons.delete_outline_rounded,
+            label: "Удалить",
+            danger: true,
+            onTap: () => Navigator.pop(ctx, true),
           ),
         ],
       ),
@@ -2522,8 +2525,10 @@ class _SettingsPageState extends State<SettingsPage> {
 
                             final result = await showDialog<int>(
                               context: context,
-                              builder: (ctx) => AlertDialog(
-                                title: const Text("Введите количество дней"),
+                              builder: (ctx) => AppDialog(
+                                icon: Icons.event_repeat_rounded,
+                                title: "Хранить историю",
+                                subtitle: "От 14 до 365 дней",
                                 content: TextField(
                                   controller: controller,
                                   keyboardType: TextInputType.number,
@@ -2533,12 +2538,16 @@ class _SettingsPageState extends State<SettingsPage> {
                                   ),
                                 ),
                                 actions: [
-                                  TextButton(
-                                    onPressed: () => Navigator.pop(ctx),
-                                    child: const Text("Отмена"),
+                                  AppActionButton(
+                                    icon: Icons.close_rounded,
+                                    label: "Отмена",
+                                    onTap: () => Navigator.pop(ctx),
                                   ),
-                                  FilledButton(
-                                    onPressed: () {
+                                  AppActionButton(
+                                    icon: Icons.check_rounded,
+                                    label: "Сохранить",
+                                    primary: true,
+                                    onTap: () {
                                       final value =
                                           int.tryParse(controller.text);
                                       if (value != null &&
@@ -2547,7 +2556,6 @@ class _SettingsPageState extends State<SettingsPage> {
                                         Navigator.pop(ctx, value);
                                       }
                                     },
-                                    child: const Text("OK"),
                                   ),
                                 ],
                               ),
@@ -2703,9 +2711,9 @@ class _SettingsPageState extends State<SettingsPage> {
                               prefs.sharedPreferences);
 
                           if (mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                  content: Text("Кэш расписания очищен")),
+                            showAppSnack(
+                              context,
+                              "Кэш расписания очищен",
                             );
                           }
                         },
@@ -2730,9 +2738,9 @@ class _SettingsPageState extends State<SettingsPage> {
                       await StorageCleanup.clearTempDirectory();
 
                       if (mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                              content: Text("Временные файлы удалены")),
+                        showAppSnack(
+                          context,
+                          "Временные файлы удалены",
                         );
                       }
                     },
@@ -2774,8 +2782,9 @@ class _SettingsPageState extends State<SettingsPage> {
       final source = File(dbPath);
       if (!await source.exists()) {
         if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Файл базы данных не найден")),
+        showAppSnack(
+          context,
+          "Файл базы данных не найден",
         );
         return;
       }
@@ -2802,27 +2811,33 @@ class _SettingsPageState extends State<SettingsPage> {
     // Спрашиваем режим: null = отмена, true = объединить, false = заменить
     final merge = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text("Импорт БД"),
-        content: const Text(
-          "Выберите режим импорта:\n\n"
-          "• Объединить — добавит данные из файла к текущим (записи с одинаковым ключом будут заменены).\n\n"
+      builder: (ctx) => AppDialog(
+        icon: Icons.download_outlined,
+        title: "Импорт базы данных",
+        subtitle: "Выберите режим",
+        content: Text(
+          "• Объединить — добавит данные из файла к текущим; записи с "
+          "одинаковым ключом будут заменены.\n\n"
           "• Заменить — полностью перезапишет текущую базу данных.",
+          style: Theme.of(ctx).textTheme.bodyMedium,
         ),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text("Отмена"),
+          AppActionButton(
+            icon: Icons.merge_rounded,
+            label: "Объединить",
+            primary: true,
+            onTap: () => Navigator.pop(ctx, true),
           ),
-          OutlinedButton.icon(
-            onPressed: () => Navigator.pop(ctx, false),
-            icon: const Icon(Icons.swap_horiz_rounded, size: 18),
-            label: const Text("Заменить"),
+          AppActionButton(
+            icon: Icons.swap_horiz_rounded,
+            label: "Заменить",
+            danger: true,
+            onTap: () => Navigator.pop(ctx, false),
           ),
-          FilledButton.icon(
-            onPressed: () => Navigator.pop(ctx, true),
-            icon: const Icon(Icons.merge_rounded, size: 18),
-            label: const Text("Объединить"),
+          AppActionButton(
+            icon: Icons.close_rounded,
+            label: "Отмена",
+            onTap: () => Navigator.pop(ctx),
           ),
         ],
       ),
@@ -2845,21 +2860,22 @@ class _SettingsPageState extends State<SettingsPage> {
             await ScheduleDatabase.instance.mergeDatabaseFromFile(path);
         await _loadDbSettings();
         if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Объединено: $count записей")),
-        );
+        showAppSnack(context, "Объединено: $count записей");
       } else {
         await ScheduleDatabase.instance.replaceDatabaseFromFile(path);
         await _loadDbSettings();
         if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("База данных заменена")),
+        showAppSnack(
+          context,
+          "База данных заменена",
         );
       }
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Ошибка импорта: ${_dbErrorText(e)}")),
+      showAppSnack(
+        context,
+        "Ошибка импорта: ${_dbErrorText(e)}",
+        isError: true,
       );
     } finally {
       if (mounted) setState(() => _dbTransferBusy = false);
@@ -2891,13 +2907,19 @@ class _SettingsPageState extends State<SettingsPage> {
     } else {
       showDialog(
         context: context,
-        builder: (ctx) => AlertDialog(
-          title: const Text("Обновления"),
-          content: const Text("У вас установлена последняя версия."),
+        builder: (ctx) => AppDialog(
+          icon: Icons.verified_rounded,
+          title: "Обновлений нет",
+          content: Text(
+            "У вас установлена последняя версия.",
+            style: Theme.of(ctx).textTheme.bodyMedium,
+          ),
           actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text("OK"),
+            AppActionButton(
+              icon: Icons.check_rounded,
+              label: "Хорошо",
+              primary: true,
+              onTap: () => Navigator.pop(ctx),
             ),
           ],
         ),
@@ -3165,8 +3187,9 @@ class _MinutesDialogState extends State<_MinutesDialog> {
     final theme = Theme.of(context);
     final cs = theme.colorScheme;
 
-    return AlertDialog(
-      title: Text(widget.title),
+    return AppDialog(
+      icon: Icons.timer_outlined,
+      title: widget.title,
       content: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -3234,13 +3257,16 @@ class _MinutesDialogState extends State<_MinutesDialog> {
         ],
       ),
       actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text("Отмена"),
+        AppActionButton(
+          icon: Icons.close_rounded,
+          label: "Отмена",
+          onTap: () => Navigator.of(context).pop(),
         ),
-        FilledButton(
-          onPressed: () => Navigator.of(context).pop(_minutes),
-          child: const Text("Готово"),
+        AppActionButton(
+          icon: Icons.check_rounded,
+          label: "Готово",
+          primary: true,
+          onTap: () => Navigator.of(context).pop(_minutes),
         ),
       ],
     );

@@ -64,8 +64,8 @@ class HomeWidgetService {
         });
 
       DaySchedule? displayDay;
-      displayDay =
-          _firstWhereOrNull(sortedDays, (d) => d.date == today && d.items.isNotEmpty);
+      displayDay = _firstWhereOrNull(
+          sortedDays, (d) => d.date == today && d.items.isNotEmpty);
       // Пары на сегодня уже закончились — полезнее показать следующий
       // учебный день, чем список целиком «прошедших» пар.
       if (displayDay != null && _dayIsOver(displayDay, college, now)) {
@@ -130,7 +130,8 @@ class HomeWidgetService {
         HomeWidget.saveWidgetData<String>("widget_secondary", secondary),
         HomeWidget.saveWidgetData<String>("widget_footer", footer),
         HomeWidget.saveWidgetData<String>("widget_count_label", countLabel),
-        HomeWidget.saveWidgetData<String>("widget_date", displayDay?.date ?? ""),
+        HomeWidget.saveWidgetData<String>(
+            "widget_date", displayDay?.date ?? ""),
         HomeWidget.saveWidgetData<String>("widget_day_items", dayItemsPayload),
         HomeWidget.saveWidgetData<String>("widget_theme", themeKey),
         HomeWidget.saveWidgetData<String>(
@@ -165,7 +166,8 @@ class HomeWidgetService {
     try {
       await HomeWidget.saveWidgetData<String>("widget_theme", themeKey);
       if (accentColorValue != null) {
-        await HomeWidget.saveWidgetData<String>("widget_accent_color", accentColorValue.toString());
+        await HomeWidget.saveWidgetData<String>(
+            "widget_accent_color", accentColorValue.toString());
       } else {
         await HomeWidget.saveWidgetData<String>("widget_accent_color", "");
       }

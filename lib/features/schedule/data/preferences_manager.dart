@@ -417,9 +417,9 @@ class PreferencesManager {
 
   /// Сколько раз подряд не удалось скачать время пар и до какого момента
   /// не пытаться снова (растущая пауза — см. LessonTimesSync).
-  int get lessonTimesFailCount =>
-      _prefs.getInt("lesson_times_fail_count") ?? 0;
-  set lessonTimesFailCount(int v) => _prefs.setInt("lesson_times_fail_count", v);
+  int get lessonTimesFailCount => _prefs.getInt("lesson_times_fail_count") ?? 0;
+  set lessonTimesFailCount(int v) =>
+      _prefs.setInt("lesson_times_fail_count", v);
 
   int get lessonTimesRetryAfter =>
       _prefs.getInt("lesson_times_retry_after") ?? 0;

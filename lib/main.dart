@@ -36,7 +36,8 @@ void main() async {
     );
   }
   try {
-    await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+    await Firebase.initializeApp(
+        options: DefaultFirebaseOptions.currentPlatform);
     if (kReleaseMode) {
       FlutterError.onError = (details) {
         FirebaseCrashlytics.instance.recordFlutterFatalError(details);
@@ -61,9 +62,11 @@ void main() async {
   await fontService.load();
 
   try {
-    await NotificationService.instance.init()
+    await NotificationService.instance
+        .init()
         .timeout(const Duration(seconds: 5));
-    await NotificationService.instance.restoreIfNeeded()
+    await NotificationService.instance
+        .restoreIfNeeded()
         .timeout(const Duration(seconds: 3));
   } catch (e) {
     debugPrint("NotificationService startup error: $e");

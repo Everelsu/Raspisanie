@@ -1,8 +1,12 @@
 import "dart:async";
+import "../../../core/widgets/app_snack.dart";
 import "dart:io";
 import "dart:ui" show lerpDouble;
 
 import "package:flutter/material.dart";
+
+import "../../../core/widgets/app_action_button.dart";
+import "../../../core/widgets/app_dialog.dart";
 import "package:flutter/services.dart";
 import "package:url_launcher/url_launcher.dart";
 import "package:webview_flutter/webview_flutter.dart";
@@ -122,13 +126,13 @@ class _NetworkPageState extends State<NetworkPage>
               if (error.isForMainFrame != true) return;
               final msg = _describeWebResourceError(error);
               setState(() => _pageLoadError = msg);
-              ScaffoldMessenger.maybeOf(context)?.showSnackBar(
-                SnackBar(
-                  content: Text(msg),
-                  action: SnackBarAction(
-                    label: "Повторить",
-                    onPressed: _retryPageLoad,
-                  ),
+              showAppSnack(
+                context,
+                msg,
+                isError: true,
+                action: SnackBarAction(
+                  label: "Повторить",
+                  onPressed: _retryPageLoad,
                 ),
               );
             },
@@ -288,8 +292,10 @@ class _NetworkPageState extends State<NetworkPage>
     final input = _bar.address.text.trim();
     final uri = _normalizeInputToUri(input);
     if (uri == null) {
-      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
-        const SnackBar(content: Text("Введите корректную ссылку")),
+      showAppSnack(
+        context,
+        "Введите корректную ссылку",
+        isError: true,
       );
       return;
     }
@@ -340,8 +346,9 @@ class _NetworkPageState extends State<NetworkPage>
           ClipboardData(text: _bar.address.text.trim()),
         );
         if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Ссылка скопирована")),
+        showAppSnack(
+          context,
+          "Ссылка скопирована",
         );
         break;
       case BrowserMenuAction.paste:
@@ -364,55 +371,49 @@ class _NetworkPageState extends State<NetworkPage>
     try {
       apply = await showDialog<bool>(
         context: context,
-        builder: (ctx) => AlertDialog(
-          title: const Text("Адрес при открытии вкладки «Сеть»"),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Text(
-                  "Эта страница открывается при первом заходе на вкладку и по кнопке «Домой» в меню (⋯). "
-                  "Можно вставить свою форму входа или другой сайт (https).",
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
+        builder: (ctx) => AppDialog(
+          icon: Icons.link_rounded,
+          title: "Стартовый адрес",
+          subtitle: "Вкладка «Сеть»",
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                "Эта страница открывается при первом заходе на вкладку и по кнопке «Домой» в меню (⋯). "
+                "Можно вставить свою форму входа или другой сайт (https).",
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
                 ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: textCtrl,
-                  keyboardType: TextInputType.url,
-                  autocorrect: false,
-                  enableSuggestions: false,
-                  maxLines: 3,
-                  decoration: const InputDecoration(
-                    labelText: "URL",
-                    hintText: "https://example.com/…",
-                    border: OutlineInputBorder(),
-                    isDense: true,
-                  ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: textCtrl,
+                keyboardType: TextInputType.url,
+                autocorrect: false,
+                enableSuggestions: false,
+                maxLines: 3,
+                decoration: const InputDecoration(
+                  labelText: "URL",
+                  hintText: "https://example.com/…",
+                  border: OutlineInputBorder(),
+                  isDense: true,
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
           actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text("Отмена"),
-            ),
-            TextButton(
-              onPressed: () {
-                widget.scheduleController.prefs.networkStartUrl = "";
-                Navigator.pop(ctx, true);
-              },
-              child: const Text("Сбросить"),
-            ),
-            FilledButton(
-              onPressed: () {
+            AppActionButton(
+              icon: Icons.check_rounded,
+              label: "Сохранить",
+              primary: true,
+              onTap: () {
                 final uri = _normalizeInputToUri(textCtrl.text.trim());
                 if (uri == null) {
-                  ScaffoldMessenger.of(ctx).showSnackBar(
-                    const SnackBar(content: Text("Некорректная ссылка")),
+                  showAppSnack(
+                    ctx,
+                    "Некорректная ссылка",
+                    isError: true,
                   );
                   return;
                 }
@@ -420,7 +421,19 @@ class _NetworkPageState extends State<NetworkPage>
                     uri.toString();
                 Navigator.pop(ctx, true);
               },
-              child: const Text("Сохранить"),
+            ),
+            AppActionButton(
+              icon: Icons.restore_rounded,
+              label: "Сбросить",
+              onTap: () {
+                widget.scheduleController.prefs.networkStartUrl = "";
+                Navigator.pop(ctx, true);
+              },
+            ),
+            AppActionButton(
+              icon: Icons.close_rounded,
+              label: "Отмена",
+              onTap: () => Navigator.pop(ctx, false),
             ),
           ],
         ),
@@ -668,8 +681,8 @@ class _UnsupportedBrowserView extends StatelessWidget {
       physics: const AlwaysScrollableScrollPhysics(
         parent: BouncingScrollPhysics(),
       ),
-      padding:
-          EdgeInsets.fromLTRB(20, topPadding, 20, contentBottomPadding(context)),
+      padding: EdgeInsets.fromLTRB(
+          20, topPadding, 20, contentBottomPadding(context)),
       children: [
         ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 560),

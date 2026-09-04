@@ -3,7 +3,8 @@ import "dart:async";
 import "package:flutter/foundation.dart";
 import "package:shared_preferences/shared_preferences.dart";
 
-import "../../../core/notifications/notification_service.dart" show Lesson, NotificationService;
+import "../../../core/notifications/notification_service.dart"
+    show Lesson, NotificationService;
 import "../../../core/widgets/home_widget_service.dart";
 import "../data/express_schedule_repository.dart";
 import "../data/groups_cache.dart";
@@ -73,8 +74,8 @@ class ScheduleController extends ChangeNotifier {
         pageUrl: "",
       );
       try {
-        final firstDay =
-            _repository.scheduleCache?.loadFirstDay(selectedGroup!.fileName, college);
+        final firstDay = _repository.scheduleCache
+            ?.loadFirstDay(selectedGroup!.fileName, college);
         if (firstDay != null) {
           schedule = [firstDay];
           notifyListeners();
@@ -161,8 +162,8 @@ class ScheduleController extends ChangeNotifier {
     } catch (e) {
       error = _humanReadableError(e);
       if (schedule.isEmpty) {
-        final cached = _repository.scheduleCache?.loadAllowingExpired(
-            group.fileName, college);
+        final cached = _repository.scheduleCache
+            ?.loadAllowingExpired(group.fileName, college);
         if (cached != null && cached.isNotEmpty) {
           schedule = cached;
           error = "Показаны сохранённые данные. $error";
@@ -227,7 +228,9 @@ class ScheduleController extends ChangeNotifier {
   void _checkScheduleHashAndNotify() {
     final newHash = computeScheduleHash(schedule);
     final old = _prefsManager.lastScheduleHash;
-    if (old.isNotEmpty && old != newHash && _prefsManager.notifyScheduleChanges) {
+    if (old.isNotEmpty &&
+        old != newHash &&
+        _prefsManager.notifyScheduleChanges) {
       try {
         NotificationService.instance.showScheduleChanged(
           groupName: selectedGroup?.name ?? _prefsManager.selectedGroupName,
@@ -352,7 +355,8 @@ class ScheduleController extends ChangeNotifier {
 
   void selectGroup(Group? group) {
     selectedGroup = group;
-    _lastScheduleRefreshAt = null; // сбрасываем, чтобы onAppResumed обновил новую группу
+    _lastScheduleRefreshAt =
+        null; // сбрасываем, чтобы onAppResumed обновил новую группу
     if (group != null) {
       _prefsManager.selectedGroupFile = group.fileName;
       _prefsManager.selectedGroupName = group.name;

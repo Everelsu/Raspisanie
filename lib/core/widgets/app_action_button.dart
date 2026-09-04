@@ -15,6 +15,7 @@ class AppActionButton extends StatelessWidget {
     required this.label,
     required this.onTap,
     this.primary = false,
+    this.danger = false,
   });
 
   final IconData icon;
@@ -24,22 +25,30 @@ class AppActionButton extends StatelessWidget {
   final VoidCallback? onTap;
   final bool primary;
 
+  /// Разрушающее действие (удалить, очистить) — красится в error.
+  final bool danger;
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final cs = theme.colorScheme;
     final tap = onTap;
     final enabled = tap != null;
+    final accent = danger ? cs.error : cs.primary;
     final fg = !enabled
         ? cs.onSurface.withAlpha(90)
-        : (primary ? cs.primary : cs.onSurfaceVariant);
+        : (primary || danger ? accent : cs.onSurfaceVariant);
     final borderColor = !enabled
         ? cs.onSurface.withAlpha(20)
-        : (primary ? cs.primary.withAlpha(64) : cs.onSurface.withAlpha(30));
+        : (primary || danger
+            ? accent.withAlpha(64)
+            : cs.onSurface.withAlpha(30));
     final radius = BorderRadius.circular(14);
 
     return Material(
-      color: primary && enabled ? cs.primary.withAlpha(22) : Colors.transparent,
+      color: (primary || danger) && enabled
+          ? accent.withAlpha(22)
+          : Colors.transparent,
       borderRadius: radius,
       child: InkWell(
         onTap: !enabled

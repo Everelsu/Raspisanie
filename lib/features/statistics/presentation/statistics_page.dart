@@ -1,4 +1,5 @@
 import "package:easy_refresh/easy_refresh.dart";
+import "../../../core/widgets/app_snack.dart";
 import "package:flutter/material.dart";
 import "package:flutter/services.dart";
 import "package:flutter_staggered_animations/flutter_staggered_animations.dart";
@@ -13,7 +14,8 @@ import "../../schedule/domain/models.dart";
 import "../../schedule/presentation/schedule_controller.dart";
 
 class StatisticsPage extends StatefulWidget {
-  const StatisticsPage({super.key, required this.controller, this.scrollController});
+  const StatisticsPage(
+      {super.key, required this.controller, this.scrollController});
   final ScheduleController controller;
 
   /// Внешний контроллер прокрутки — HomePage использует его для
@@ -38,9 +40,7 @@ class _StatisticsPageState extends State<StatisticsPage> {
   }
 
   void _onController() {
-    if (_listAnimKey == 0 &&
-        widget.controller.statistics != null &&
-        mounted) {
+    if (_listAnimKey == 0 && widget.controller.statistics != null && mounted) {
       setState(() => _listAnimKey = 1);
     }
   }
@@ -90,8 +90,7 @@ class _StatisticsPageState extends State<StatisticsPage> {
             child: CustomScrollView(
               slivers: [
                 SliverPadding(
-                  padding: EdgeInsets.only(
-                      top: contentTopUnderAppBar(context)),
+                  padding: EdgeInsets.only(top: contentTopUnderAppBar(context)),
                 ),
                 const HeaderLocator.sliver(),
                 SliverFillRemaining(
@@ -155,7 +154,8 @@ class _StatisticsPageState extends State<StatisticsPage> {
             SliverPadding(padding: EdgeInsets.only(top: appBarTop)),
             const HeaderLocator.sliver(),
             SliverPadding(
-              padding: EdgeInsets.fromLTRB(16, 0, 16, contentBottomPadding(context)),
+              padding:
+                  EdgeInsets.fromLTRB(16, 0, 16, contentBottomPadding(context)),
               sliver: SliverList(
                 delegate: SliverChildBuilderDelegate(
                   itemBuilder,
@@ -243,15 +243,11 @@ class _SummaryBadge extends StatelessWidget {
 
   void _showCaption(BuildContext context) {
     HapticFeedback.selectionClick();
-    ScaffoldMessenger.of(context).clearSnackBars();
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text("$label: $caption"),
-        duration: const Duration(milliseconds: 1400),
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        margin: const EdgeInsets.fromLTRB(16, 0, 16, 90),
-      ),
+    showAppSnack(
+      context,
+      "$label: $caption",
+      icon: Icons.info_outline_rounded,
+      duration: const Duration(milliseconds: 1400),
     );
   }
 
@@ -270,47 +266,47 @@ class _SummaryBadge extends StatelessWidget {
             borderRadius: BorderRadius.circular(14),
             onLongPress: () => _showCaption(context),
             child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 12),
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              stops: const [0.0, 0.5, 1.0],
-              colors: [
-                theme.cardTheme.color ?? theme.cardColor,
-                (theme.cardTheme.color ?? theme.cardColor).withAlpha(242),
-                (theme.cardTheme.color ?? theme.cardColor).withAlpha(228),
-              ],
-            ),
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: color.withAlpha(70), width: 1),
-            boxShadow: theme.brightness == Brightness.light
-                ? [
-                    BoxShadow(
-                      color: Colors.black.withAlpha(18),
-                      blurRadius: 8,
-                      offset: const Offset(0, 2),
-                    ),
-                  ]
-                : null,
-          ),
-          child: Column(
-            children: [
-              Text(
-                value,
-                style: TextStyle(
-                  color: color,
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  stops: const [0.0, 0.5, 1.0],
+                  colors: [
+                    theme.cardTheme.color ?? theme.cardColor,
+                    (theme.cardTheme.color ?? theme.cardColor).withAlpha(242),
+                    (theme.cardTheme.color ?? theme.cardColor).withAlpha(228),
+                  ],
                 ),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: color.withAlpha(70), width: 1),
+                boxShadow: theme.brightness == Brightness.light
+                    ? [
+                        BoxShadow(
+                          color: Colors.black.withAlpha(18),
+                          blurRadius: 8,
+                          offset: const Offset(0, 2),
+                        ),
+                      ]
+                    : null,
               ),
-              const SizedBox(height: 2),
-              Text(
-                label,
-                style: theme.textTheme.bodySmall?.copyWith(fontSize: 11),
+              child: Column(
+                children: [
+                  Text(
+                    value,
+                    style: TextStyle(
+                      color: color,
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    label,
+                    style: theme.textTheme.bodySmall?.copyWith(fontSize: 11),
+                  ),
+                ],
               ),
-            ],
-          ),
             ),
           ),
         ),
@@ -341,147 +337,149 @@ class _DisciplineCard extends StatelessWidget {
       child: InkWell(
         onLongPress: () => _showDetailsSheet(context),
         child: Stack(
-        children: [
-          Positioned.fill(
-            child: TweenAnimationBuilder<double>(
-              tween: Tween(begin: 0, end: percent / 100),
-              duration: const Duration(milliseconds: 400),
-              curve: Curves.easeOutCubic,
-              builder: (_, value, __) => FractionallySizedBox(
-                widthFactor: value,
-                alignment: Alignment.centerLeft,
-                child: Container(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.centerLeft,
-                      end: Alignment.centerRight,
-                      stops: const [0.0, 0.5, 1.0],
-                      colors: [
-                        theme.colorScheme.primary.withAlpha(26),
-                        theme.colorScheme.primary.withAlpha(12),
-                        theme.colorScheme.primary.withAlpha(5),
-                      ],
+          children: [
+            Positioned.fill(
+              child: TweenAnimationBuilder<double>(
+                tween: Tween(begin: 0, end: percent / 100),
+                duration: const Duration(milliseconds: 400),
+                curve: Curves.easeOutCubic,
+                builder: (_, value, __) => FractionallySizedBox(
+                  widthFactor: value,
+                  alignment: Alignment.centerLeft,
+                  child: Container(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.centerLeft,
+                        end: Alignment.centerRight,
+                        stops: const [0.0, 0.5, 1.0],
+                        colors: [
+                          theme.colorScheme.primary.withAlpha(26),
+                          theme.colorScheme.primary.withAlpha(12),
+                          theme.colorScheme.primary.withAlpha(5),
+                        ],
+                      ),
                     ),
                   ),
                 ),
               ),
             ),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Container(
-                      width: 36,
-                      height: 36,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: theme.colorScheme.primary.withAlpha(28),
-                      ),
-                      alignment: Alignment.center,
-                      child: Text(
-                        discipline.number.isNotEmpty
-                            ? discipline.number.replaceAll(RegExp(r'\.$'), '')
-                            : "${index + 1}",
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.bold,
-                          color: theme.colorScheme.onSurface,
+            Padding(
+              padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Container(
+                        width: 36,
+                        height: 36,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: theme.colorScheme.primary.withAlpha(28),
+                        ),
+                        alignment: Alignment.center,
+                        child: Text(
+                          discipline.number.isNotEmpty
+                              ? discipline.number.replaceAll(RegExp(r'\.$'), '')
+                              : "${index + 1}",
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold,
+                            color: theme.colorScheme.onSurface,
+                          ),
                         ),
                       ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              discipline.discipline.isNotEmpty
+                                  ? discipline.discipline
+                                  : "—",
+                              style: theme.textTheme.bodyLarge
+                                  ?.copyWith(fontWeight: FontWeight.w600),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            if (isTeacherMode &&
+                                discipline.group.isNotEmpty) ...[
+                              const SizedBox(height: 2),
+                              Text(
+                                "Группа: ${discipline.group}",
+                                style: theme.textTheme.bodySmall,
+                              ),
+                            ] else if (!isTeacherMode &&
+                                discipline.teacher.isNotEmpty) ...[
+                              const SizedBox(height: 2),
+                              Text(
+                                discipline.teacher,
+                                style: theme.textTheme.bodySmall,
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
                         children: [
                           Text(
-                            discipline.discipline.isNotEmpty
-                                ? discipline.discipline
-                                : "—",
-                            style: theme.textTheme.bodyLarge
-                                ?.copyWith(fontWeight: FontWeight.w600),
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          if (isTeacherMode && discipline.group.isNotEmpty) ...[
-                            const SizedBox(height: 2),
-                            Text(
-                              "Группа: ${discipline.group}",
-                              style: theme.textTheme.bodySmall,
+                            pctText,
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                              color: theme.colorScheme.primary,
                             ),
-                          ] else if (!isTeacherMode &&
-                              discipline.teacher.isNotEmpty) ...[
-                            const SizedBox(height: 2),
-                            Text(
-                              discipline.teacher,
-                              style: theme.textTheme.bodySmall,
+                          ),
+                          if (discipline.lessonType.isNotEmpty) ...[
+                            const SizedBox(height: 4),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 8, vertical: 3),
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(6),
+                                color:
+                                    theme.colorScheme.onSurface.withAlpha(15),
+                              ),
+                              child: Text(
+                                discipline.lessonType,
+                                style: theme.textTheme.bodySmall
+                                    ?.copyWith(fontSize: 11),
+                              ),
                             ),
                           ],
                         ],
                       ),
-                    ),
-                    const SizedBox(width: 8),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        Text(
-                          pctText,
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                            color: theme.colorScheme.primary,
-                          ),
-                        ),
-                        if (discipline.lessonType.isNotEmpty) ...[
-                          const SizedBox(height: 4),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 8, vertical: 3),
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(6),
-                              color: theme.colorScheme.onSurface.withAlpha(15),
-                            ),
-                            child: Text(
-                              discipline.lessonType,
-                              style: theme.textTheme.bodySmall
-                                  ?.copyWith(fontSize: 11),
-                            ),
-                          ),
-                        ],
-                      ],
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    _HourStat(
-                        label: "Всего",
-                        value: "${discipline.totalHours ?? '—'}",
-                        theme: theme),
-                    _HourStat(
-                        label: "План",
-                        value: "${discipline.plannedHours ?? '—'}",
-                        theme: theme),
-                    _HourStat(
-                        label: "Факт",
-                        value: "${discipline.factHours ?? '—'}",
-                        theme: theme),
-                    _HourStat(
-                        label: "Остаток",
-                        value: "${discipline.remainingHours ?? '—'}",
-                        theme: theme),
-                  ],
-                ),
-              ],
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      _HourStat(
+                          label: "Всего",
+                          value: "${discipline.totalHours ?? '—'}",
+                          theme: theme),
+                      _HourStat(
+                          label: "План",
+                          value: "${discipline.plannedHours ?? '—'}",
+                          theme: theme),
+                      _HourStat(
+                          label: "Факт",
+                          value: "${discipline.factHours ?? '—'}",
+                          theme: theme),
+                      _HourStat(
+                          label: "Остаток",
+                          value: "${discipline.remainingHours ?? '—'}",
+                          theme: theme),
+                    ],
+                  ),
+                ],
+              ),
             ),
-          ),
-        ],
+          ],
         ),
       ),
     );
@@ -673,11 +671,10 @@ class _DisciplineCard extends StatelessWidget {
                   Navigator.pop(ctx);
                   await Clipboard.setData(ClipboardData(text: copyText));
                   if (!context.mounted) return;
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text("Скопировано"),
-                      duration: Duration(seconds: 1),
-                    ),
+                  showAppSnack(
+                    context,
+                    "Скопировано",
+                    duration: const Duration(seconds: 1),
                   );
                 },
               ),
@@ -734,8 +731,8 @@ class _InfoChip extends StatelessWidget {
           const SizedBox(width: 6),
           Text(
             label,
-            style: theme.textTheme.bodySmall
-                ?.copyWith(color: cs.onSurfaceVariant),
+            style:
+                theme.textTheme.bodySmall?.copyWith(color: cs.onSurfaceVariant),
           ),
         ],
       ),

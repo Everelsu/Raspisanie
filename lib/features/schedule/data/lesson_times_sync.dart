@@ -49,7 +49,8 @@ class LessonTimesSync {
 
     final nowMs = DateTime.now().millisecondsSinceEpoch;
     if (!force && !_dueForCheck(nowMs)) {
-      return const LessonTimesSyncResult(ok: true, changed: false, skipped: true);
+      return const LessonTimesSyncResult(
+          ok: true, changed: false, skipped: true);
     }
 
     final useEtag = _prefs.lessonTimesUseEtag;

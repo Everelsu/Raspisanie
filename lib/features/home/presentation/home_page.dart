@@ -6,6 +6,7 @@ import "package:flutter/material.dart";
 import "package:flutter/services.dart";
 import "package:package_info_plus/package_info_plus.dart";
 
+import "../../../core/widgets/app_snack.dart";
 import "../../../core/notifications/notification_service.dart";
 import "../../../core/services/analytics_service.dart";
 import "../../../core/services/font_service.dart";
@@ -107,22 +108,21 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     if (seen == null || seen.isEmpty) return;
     if (compareVersions(seen, info.version) >= 0) return;
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text("Приложение обновлено до ${info.version}"),
-        duration: const Duration(seconds: 6),
-        behavior: SnackBarBehavior.floating,
-        action: SnackBarAction(
-          label: "Что нового",
-          onPressed: () {
-            if (!mounted) return;
-            Navigator.of(context).push(
-              MaterialPageRoute<void>(
-                builder: (_) => const ChangelogPage(),
-              ),
-            );
-          },
-        ),
+    showAppSnack(
+      context,
+      "Приложение обновлено до ${info.version}",
+      icon: Icons.rocket_launch_rounded,
+      duration: const Duration(seconds: 6),
+      action: SnackBarAction(
+        label: "Что нового",
+        onPressed: () {
+          if (!mounted) return;
+          Navigator.of(context).push(
+            MaterialPageRoute<void>(
+              builder: (_) => const ChangelogPage(),
+            ),
+          );
+        },
       ),
     );
   }
@@ -398,22 +398,11 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 
   void _showAppBarToast(IconData icon, String text) {
     if (!mounted) return;
-    final messenger = ScaffoldMessenger.of(context);
-    messenger.clearSnackBars();
-    messenger.showSnackBar(
-      SnackBar(
-        content: Row(
-          children: [
-            Icon(icon, size: 16, color: Colors.white),
-            const SizedBox(width: 8),
-            Expanded(child: Text(text)),
-          ],
-        ),
-        duration: const Duration(milliseconds: 1800),
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        margin: const EdgeInsets.fromLTRB(24, 0, 24, 90),
-      ),
+    showAppSnack(
+      context,
+      text,
+      icon: icon,
+      duration: const Duration(milliseconds: 1800),
     );
   }
 
@@ -818,14 +807,12 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                                           .instance
                                           .scheduleTestIn1Min();
                                       if (!ctx.mounted) return;
-                                      ScaffoldMessenger.of(ctx).showSnackBar(
-                                        SnackBar(
-                                          content: Text(
-                                            ok
-                                                ? "Тест через 1 мин запланирован"
-                                                : "Не удалось (нет разрешения)",
-                                          ),
-                                        ),
+                                      showAppSnack(
+                                        ctx,
+                                        ok
+                                            ? "Тест через 1 мин запланирован"
+                                            : "Не удалось (нет разрешения)",
+                                        isError: !ok,
                                       );
                                     },
                                     child: const Text("Через 1 мин"),

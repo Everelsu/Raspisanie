@@ -139,4 +139,3 @@ void callbackDispatcher() {
     return true;
   });
 }
-

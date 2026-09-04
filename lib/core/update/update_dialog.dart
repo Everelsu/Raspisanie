@@ -1,4 +1,5 @@
 import "dart:io";
+import "../widgets/app_snack.dart";
 
 import "package:flutter/material.dart";
 import "package:flutter_markdown_plus/flutter_markdown_plus.dart";
@@ -145,9 +146,8 @@ class UpdateDialog extends StatelessWidget {
               )
             else
               FilledButton.icon(
-                onPressed: controller.downloading
-                    ? null
-                    : () => controller.download(),
+                onPressed:
+                    controller.downloading ? null : () => controller.download(),
                 icon: const Icon(Icons.download_rounded, size: 20),
                 label: Text(controller.error != null ? "Повторить" : "Скачать"),
               ),
@@ -166,8 +166,10 @@ class UpdateDialog extends StatelessWidget {
     if (ok) {
       Navigator.pop(context, true);
     } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Не удалось запустить установку")),
+      showAppSnack(
+        context,
+        "Не удалось запустить установку",
+        isError: true,
       );
     }
   }
