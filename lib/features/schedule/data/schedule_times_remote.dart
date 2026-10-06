@@ -1,5 +1,7 @@
 import "dart:convert";
 
+import "package:crypto/crypto.dart";
+
 import "../../../core/update/github_http_client.dart";
 import "lesson_times.dart";
 
@@ -155,12 +157,5 @@ class ScheduleTimesRemoteService {
     return h >= 0 && h <= 23 && min >= 0 && min <= 59;
   }
 
-  String _fingerprint(List<int> bytes) {
-    var hash = 0xcbf29ce484222325;
-    for (final b in bytes) {
-      hash ^= b;
-      hash = (hash * 0x100000001b3) & 0xFFFFFFFFFFFFFFFF;
-    }
-    return hash.toRadixString(16);
-  }
+  String _fingerprint(List<int> bytes) => sha1.convert(bytes).toString();
 }

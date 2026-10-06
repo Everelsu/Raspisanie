@@ -1,6 +1,7 @@
 import "dart:convert";
 import "dart:io";
 
+import "package:flutter/foundation.dart" show kIsWeb;
 import "package:path/path.dart" as p;
 import "package:sqflite/sqflite.dart";
 
@@ -321,6 +322,8 @@ class ScheduleDatabase {
     String scheduleJson, {
     List<DaySchedule>? parsedDays,
   }) async {
+    // ponytail: в вебе sqflite нет — история не пишется. Нужна — sqflite_common_ffi_web.
+    if (kIsWeb) return;
     var days = parsedDays ?? const <DaySchedule>[];
     if (days.isEmpty) {
       try {

@@ -1,7 +1,6 @@
 // ignore_for_file: avoid_print
 
 import "dart:convert";
-import "dart:io";
 
 import "package:flutter/foundation.dart";
 import "package:flutter/services.dart";
@@ -9,6 +8,7 @@ import "package:flutter_local_notifications/flutter_local_notifications.dart";
 import "package:shared_preferences/shared_preferences.dart";
 import "package:timezone/data/latest_all.dart" as tz_data;
 import "package:timezone/timezone.dart" as tz;
+import "../platform.dart";
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // MODEL
@@ -119,7 +119,8 @@ class NotificationService {
   /// первый и ничего не делают. Параллельные вызовы сливаются в один
   /// _doInit() и не дублируют инициализацию плагина.
   Future<void> init() async {
-    if (_initialized) return;
+    // Запланированных локальных уведомлений в вебе нет (zonedSchedule не поддержан).
+    if (kIsWeb || _initialized) return;
     _initFuture ??= _doInit();
     try {
       await _initFuture;
@@ -175,7 +176,7 @@ class NotificationService {
       );
     }
 
-    if (Platform.isAndroid) {
+    if (isAndroid) {
       final ap = _androidPlugin;
       await ap?.createNotificationChannel(const AndroidNotificationChannel(
         _channel,
@@ -218,6 +219,7 @@ class NotificationService {
     required int offsetMinutes,
     required bool enabled,
   }) async {
+    if (kIsWeb) return;
     await _ensureInit();
 
     final fingerprint =
@@ -242,7 +244,7 @@ class NotificationService {
     }
 
     // Android 13+: проверяем POST_NOTIFICATIONS перед планированием.
-    if (Platform.isAndroid) {
+    if (isAndroid) {
       final granted = await _androidPlugin?.areNotificationsEnabled() ?? false;
       if (!granted) {
         debugPrint(
@@ -254,7 +256,7 @@ class NotificationService {
 
     // Exact alarms: Android 12+ (API 31). Падаем на inexact если нет разрешения.
     final bool canExact;
-    if (Platform.isAndroid) {
+    if (isAndroid) {
       canExact =
           await _androidPlugin?.canScheduleExactNotifications() ?? false;
     } else {
@@ -347,7 +349,7 @@ class NotificationService {
   Future<bool> requestPermissionsOnStartup() async {
     await _ensureInit();
 
-    if (Platform.isAndroid) {
+    if (isAndroid) {
       final alreadyGranted =
           await _androidPlugin?.areNotificationsEnabled() ?? false;
       if (alreadyGranted) return false;
@@ -360,7 +362,7 @@ class NotificationService {
       return granted;
     }
 
-    if (Platform.isIOS) {
+    if (isIOS) {
       final iosPlugin = _plugin.resolvePlatformSpecificImplementation<
           IOSFlutterLocalNotificationsPlugin>();
       final granted = await iosPlugin?.requestPermissions(
@@ -381,7 +383,7 @@ class NotificationService {
   /// Разрешены ли уведомления системой (Android 13+, API 33+).
   Future<bool> areNotificationsEnabled() async {
     await _ensureInit();
-    if (Platform.isAndroid) {
+    if (isAndroid) {
       return await _androidPlugin?.areNotificationsEnabled() ?? false;
     }
     return true;
@@ -390,7 +392,7 @@ class NotificationService {
   /// Доступны ли точные будильники (Android 12+, API 31+).
   Future<bool> canScheduleExactAlarms() async {
     await _ensureInit();
-    if (Platform.isAndroid) {
+    if (isAndroid) {
       return await _androidPlugin?.canScheduleExactNotifications() ?? false;
     }
     return true;
@@ -399,7 +401,7 @@ class NotificationService {
   /// Запросить разрешение `POST_NOTIFICATIONS`. Возвращает true если выдано.
   Future<bool> requestNotificationPermission() async {
     await _ensureInit();
-    if (Platform.isAndroid) {
+    if (isAndroid) {
       return await _androidPlugin?.requestNotificationsPermission() ?? false;
     }
     return true;
@@ -408,7 +410,7 @@ class NotificationService {
   /// Открыть системный экран разрешения точных будильников (Android 12+).
   Future<void> requestExactAlarmPermission() async {
     await _ensureInit();
-    if (Platform.isAndroid) {
+    if (isAndroid) {
       await _androidPlugin?.requestExactAlarmsPermission();
     }
   }
@@ -418,7 +420,7 @@ class NotificationService {
   /// Используется когда пользователь отказал в разрешении и повторный
   /// вызов [requestNotificationPermission] не показывает диалог.
   Future<void> openNotificationSettings() async {
-    if (Platform.isAndroid) {
+    if (isAndroid) {
       try {
         await const MethodChannel("com.relsev.raspisanie/system_settings")
             .invokeMethod<void>("openNotificationSettings");
@@ -452,7 +454,7 @@ class NotificationService {
     if (!fromBackgroundWorker && appInForeground) return;
     await _ensureInit();
 
-    if (Platform.isAndroid) {
+    if (isAndroid) {
       final granted = await _androidPlugin?.areNotificationsEnabled() ?? false;
       if (!granted) return;
     }

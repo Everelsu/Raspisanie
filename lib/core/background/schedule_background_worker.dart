@@ -1,5 +1,3 @@
-import "dart:io";
-
 import "package:flutter/foundation.dart";
 import "package:shared_preferences/shared_preferences.dart";
 import "package:workmanager/workmanager.dart";
@@ -15,12 +13,13 @@ import "../../features/schedule/data/schedule_cache.dart";
 import "../../features/schedule/data/statistics_cache.dart";
 import "../../features/schedule/data/sub_schedule_cache.dart";
 import "../../features/schedule/domain/schedule_hash.dart";
+import "../platform.dart";
 
 class ScheduleBackgroundWorker {
   static const String taskName = "schedule_background_check";
   static const String uniqueName = "schedule_background_check_unique";
 
-  static bool get supported => !kIsWeb && Platform.isAndroid;
+  static bool get supported => isAndroid;
 
   static Future<void> ensureRegisteredIfNeeded({
     required PreferencesManager prefs,

@@ -13,6 +13,7 @@ import "package:shared_preferences/shared_preferences.dart";
 import "app_update_service.dart";
 import "update_manifest.dart";
 import "version_utils.dart";
+import "../platform.dart";
 
 /// Стадия обновления: найдено (нужно скачать) или APK уже скачан и проверен.
 enum AppUpdateStage { available, downloaded }
@@ -75,7 +76,7 @@ class AppUpdateController extends ChangeNotifier {
         notifyListeners();
       }
       if (autoDownload &&
-          Platform.isAndroid &&
+          isAndroid &&
           _apkPath == null &&
           !_downloading &&
           await _autoDownloadAllowed()) {
@@ -107,7 +108,7 @@ class AppUpdateController extends ChangeNotifier {
   /// активной загрузки возвращает ту же Future (дожидается её завершения).
   Future<bool> download() {
     final update = _available;
-    if (update == null || !Platform.isAndroid) return Future.value(false);
+    if (update == null || !isAndroid) return Future.value(false);
     if (_apkPath != null) return Future.value(true);
     return _downloadTask ??= _runDownload(update).whenComplete(() {
       _downloadTask = null;

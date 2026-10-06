@@ -27,8 +27,11 @@ void main() async {
   final binding = WidgetsFlutterBinding.ensureInitialized();
   // Держим нативный сплэш, пока SplashIntro не отрисует свой первый кадр —
   // иначе система анимированно убирает свою иконку и знак «выплывает» заново.
-  FlutterNativeSplash.preserve(widgetsBinding: binding);
-  FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
+  // В вебе нет ни нативного сплэша (flutter_native_splash: web: false), ни Firebase.
+  if (!kIsWeb) {
+    FlutterNativeSplash.preserve(widgetsBinding: binding);
+    FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
+  }
 
   if (ScheduleBackgroundWorker.supported) {
     await Workmanager().initialize(

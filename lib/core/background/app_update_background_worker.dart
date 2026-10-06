@@ -1,5 +1,3 @@
-import "dart:io";
-
 import "package:flutter/foundation.dart";
 import "package:package_info_plus/package_info_plus.dart";
 import "package:shared_preferences/shared_preferences.dart";
@@ -8,12 +6,13 @@ import "package:workmanager/workmanager.dart";
 import "../../features/schedule/data/preferences_manager.dart";
 import "../update/update_manifest.dart";
 import "../update/version_utils.dart";
+import "../platform.dart";
 
 class AppUpdateBackgroundWorker {
   static const String taskName = "app_update_check";
   static const String uniqueName = "app_update_check_unique";
 
-  static bool get supported => !kIsWeb && Platform.isAndroid;
+  static bool get supported => isAndroid;
 
   static Future<void> ensureRegistered({
     required PreferencesManager prefs,

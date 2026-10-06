@@ -1,4 +1,3 @@
-import "dart:io";
 import "../widgets/app_snack.dart";
 
 import "package:flutter/material.dart";
@@ -7,6 +6,7 @@ import "package:url_launcher/url_launcher.dart";
 
 import "app_update_controller.dart";
 import "changelog_page.dart";
+import "../platform.dart";
 
 /// Показывает диалог обновления для [AppUpdateController.available].
 /// Закрытие любым способом, кроме запуска установки, откладывает следующее
@@ -132,7 +132,7 @@ class UpdateDialog extends StatelessWidget {
               onPressed: () => Navigator.pop(context, false),
               child: const Text("Позже"),
             ),
-            if (!Platform.isAndroid)
+            if (!isAndroid)
               TextButton.icon(
                 onPressed: () => _openReleases(context),
                 icon: const Icon(Icons.open_in_new_rounded, size: 18),

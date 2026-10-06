@@ -1,6 +1,8 @@
 import "dart:async";
 import "../../../core/widgets/app_snack.dart";
 import "dart:io";
+
+import "package:flutter/foundation.dart" show kIsWeb;
 import "dart:ui" show lerpDouble;
 
 import "package:flutter/material.dart";
@@ -14,6 +16,7 @@ import "package:webview_flutter/webview_flutter.dart";
 import "../../../app/theme.dart" show contentBottomPadding;
 import "../../schedule/presentation/schedule_controller.dart";
 import "browser_bar.dart";
+import "../../../core/platform.dart";
 
 /// Высота браузерной части единого AppBar (совпадает с kToolbarHeight).
 const _browserAppBarHeight = 56.0;
@@ -73,7 +76,7 @@ class _NetworkPageState extends State<NetworkPage>
   BrowserBarController get _bar => widget.barController;
 
   bool get _webViewSupported =>
-      Platform.isAndroid || Platform.isIOS || Platform.isMacOS;
+      isAndroid || isIOS || (!kIsWeb && Platform.isMacOS);
 
   /// Built-in URL if custom start URL is empty or invalid.
   Uri get _resolvedStartUri {

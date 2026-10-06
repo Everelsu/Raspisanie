@@ -1,0 +1,67 @@
+name: Web (PWA)
+
+# Веб-версия для iPhone: открыть в Safari → «Поделиться» → «На экран Домой».
+# Собирается из master и публикуется на GitHub Pages:
+#   https://everelsu.github.io/Raspisanie/
+#
+# Сайты колледжей не отдают CORS-заголовки, поэтому в вебе HTML расписания
+# качается через прокси (web_proxy/, деплоится на Vercel отдельно). Адрес прокси —
+# переменная репозитория WEB_PROXY (Settings → Secrets and variables → Actions →
+# Variables), например https://raspisanie-proxy.vercel.app/api/proxy.
+#
+# Один раз включить: Settings → Pages → Source: GitHub Actions.
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - 'lib/**'
+      - 'web/**'
+      - 'assets/**'
+      - 'pubspec.yaml'
+      - 'pubspec.lock'
+      - 'CHANGELOG.md'
+      - '.github/workflows/web.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Build web
+        run: >
+          flutter build web --release
+          --base-href /${{ github.event.repository.name }}/
+          --dart-define=WEB_PROXY=${{ vars.WEB_PROXY }}
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: build/web
+
+      - id: deployment
+        uses: actions/deploy-pages@v4

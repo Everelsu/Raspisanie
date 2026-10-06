@@ -1,6 +1,5 @@
-import 'dart:io';
-
 import 'package:flutter/services.dart';
+import "../platform.dart";
 
 /// Switches the launcher icon between the per-theme activity-aliases
 /// declared in AndroidManifest.xml.
@@ -23,7 +22,7 @@ class AppIconService {
   /// Enables the alias for [themeKey], disables the rest.
   /// No-op on non-Android platforms and unknown keys.
   static Future<void> setIcon(String themeKey) async {
-    if (!Platform.isAndroid) return;
+    if (!isAndroid) return;
     if (!themedIcons.contains(themeKey)) return;
     try {
       await _channel.invokeMethod('setIcon', themeKey);

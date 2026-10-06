@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_native_splash/flutter_native_splash.dart';
 
@@ -66,7 +67,7 @@ class _SplashIntroState extends State<SplashIntro>
     // приходится на неподвижную картинку, а волна стартует уже чистой.
     await Future<void>.delayed(const Duration(milliseconds: 80));
     if (!mounted) return;
-    FlutterNativeSplash.remove();
+    if (!kIsWeb) FlutterNativeSplash.remove();
     await Future<void>.delayed(const Duration(milliseconds: 48));
     if (!mounted) return;
     // Пока идёт волна, приложение НЕ строится — дерево под оверлеем пустое,

@@ -1,10 +1,9 @@
-import "dart:io";
-
 import "package:firebase_core/firebase_core.dart";
 import "package:firebase_messaging/firebase_messaging.dart";
 import "package:flutter_local_notifications/flutter_local_notifications.dart";
 
 import "../../firebase_options.dart";
+import "../platform.dart";
 
 /// Обработчик FCM в фоне (терминальное состояние). Должен быть top-level.
 @pragma("vm:entry-point")
@@ -26,14 +25,14 @@ const AndroidNotificationChannel _fcmChannel = AndroidNotificationChannel(
 /// Инициализация Firebase Messaging: права, канал, обработчики и токен.
 Future<void> initFirebaseMessaging() async {
   final messaging = FirebaseMessaging.instance;
-  if (Platform.isIOS) {
+  if (isIOS) {
     await messaging.requestPermission(
       alert: true,
       badge: true,
       sound: true,
     );
   }
-  if (Platform.isAndroid) {
+  if (isAndroid) {
     final plugin = FlutterLocalNotificationsPlugin();
     final android = plugin.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
     if (android != null) {

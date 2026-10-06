@@ -3,6 +3,7 @@ import "../../../core/widgets/app_snack.dart";
 import "dart:io";
 
 import "package:file_picker/file_picker.dart";
+import "package:flutter/foundation.dart" show kIsWeb;
 import "package:flutter/material.dart";
 import "package:flutter/services.dart";
 import "package:http/http.dart" as http;
@@ -115,7 +116,7 @@ class _SettingsPageState extends State<SettingsPage> {
   @override
   void initState() {
     super.initState();
-    _loadDbSettings();
+    if (!kIsWeb) _loadDbSettings();
     _loadLessonTimesForSelectedCollege();
     PackageInfo.fromPlatform().then((info) {
       if (mounted) setState(() => _appVersion = info.version);
@@ -170,12 +171,17 @@ class _SettingsPageState extends State<SettingsPage> {
             _displayCard(theme),
             const SizedBox(height: 10),
             _lessonTimesCard(theme),
-            const SizedBox(height: 10),
-            _dbSettingsCard(theme),
+            // История (SQLite) и APK-обновления в вебе не работают.
+            if (!kIsWeb) ...[
+              const SizedBox(height: 10),
+              _dbSettingsCard(theme),
+            ],
             const SizedBox(height: 10),
             _appearanceCard(theme),
-            const SizedBox(height: 10),
-            _updatesCard(theme),
+            if (!kIsWeb) ...[
+              const SizedBox(height: 10),
+              _updatesCard(theme),
+            ],
             const SizedBox(height: 20),
             _creditsCard(theme),
             const SizedBox(height: 12),

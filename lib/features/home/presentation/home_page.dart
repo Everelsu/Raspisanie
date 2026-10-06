@@ -1,5 +1,4 @@
 import "dart:async";
-import "dart:io";
 
 import "package:flutter/foundation.dart";
 import "package:flutter/material.dart";
@@ -25,6 +24,7 @@ import "../../schedule/presentation/schedule_controller.dart";
 import "../../schedule/presentation/schedule_page.dart";
 import "../../settings/presentation/settings_page.dart";
 import "../../statistics/presentation/statistics_page.dart";
+import "../../../core/platform.dart";
 
 class HomePage extends StatefulWidget {
   const HomePage({
@@ -87,7 +87,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _maybeShowWhatsNewSnackbar();
     });
-    if (Platform.isAndroid && widget.controller.prefs.autoCheckAppUpdate) {
+    if (isAndroid && widget.controller.prefs.autoCheckAppUpdate) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _tryShowPendingBackgroundUpdate();
         Future.delayed(const Duration(seconds: 2), () {
@@ -145,7 +145,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
     if (state != AppLifecycleState.resumed) return;
-    if (!Platform.isAndroid || !widget.controller.prefs.autoCheckAppUpdate) {
+    if (!isAndroid || !widget.controller.prefs.autoCheckAppUpdate) {
       return;
     }
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -537,7 +537,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                             controller: widget.controller,
                             title: _titles[_currentIndex],
                             tabIndex: _currentIndex,
-                            showNotificationsAction: _currentIndex == 3,
+                            showNotificationsAction: _currentIndex == 3 && !kIsWeb,
                             onNotificationsTap: () =>
                                 _showNotificationSheet(context),
                             browserToolbar: _currentIndex == 2
@@ -1049,7 +1049,7 @@ class _NotificationPermissionCardState
 
   @override
   Widget build(BuildContext context) {
-    if (!Platform.isAndroid) return const SizedBox.shrink();
+    if (!isAndroid) return const SizedBox.shrink();
 
     final notifOk = _notifEnabled ?? true;
     final exactOk = _exactEnabled ?? true;

@@ -1,5 +1,3 @@
-import "dart:io";
-
 import "package:flutter/material.dart";
 import "package:flutter/services.dart";
 
@@ -12,6 +10,7 @@ import "../../../core/widgets/refresh_logo_mark.dart";
 import "../../schedule/data/preferences_manager.dart";
 import "../../schedule/presentation/schedule_controller.dart";
 import "widgets/settings_ui.dart";
+import "../../../core/platform.dart";
 
 /// Содержимое карточки «Оформление»: тема, иконка приложения, шрифт,
 /// эффекты и виджет — сворачиваемые подразделы внутри общей карточки
@@ -59,7 +58,7 @@ class _AppearanceSectionsState extends State<AppearanceSections> {
               builder: (context) => _themeSection(theme),
             ),
             _divider(theme),
-            if (Platform.isAndroid) ...[
+            if (isAndroid) ...[
               SettingsSubsectionExpander(
                 icon: Icons.apps_rounded,
                 title: "Иконка приложения",

@@ -1,11 +1,11 @@
 {
-    "name": "raspiflutter",
-    "short_name": "raspiflutter",
+    "name": "Расписание",
+    "short_name": "Расписание",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "background_color": "#101010",
+    "theme_color": "#101010",
+    "description": "Расписание ЧТОТиБ и ЗабГК",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [
@@ -31,5 +31,6 @@
             "type": "image/png",
             "purpose": "maskable"
         }
-    ]
+    ],
+    "lang": "ru"
 }

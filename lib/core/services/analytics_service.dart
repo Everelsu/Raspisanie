@@ -1,4 +1,5 @@
 import "package:firebase_analytics/firebase_analytics.dart";
+import "package:firebase_core/firebase_core.dart";
 import "package:flutter/foundation.dart";
 
 class AnalyticsService {
@@ -13,6 +14,8 @@ class AnalyticsService {
   bool get enabled => _enabled;
 
   Future<void> init() async {
+    // Firebase не поднялся (веб, нет конфига) — аналитика молча выключена.
+    if (Firebase.apps.isEmpty) return;
     _analytics ??= FirebaseAnalytics.instance;
     _observer ??= FirebaseAnalyticsObserver(analytics: _analytics!);
   }
