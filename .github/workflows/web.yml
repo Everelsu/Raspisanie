@@ -5,9 +5,8 @@ name: Web (PWA)
 #   https://everelsu.github.io/Raspisanie/
 #
 # Сайты колледжей не отдают CORS-заголовки, поэтому в вебе HTML расписания
-# качается через прокси (web_proxy/, деплоится на Vercel отдельно). Адрес прокси —
-# переменная репозитория WEB_PROXY (Settings → Secrets and variables → Actions →
-# Variables), например https://raspisanie-proxy.vercel.app/api/proxy.
+# качается через прокси (web_proxy/, Vercel-проект raspisanie-web_proxy, деплоится
+# сам из master). Другой адрес — переменная репозитория WEB_PROXY (Variables, не Secrets).
 #
 # Один раз включить: Settings → Pages → Source: GitHub Actions.
 
@@ -55,7 +54,7 @@ jobs:
         run: >
           flutter build web --release
           --base-href /${{ github.event.repository.name }}/
-          --dart-define=WEB_PROXY=${{ vars.WEB_PROXY }}
+          --dart-define=WEB_PROXY=${{ vars.WEB_PROXY || 'https://raspisanie-webproxy.vercel.app/api/proxy' }}
 
       - uses: actions/configure-pages@v5
 

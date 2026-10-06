@@ -62,7 +62,6 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^6.0.0
-  flutter_launcher_icons: ^0.14.4
   image: ^4.5.4
 
 flutter:
@@ -83,18 +82,7 @@ flutter:
           weight: 700
 
   assets:
-    - assets/icon/app_icon.png
     - CHANGELOG.md
-
-flutter_launcher_icons:
-  android: true
-  ios: true
-  image_path: "assets/icon/app_icon.png"
-  # Matches in-app icon: dark circle behind the logo.
-  adaptive_icon_background: "#171717"
-  adaptive_icon_foreground: "assets/icon/app_icon.png"
-  min_sdk_android: 21
-  remove_alpha_ios: true
 
 # Native splash — тёмный фон приложения + знак без подложки (не обрезается в круг).
 # Дальше подхватывает Flutter-оверлей SplashIntro с анимацией.
