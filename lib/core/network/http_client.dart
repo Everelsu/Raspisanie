@@ -4,9 +4,15 @@ import "dart:io";
 import "package:flutter/foundation.dart" show kIsWeb;
 import "package:http/http.dart" as http;
 
-/// CORS-прокси для веб-сборки (`--dart-define=WEB_PROXY=https://…/api/proxy`).
-/// Пусто — в вебе ходим только напрямую (GitHub Pages отдаёт CORS сам).
+import "../update/github_urls.dart";
+
+/// CORS-прокси для веб-сборки (`--dart-define=WEB_PROXY=https://…/api/proxy`) —
+/// последний шанс, если страницы нет в зеркале. Пусто — без прокси.
 const _webProxy = String.fromEnvironment("WEB_PROXY");
+
+/// Веб: откуда брать страницу. Сайты колледжей не отдают CORS, поэтому после
+/// отказа «напрямую» идём в зеркало на GitHub, а если там нет файла — в прокси.
+enum _WebRoute { direct, mirror, proxy }
 
 class HttpResponseData {
   const HttpResponseData({
@@ -30,20 +36,19 @@ class HttpClientService {
   static const _timeout = Duration(seconds: 15);
   static const _maxRetries = 3;
 
-  /// Хосты, отказавшие по CORS: дальше сразу идём через прокси, без лишнего круга.
+  /// Хосты, отказавшие по CORS: дальше сразу идём в зеркало, без лишнего круга.
   static final _corsBlockedHosts = <String>{};
 
   Future<HttpResponseData> getBytes(String url) async {
     Exception? lastError;
-    var viaProxy = kIsWeb &&
-        _webProxy.isNotEmpty &&
-        _corsBlockedHosts.contains(Uri.tryParse(url)?.host);
+    final host = Uri.tryParse(url)?.host ?? "";
+    var route = _corsBlockedHosts.contains(host)
+        ? _WebRoute.mirror
+        : _WebRoute.direct;
 
     for (var attempt = 0; attempt <= _maxRetries; attempt++) {
       try {
-        final uri = viaProxy
-            ? Uri.parse(_webProxy).replace(queryParameters: {"url": url})
-            : Uri.parse(url);
+        final uri = kIsWeb ? _webUri(url, route) : Uri.parse(url);
         final response = await _client
             .get(uri,
                 // В браузере User-Agent — запрещённый заголовок.
@@ -54,6 +59,14 @@ class HttpClientService {
                             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
                       })
             .timeout(_timeout);
+
+        if (kIsWeb &&
+            route == _WebRoute.mirror &&
+            response.statusCode == 404 &&
+            _webProxy.isNotEmpty) {
+          route = _WebRoute.proxy;
+          continue;
+        }
 
         if (_isRetryableStatus(response.statusCode) && attempt < _maxRetries) {
           await Future.delayed(Duration(milliseconds: 600 * (attempt + 1)));
@@ -72,10 +85,14 @@ class HttpClientService {
       } on SocketException catch (e) {
         lastError = SocketException("Нет подключения к сети: ${e.message}");
       } on http.ClientException catch (e) {
-        // В вебе CORS-отказ выглядит как ClientException — повторяем через прокси.
-        if (kIsWeb && !viaProxy && _webProxy.isNotEmpty) {
-          viaProxy = true;
-          _corsBlockedHosts.add(Uri.parse(url).host);
+        // В вебе CORS-отказ выглядит как ClientException — идём в зеркало.
+        if (kIsWeb && route == _WebRoute.direct) {
+          route = _WebRoute.mirror;
+          _corsBlockedHosts.add(host);
+          continue;
+        }
+        if (kIsWeb && route == _WebRoute.mirror && _webProxy.isNotEmpty) {
+          route = _WebRoute.proxy;
           continue;
         }
         lastError = http.ClientException("Ошибка сети: ${e.message}");
@@ -89,6 +106,17 @@ class HttpClientService {
     }
 
     throw lastError ?? Exception("Не удалось загрузить данные.");
+  }
+
+  Uri _webUri(String url, _WebRoute route) {
+    final uri = Uri.parse(url);
+    return switch (route) {
+      _WebRoute.direct => uri,
+      _WebRoute.mirror =>
+        Uri.parse("${GitHubProjectUrls.mirrorRaw}${uri.host}${uri.path}"),
+      _WebRoute.proxy =>
+        Uri.parse(_webProxy).replace(queryParameters: {"url": url}),
+    };
   }
 
   void dispose() => _client.close();

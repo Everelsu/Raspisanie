@@ -21,6 +21,12 @@ class GitHubProjectUrls {
   static String get scheduleTimesMasterFallbackRaw =>
       "https://raw.githubusercontent.com/${GitHubReferences.owner}/${GitHubReferences.repo}/master/$scheduleTimesFile";
 
+  /// Зеркало страниц сайтов колледжей (ветка `mirror`, обновляет workflow
+  /// mirror.yml) — для веб-версии: сами сайты не отдают CORS, а raw — отдаёт.
+  /// Путь внутри: `<host><path>`, например `www.chtotib.ru/schedule_gl/cg.htm`.
+  static String get mirrorRaw =>
+      "https://raw.githubusercontent.com/${GitHubReferences.owner}/${GitHubReferences.repo}/mirror/";
+
   static String get lessonTimesLegacyRaw =>
       "https://raw.githubusercontent.com/${GitHubReferences.owner}/${GitHubReferences.repo}/master/lesson_times.json";
 

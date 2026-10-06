@@ -1,0 +1,49 @@
+name: Mirror schedule sites
+
+# Копия страниц сайтов колледжей для веб-версии (PWA). Сами сайты не отдают
+# CORS-заголовки, а raw.githubusercontent.com отдаёт — веб-версия читает
+#   https://raw.githubusercontent.com/Everelsu/Raspisanie/mirror/<host><path>
+# Ветка `mirror` — orphan с одним коммитом (перезаписывается), по образцу `updater`.
+# Если страница групп на сайте не менялась (Last-Modified), ничего не качаем.
+
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: mirror
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  mirror:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Mirror
+        id: mirror
+        run: |
+          prev=$(curl -fsSL "https://raw.githubusercontent.com/${{ github.repository }}/mirror/.stamp" || true)
+          set +e
+          python3 tool/mirror_schedule.py out "$prev" https://www.chtotib.ru/schedule_gl/
+          code=$?
+          set -e
+          if [ $code -eq 3 ]; then echo "changed=false" >> "$GITHUB_OUTPUT"; exit 0; fi
+          [ $code -eq 0 ] && echo "changed=true" >> "$GITHUB_OUTPUT"
+          exit $code
+
+      - name: Publish to mirror branch
+        if: steps.mirror.outputs.changed == 'true'
+        working-directory: out
+        run: |
+          git init -q -b mirror
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -qm "Mirror $(date -u +%Y-%m-%dT%H:%MZ)"
+          git push -qf "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" mirror
