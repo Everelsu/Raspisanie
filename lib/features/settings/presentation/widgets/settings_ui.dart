@@ -1,6 +1,8 @@
 import "package:flutter/material.dart";
 import "package:flutter/services.dart";
 
+import "../../../../core/motion.dart";
+
 /// Заголовок секции настроек: иконка в цветном кружке + подпись капсом.
 class SettingsSectionHeader extends StatelessWidget {
   const SettingsSectionHeader(this.icon, this.text, {super.key});
@@ -159,9 +161,11 @@ class _SettingsSubsectionExpanderState
                   width: 30,
                   height: 30,
                   alignment: Alignment.center,
-                  decoration: BoxDecoration(
+                  decoration: ShapeDecoration(
                     color: cs.primary.withAlpha(_expanded ? 28 : 16),
-                    shape: BoxShape.circle,
+                    shape: RoundedSuperellipseBorder(
+                      borderRadius: BorderRadius.circular(11),
+                    ),
                   ),
                   child: Icon(widget.icon, size: 15, color: cs.primary),
                 ),
@@ -198,14 +202,7 @@ class _SettingsSubsectionExpanderState
             ),
           ),
         ),
-        AnimatedSize(
-          duration: const Duration(milliseconds: 260),
-          curve: Curves.easeOutCubic,
-          alignment: Alignment.topCenter,
-          child: _expanded
-              ? widget.builder(context)
-              : const SizedBox(width: double.infinity),
-        ),
+        _Disclosure(expanded: _expanded, builder: widget.builder),
       ],
     );
   }
@@ -264,9 +261,11 @@ class _SettingsCollapsibleCardState extends State<SettingsCollapsibleCard> {
                       width: 38,
                       height: 38,
                       alignment: Alignment.center,
-                      decoration: BoxDecoration(
+                      decoration: ShapeDecoration(
                         color: cs.primary.withAlpha(_expanded ? 32 : 18),
-                        shape: BoxShape.circle,
+                        shape: RoundedSuperellipseBorder(
+                          borderRadius: BorderRadius.circular(11),
+                        ),
                       ),
                       child: Icon(widget.icon, size: 19, color: cs.primary),
                     ),
@@ -342,22 +341,96 @@ class _SettingsCollapsibleCardState extends State<SettingsCollapsibleCard> {
               ),
             ),
           ),
-          AnimatedSize(
-            duration: const Duration(milliseconds: 280),
-            curve: Curves.easeOutCubic,
-            alignment: Alignment.topCenter,
-            child: _expanded
-                ? Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Divider(height: 1, color: theme.dividerTheme.color),
-                      widget.builder(context),
-                    ],
-                  )
-                : const SizedBox.shrink(),
+          _Disclosure(
+            expanded: _expanded,
+            builder: (context) => Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Divider(height: 1, color: theme.dividerTheme.color),
+                widget.builder(context),
+              ],
+            ),
           ),
         ],
       ),
+    );
+  }
+}
+
+/// Раскрытие по HIG: высота и прозрачность меняются вместе, при
+/// сворачивании контент уезжает под клип, а не исчезает до начала
+/// анимации. Свёрнутое тело не строится вовсе.
+class _Disclosure extends StatefulWidget {
+  const _Disclosure({required this.expanded, required this.builder});
+
+  final bool expanded;
+  final WidgetBuilder builder;
+
+  @override
+  State<_Disclosure> createState() => _DisclosureState();
+}
+
+class _DisclosureState extends State<_Disclosure>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _c;
+  late final CurvedAnimation _size;
+  late final CurvedAnimation _fade;
+
+  @override
+  void initState() {
+    super.initState();
+    _c = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 380),
+      reverseDuration: const Duration(milliseconds: 260),
+      value: widget.expanded ? 1 : 0,
+    )..addStatusListener((status) {
+        // Строим/выбрасываем тело только на границах анимации.
+        if (status == AnimationStatus.dismissed ||
+            status == AnimationStatus.forward) {
+          if (mounted) setState(() {});
+        }
+      });
+    _size = CurvedAnimation(
+      parent: _c,
+      curve: AppMotion.sheetCurve,
+      reverseCurve: Curves.easeInOutCubic,
+    );
+    _fade = CurvedAnimation(
+      parent: _c,
+      curve: const Interval(0.2, 1, curve: Curves.easeOut),
+      reverseCurve: const Interval(0.3, 1, curve: Curves.easeIn),
+    );
+  }
+
+  @override
+  void didUpdateWidget(_Disclosure old) {
+    super.didUpdateWidget(old);
+    if (widget.expanded == old.expanded) return;
+    if (AppMotion.reduced(context)) {
+      _c.value = widget.expanded ? 1 : 0;
+    } else if (widget.expanded) {
+      _c.forward();
+    } else {
+      _c.reverse();
+    }
+  }
+
+  @override
+  void dispose() {
+    _size.dispose();
+    _fade.dispose();
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_c.isDismissed) return const SizedBox(width: double.infinity);
+    return SizeTransition(
+      sizeFactor: _size,
+      alignment: Alignment.topCenter,
+      child: FadeTransition(opacity: _fade, child: widget.builder(context)),
     );
   }
 }

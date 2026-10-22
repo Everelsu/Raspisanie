@@ -1,4 +1,7 @@
+import "package:flutter/cupertino.dart" show CupertinoPageTransitionsBuilder;
 import "package:flutter/material.dart";
+
+import "../core/widgets/bottom_bar_sheet.dart";
 
 class AppThemeColors {
   final Color primary;
@@ -123,7 +126,8 @@ class AppThemes {
     final primary = accentColorOverride ?? c.primary;
     final isLight = c.brightness == Brightness.light;
     // Текст на акценте: белый на тёмном, чёрный на светлом (по яркости акцента)
-    final onPrimary = primary.computeLuminance() > 0.5 ? Colors.black87 : Colors.white;
+    final onPrimary =
+        primary.computeLuminance() > 0.5 ? Colors.black87 : Colors.white;
     final baseTextTheme = _buildTextTheme(c);
     final textTheme = textThemeBuilder == null
         ? baseTextTheme
@@ -147,16 +151,18 @@ class AppThemes {
       brightness: c.brightness,
       visualDensity: VisualDensity.standard,
       scaffoldBackgroundColor: c.surface,
-      splashFactory: InkSparkle.splashFactory,
+      // InkRipple, не InkSparkle: тот компилирует фрагментный шейдер при
+      // первом касании (заметный фриз) и рисует дороже на каждом тапе.
+      splashFactory: InkRipple.splashFactory,
       iconTheme: IconThemeData(color: c.onSurfaceSecondary, size: 24),
       primaryIconTheme: IconThemeData(color: primary, size: 24),
-      // iOS/macOS не переопределяем: дефолт PageTransitionsTheme уже
-      // использует Cupertino-переход там, и так не зависим от точного имени
-      // класса — оно менялось между версиями Flutter (см. падение CI на
-      // stable 3.44 из-за "Method not found: CupertinoPageTransitionsBuilder").
+      // iOS-переход (выезд справа с параллаксом, свайп назад от края) и на
+      // Android — по HIG. Класс живёт в cupertino.dart: material его больше
+      // не реэкспортирует (отсюда было падение CI на stable 3.44).
       pageTransitionsTheme: const PageTransitionsTheme(
         builders: {
-          TargetPlatform.android: ZoomPageTransitionsBuilder(),
+          TargetPlatform.android: CupertinoPageTransitionsBuilder(),
+          TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
         },
       ),
       appBarTheme: AppBarTheme(
@@ -173,11 +179,33 @@ class AppThemes {
         elevation: isLight ? 2 : 0,
         shadowColor: isLight ? Colors.black.withAlpha(28) : Colors.transparent,
         margin: EdgeInsets.zero,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
+        shape: RoundedSuperellipseBorder(
+          borderRadius: BorderRadius.circular(24),
           side: isLight
               ? BorderSide.none
               : BorderSide(color: c.onSurfaceSecondary.withAlpha(18)),
+        ),
+      ),
+      // Кнопки — капсулы, как линза таб-бара и чипы.
+      filledButtonTheme: FilledButtonThemeData(
+        style: FilledButton.styleFrom(
+          shape: const StadiumBorder(),
+          minimumSize: const Size(0, 44),
+          textStyle: const TextStyle(fontWeight: FontWeight.w600),
+        ),
+      ),
+      outlinedButtonTheme: OutlinedButtonThemeData(
+        style: OutlinedButton.styleFrom(
+          shape: const StadiumBorder(),
+          minimumSize: const Size(0, 44),
+          side: BorderSide(color: primary.withAlpha(80)),
+          textStyle: const TextStyle(fontWeight: FontWeight.w600),
+        ),
+      ),
+      textButtonTheme: TextButtonThemeData(
+        style: TextButton.styleFrom(
+          shape: const StadiumBorder(),
+          textStyle: const TextStyle(fontWeight: FontWeight.w600),
         ),
       ),
       progressIndicatorTheme: ProgressIndicatorThemeData(
@@ -240,25 +268,25 @@ class AppThemes {
         selectedColor: primary.withAlpha(40),
         labelStyle: TextStyle(color: c.onSurface, fontSize: 13),
         side: BorderSide(color: c.onSurfaceSecondary.withAlpha(40)),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        shape: const StadiumBorder(),
       ),
       dropdownMenuTheme: DropdownMenuThemeData(
         textStyle: TextStyle(color: c.onSurface),
       ),
       inputDecorationTheme: InputDecorationTheme(
-        fillColor: c.card,
+        fillColor: c.onSurface.withAlpha(16),
         filled: true,
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: c.onSurfaceSecondary.withAlpha(50)),
+          borderRadius: BorderRadius.circular(18),
+          borderSide: BorderSide.none,
         ),
         enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: c.onSurfaceSecondary.withAlpha(50)),
+          borderRadius: BorderRadius.circular(18),
+          borderSide: BorderSide.none,
         ),
         focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: primary, width: 2),
+          borderRadius: BorderRadius.circular(18),
+          borderSide: BorderSide(color: primary, width: 1.2),
         ),
       ),
       dividerTheme: DividerThemeData(
@@ -272,8 +300,8 @@ class AppThemes {
       dialogTheme: DialogThemeData(
         backgroundColor: c.card,
         elevation: 3,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(22),
+        shape: RoundedSuperellipseBorder(
+          borderRadius: BorderRadius.circular(30),
         ),
         titleTextStyle: textTheme.titleLarge,
         contentTextStyle: textTheme.bodyMedium,
@@ -282,8 +310,8 @@ class AppThemes {
         color: c.card,
         elevation: 3,
         surfaceTintColor: Colors.transparent,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(14),
+        shape: RoundedSuperellipseBorder(
+          borderRadius: BorderRadius.circular(20),
         ),
         textStyle: textTheme.bodyMedium,
       ),
@@ -319,12 +347,13 @@ class AppThemes {
         textColor: c.onSurface,
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
         minVerticalPadding: 4,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        shape:
+            RoundedSuperellipseBorder(borderRadius: BorderRadius.circular(16)),
       ),
       bottomSheetTheme: BottomSheetThemeData(
         backgroundColor: c.card,
-        shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        shape: const RoundedSuperellipseBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
         ),
         dragHandleColor: c.onSurface.withAlpha(76),
         showDragHandle: false,
@@ -333,7 +362,8 @@ class AppThemes {
         backgroundColor: primary,
         foregroundColor: onPrimary,
         elevation: 4,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        shape:
+            RoundedSuperellipseBorder(borderRadius: BorderRadius.circular(20)),
       ),
       snackBarTheme: SnackBarThemeData(
         backgroundColor: c.card,
@@ -341,7 +371,8 @@ class AppThemes {
         actionTextColor: primary,
         elevation: 4,
         behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        shape:
+            RoundedSuperellipseBorder(borderRadius: BorderRadius.circular(20)),
         insetPadding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
       ),
       textTheme: textTheme,
@@ -494,6 +525,7 @@ double contentTopUnderAppBar(BuildContext context) {
   final p = MediaQuery.paddingOf(context).top;
   final barBottom = v + kToolbarHeight;
   const tuck = 12.0;
+
   /// Зазор под шапкой; +5 ≈ опустить контент на ~5 px.
   const gapBelowBar = 26.0;
 
@@ -506,17 +538,15 @@ double contentTopUnderAppBar(BuildContext context) {
   return v + kToolbarHeight - tuck + gapBelowBar;
 }
 
-/// Высота нижнего бара (без safe area).
-const double kBottomBarHeight = 64.0;
-
 /// Нижний отступ для контента под [BottomBarWithSheet].
 ///
-/// Учитывает safe area устройства и масштаб текста, поэтому правильно
-/// работает на устройствах как с жестовой навигацией (safeBottom ≈ 34px),
-/// так и без неё (safeBottom = 0).
+/// Бар — оверлей поверх body, поэтому считаем от системной safe area:
+/// safe area + зазор под баром + бар + воздух над ним. Работает и с
+/// жестовой навигацией (safeBottom ≈ 34px), и без неё (safeBottom = 0).
 double contentBottomPadding(BuildContext context) {
   final safeBottom = MediaQuery.paddingOf(context).bottom;
   final scale = MediaQuery.textScalerOf(context).scale(1);
-  final barH = scale <= 1.15 ? kBottomBarHeight : (kBottomBarHeight + 8).clamp(kBottomBarHeight, kBottomBarHeight + 14);
-  return safeBottom + barH + 16;
+  const h = BottomBarWithSheet.barHeight;
+  final barH = scale <= 1.15 ? h : h + 8;
+  return safeBottom + BottomBarWithSheet.bottomGap + barH + 18;
 }

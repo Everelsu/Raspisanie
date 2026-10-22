@@ -11,6 +11,8 @@ import "../../schedule/data/preferences_manager.dart";
 import "../../schedule/presentation/schedule_controller.dart";
 import "widgets/settings_ui.dart";
 import "../../../core/platform.dart";
+import "../../../core/widgets/pressable.dart";
+import "../../../core/widgets/glass.dart";
 
 /// Содержимое карточки «Оформление»: тема, иконка приложения, шрифт,
 /// эффекты и виджет — сворачиваемые подразделы внутри общей карточки
@@ -62,9 +64,11 @@ class _AppearanceSectionsState extends State<AppearanceSections> {
               SettingsSubsectionExpander(
                 icon: Icons.apps_rounded,
                 title: "Иконка приложения",
-                subtitle: prefs.appIcon == "auto"
-                    ? "Как тема"
-                    : AppThemes.allThemes[prefs.appIcon] ?? prefs.appIcon,
+                subtitle: switch (prefs.appIcon) {
+                  "auto" => "Как тема",
+                  "dark" => "Стандартная",
+                  final k => AppThemes.allThemes[k] ?? k,
+                },
                 builder: (context) => _appIconSection(theme),
               ),
               _divider(theme),
@@ -308,9 +312,11 @@ class _AppearanceSectionsState extends State<AppearanceSections> {
           ),
           const SizedBox(height: 8),
           Text(
-            selected == "auto"
-                ? "Иконка следует выбранной теме"
-                : "Иконка: ${AppThemes.allThemes[selected] ?? selected}",
+            switch (selected) {
+              "auto" => "Иконка следует выбранной теме",
+              "dark" => "Стандартная иконка",
+              _ => "Иконка: ${AppThemes.allThemes[selected] ?? selected}",
+            },
             style: theme.textTheme.bodySmall?.copyWith(
               color: theme.colorScheme.onSurfaceVariant,
             ),
@@ -359,7 +365,8 @@ class _AppearanceSectionsState extends State<AppearanceSections> {
                   final primary = _effectivePrimaryForTheme(entry.key, colors);
                   final name = entry.value;
 
-                  return GestureDetector(
+                  return Pressable(
+                    scale: 0.95,
                     onTap: () {
                       HapticFeedback.lightImpact();
                       prefs.theme = entry.key;
@@ -460,12 +467,8 @@ class _AppearanceSectionsState extends State<AppearanceSections> {
     AppThemeColors colors,
   ) {
     final primary = _effectivePrimaryForTheme(themeKey, colors);
-    showModalBottomSheet<void>(
-      context: context,
-      backgroundColor: theme.cardTheme.color,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
+    showGlassSheet<void>(
+      context,
       builder: (ctx) {
         return SafeArea(
           child: Padding(
@@ -575,13 +578,8 @@ class _AppearanceSectionsState extends State<AppearanceSections> {
       customLightness = hsl.lightness.clamp(0.0, 1.0);
     }
 
-    showModalBottomSheet<void>(
-      context: context,
-      backgroundColor: theme.cardTheme.color,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
+    showGlassSheet<void>(
+      context,
       builder: (ctx) {
         return StatefulBuilder(
           builder: (context, setSheetState) {
@@ -754,7 +752,8 @@ class _AppearanceSectionsState extends State<AppearanceSections> {
       final isSelected = selected == key;
       return Tooltip(
         message: key == "auto" ? "Как тема" : (AppThemes.allThemes[key] ?? key),
-        child: GestureDetector(
+        child: Pressable(
+          scale: 0.95,
           onTap: () {
             HapticFeedback.lightImpact();
             onSelect(key);
@@ -956,7 +955,8 @@ class _AccentSwatch extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return GestureDetector(
+    return Pressable(
+      scale: 0.85,
       onTap: onTap,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 180),

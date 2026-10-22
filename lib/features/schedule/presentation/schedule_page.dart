@@ -1,3 +1,5 @@
+import "dart:async";
+
 import "package:flutter/material.dart";
 import "package:flutter_staggered_animations/flutter_staggered_animations.dart";
 
@@ -9,7 +11,8 @@ import "package:easy_refresh/easy_refresh.dart";
 
 import "../../../core/widgets/custom_refresh.dart";
 import "../../../core/widgets/empty_state_view.dart";
-import "../data/holidays.dart";
+import "../../../core/widgets/pressable.dart";
+import "../data/special_days.dart";
 import "../data/lesson_times.dart";
 import "../data/preferences_manager.dart";
 import "../domain/models.dart";
@@ -35,7 +38,7 @@ class SchedulePage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
-      listenable: controller,
+      listenable: Listenable.merge([controller, _minuteTick]),
       builder: (context, _) {
         final theme = Theme.of(context);
         final schedule = controller.schedule;
@@ -80,7 +83,8 @@ class SchedulePage extends StatelessWidget {
             isError: true,
           );
         } else {
-          final useAnimations = schedule.length <= 14;
+          final useAnimations =
+              schedule.length <= 14 && !MediaQuery.disableAnimationsOf(context);
           // Баннер по тексту [error], без геттеров на [ScheduleController] —
           // иначе после hot reload старый инстанс контроллера даёт Lookup failed.
           final showOfflineBanner = error != null &&
@@ -111,9 +115,10 @@ class SchedulePage extends StatelessWidget {
             if (!useAnimations) return card;
             return AnimationConfiguration.staggeredList(
               position: index,
-              duration: const Duration(milliseconds: 300),
+              duration: const Duration(milliseconds: 280),
               child: SlideAnimation(
-                verticalOffset: 30.0,
+                verticalOffset: 16.0,
+                curve: Curves.easeOutCubic,
                 child: FadeInAnimation(child: card),
               ),
             );
@@ -218,6 +223,32 @@ class SchedulePage extends StatelessWidget {
   }
 }
 
+/// Тик раз в минуту, пока его кто-то слушает: подсветка текущей пары
+/// зависит от времени, а вкладка живёт долго (keep-alive) и сама по себе
+/// больше не пересобирается при возврате на неё.
+class _MinuteTick extends ChangeNotifier {
+  Timer? _timer;
+
+  @override
+  void addListener(VoidCallback listener) {
+    super.addListener(listener);
+    _timer ??= Timer.periodic(const Duration(minutes: 1), (_) {
+      notifyListeners();
+    });
+  }
+
+  @override
+  void removeListener(VoidCallback listener) {
+    super.removeListener(listener);
+    if (!hasListeners) {
+      _timer?.cancel();
+      _timer = null;
+    }
+  }
+}
+
+final _minuteTick = _MinuteTick();
+
 class _DayCard extends StatelessWidget {
   const _DayCard({
     required this.day,
@@ -237,7 +268,9 @@ class _DayCard extends StatelessWidget {
     final items = day.items.toList()
       ..sort((a, b) => a.lessonNumber.compareTo(b.lessonNumber));
 
-    final holiday = prefs.showHolidays ? Holidays.forRawDate(day.date) : null;
+    final lessonCount = items.map((item) => item.lessonNumber).toSet().length;
+    final holiday = SpecialDays.cardFor(day.date, college,
+        builtInHolidays: prefs.showHolidays);
     // Праздничный день красим целиком: подменяем primary у темы поддерева,
     // и полоска, чип и подсветка пар уезжают в цвет праздника вместе с фоном.
     final theme = holiday == null
@@ -262,8 +295,8 @@ class _DayCard extends StatelessWidget {
           clipBehavior: Clip.antiAlias,
           shape: holiday == null
               ? null
-              : RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(20),
+              : RoundedSuperellipseBorder(
+                  borderRadius: BorderRadius.circular(24),
                   side: BorderSide(color: primary.withAlpha(90)),
                 ),
           child: Container(
@@ -311,7 +344,7 @@ class _DayCard extends StatelessWidget {
                             style: theme.textTheme.bodySmall,
                           ),
                         ),
-                        if (items.isNotEmpty)
+                        if (lessonCount > 0)
                           Container(
                             padding: const EdgeInsets.symmetric(
                                 horizontal: 8, vertical: 3),
@@ -320,7 +353,7 @@ class _DayCard extends StatelessWidget {
                               borderRadius: BorderRadius.circular(8),
                             ),
                             child: Text(
-                              "${_lessonCount(items)} ${_lessonsWord(_lessonCount(items))}",
+                              "$lessonCount ${_lessonsWord(lessonCount)}",
                               style: theme.textTheme.bodySmall
                                   ?.copyWith(fontSize: 10),
                             ),
@@ -384,9 +417,6 @@ class _DayCard extends StatelessWidget {
     return buf.toString().trimRight();
   }
 
-  int _lessonCount(List<ScheduleItem> items) =>
-      items.map((item) => item.lessonNumber).toSet().length;
-
   List<Widget> _buildLessonList(
       BuildContext context, List<ScheduleItem> items) {
     final widgets = <Widget>[];
@@ -418,15 +448,18 @@ class _DayCard extends StatelessWidget {
           final gapDetails = <String>[];
           for (var g = prevNum; g < lessonNum; g++) {
             if (showLunch) {
-              final lt = LessonTimes.getLunchText(g, college: college);
+              final lt =
+                  LessonTimes.getLunchText(g, college: college, date: day.date);
               if (lt != null) gapDetails.add(lt);
             }
             if (showBreaks && g + 1 < lessonNum) {
-              final bt = LessonTimes.getBreakText(g, g + 1, college: college);
+              final bt = LessonTimes.getBreakText(g, g + 1,
+                  college: college, date: day.date);
               if (bt != null) gapDetails.add(bt);
             }
           }
           widgets.add(_WindowRow(
+            date: day.date,
             from: prevNum + 1,
             to: lessonNum - 1,
             college: college,
@@ -434,18 +467,20 @@ class _DayCard extends StatelessWidget {
           ));
         } else {
           if (showLunch) {
-            final lt = LessonTimes.getLunchText(prevNum, college: college);
+            final lt = LessonTimes.getLunchText(prevNum,
+                college: college, date: day.date);
             if (lt != null) widgets.add(_InfoRow(text: lt));
           }
           if (showBreaks) {
-            final bt =
-                LessonTimes.getBreakText(prevNum, lessonNum, college: college);
+            final bt = LessonTimes.getBreakText(prevNum, lessonNum,
+                college: college, date: day.date);
             if (bt != null) widgets.add(_InfoRow(text: bt));
           }
         }
       }
 
       widgets.add(_LessonTile(
+        date: day.date,
         lessonNumber: lessonNum,
         items: lessonItems,
         college: college,
@@ -500,6 +535,7 @@ class _DayCard extends StatelessWidget {
 
 class _LessonTile extends StatelessWidget {
   const _LessonTile({
+    required this.date,
     required this.lessonNumber,
     required this.items,
     required this.college,
@@ -511,6 +547,9 @@ class _LessonTile extends StatelessWidget {
   final int lessonNumber;
   final List<ScheduleItem> items;
   final String college;
+
+  /// Дата дня — для времени пар особого (сокращённого) дня.
+  final String date;
   final bool showTime;
   final LessonStatus status;
   final ScheduleController controller;
@@ -520,7 +559,8 @@ class _LessonTile extends StatelessWidget {
     final theme = Theme.of(context);
     final isCurrent = status == LessonStatus.current;
     final isNext = status == LessonStatus.next;
-    final time = LessonTimes.formatTime(lessonNumber, college: college);
+    final time =
+        LessonTimes.formatTime(lessonNumber, college: college, date: date);
 
     final badgeColor = isCurrent
         ? theme.colorScheme.primary
@@ -840,8 +880,8 @@ class _LessonTile extends StatelessWidget {
       ),
     );
     if (!tappable) return line;
-    return InkWell(
-      borderRadius: BorderRadius.circular(6),
+    return Pressable(
+      scale: 0.95,
       onTap: () => showSubScheduleSheet(
         context: context,
         file: href,
@@ -856,6 +896,7 @@ class _LessonTile extends StatelessWidget {
 
 class _WindowRow extends StatelessWidget {
   const _WindowRow({
+    required this.date,
     required this.from,
     required this.to,
     required this.college,
@@ -864,6 +905,9 @@ class _WindowRow extends StatelessWidget {
   final int from;
   final int to;
   final String college;
+
+  /// Дата дня — для времени пар особого (сокращённого) дня.
+  final String date;
   final List<String> details;
 
   @override
@@ -871,8 +915,8 @@ class _WindowRow extends StatelessWidget {
     final theme = Theme.of(context);
     final count = to - from + 1;
     final label = count == 1 ? "Окно ($from пара)" : "Окно ($from–$to пары)";
-    final startTime = LessonTimes.getTime(from, college: college);
-    final endTime = LessonTimes.getTime(to, college: college);
+    final startTime = LessonTimes.getTime(from, college: college, date: date);
+    final endTime = LessonTimes.getTime(to, college: college, date: date);
     final timeLabel = (startTime != null && endTime != null)
         ? "${startTime.startTime} – ${endTime.endTime}"
         : "";

@@ -6,6 +6,7 @@ import "../data/lesson_times.dart";
 import "../domain/models.dart";
 import "day_share_sheet.dart";
 import "schedule_controller.dart";
+import "../../../core/widgets/glass.dart";
 
 enum SubScheduleKind {
   classroom,
@@ -19,10 +20,9 @@ Future<void> showSubScheduleSheet({
   required String title,
   SubScheduleKind kind = SubScheduleKind.teacherOrGroup,
 }) async {
-  showModalBottomSheet(
-    context: context,
-    isScrollControlled: true,
-    backgroundColor: Colors.transparent,
+  showGlassSheet<void>(
+    context,
+    heightFactor: 0.82,
     builder: (ctx) => _SubScheduleContent(
       file: file,
       controller: controller,
@@ -135,46 +135,16 @@ class _SubScheduleContentState extends State<_SubScheduleContent> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final primary = theme.colorScheme.primary;
-    final cardColor = theme.cardTheme.color ?? theme.colorScheme.surface;
-    final isDark = theme.brightness == Brightness.dark;
-
-    return DraggableScrollableSheet(
-      initialChildSize: 0.68,
-      minChildSize: 0.34,
-      maxChildSize: 0.92,
-      expand: false,
-      builder: (ctx, scrollController) {
-        return Container(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: const Alignment(-0.7, -1.0),
-              end: const Alignment(0.9, 1.0),
-              colors: [
-                Color.alphaBlend(
-                    primary.withAlpha(isDark ? 30 : 18), cardColor),
-                Color.alphaBlend(primary.withAlpha(isDark ? 12 : 6), cardColor),
-                cardColor,
-              ],
-            ),
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
-          ),
+    // Фон, ручку и скругления даёт стеклянная шторка (showGlassSheet).
+    return Builder(
+      builder: (ctx) {
+        return SizedBox(
           child: SafeArea(
             top: false,
             child: Column(
               children: [
-                const SizedBox(height: 10),
-                Container(
-                  width: 44,
-                  height: 5,
-                  decoration: BoxDecoration(
-                    color: theme.colorScheme.onSurface.withAlpha(36),
-                    borderRadius: BorderRadius.circular(999),
-                  ),
-                ),
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+                  padding: const EdgeInsets.fromLTRB(16, 6, 16, 12),
                   child: _HeaderCard(
                     title: widget.title,
                     kind: widget.kind,
@@ -200,7 +170,6 @@ class _SubScheduleContentState extends State<_SubScheduleContent> {
                                       "Подрасписание на сегодня пока недоступно.",
                                 )
                               : ListView.builder(
-                                  controller: scrollController,
                                   physics: const BouncingScrollPhysics(
                                     parent: AlwaysScrollableScrollPhysics(),
                                   ),
@@ -420,6 +389,7 @@ class _MiniDayCard extends StatelessWidget {
                       final time = LessonTimes.formatTime(
                         item.lessonNumber,
                         college: college,
+                        date: day.date,
                       );
                       return Padding(
                         padding: const EdgeInsets.only(bottom: 10),
@@ -548,6 +518,7 @@ class _MiniDayCard extends StatelessWidget {
       final time = LessonTimes.formatTime(
         item.lessonNumber,
         college: college,
+        date: day.date,
       );
       final line = kind == SubScheduleKind.classroom
           ? _buildClassroomItemLine(item, time)

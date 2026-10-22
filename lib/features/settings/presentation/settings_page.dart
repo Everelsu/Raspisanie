@@ -35,6 +35,11 @@ import "../../schedule/domain/models.dart";
 import "../../schedule/presentation/schedule_controller.dart";
 import "appearance_page.dart";
 import "widgets/settings_ui.dart";
+import "../../../core/motion.dart";
+import "../../../core/widgets/pressable.dart";
+import "../../schedule/domain/group_search.dart";
+import "../../../core/widgets/glass.dart";
+import "../../../core/widgets/liquid_segmented.dart";
 
 class _UrlProbeResult {
   const _UrlProbeResult({
@@ -88,6 +93,15 @@ class _SettingsPageState extends State<SettingsPage> {
   int? _lastDbBackupAt;
   Map<int, LessonTime> _editingLessonTimes = {};
   String _appVersion = "…";
+
+  // Вкладки держатся живыми (keep-alive): расписание больше не строится
+  // заново при уходе отсюда, поэтому любое изменение настроек сообщаем
+  // контроллеру — так остальные вкладки сразу перерисуются.
+  @override
+  void setState(VoidCallback fn) {
+    super.setState(fn);
+    ctrl.prefsChanged();
+  }
 
   void _dismissKeyboard() {
     FocusManager.instance.primaryFocus?.unfocus();
@@ -240,78 +254,20 @@ class _SettingsPageState extends State<SettingsPage> {
           children: [
             Text("Я...", style: theme.textTheme.bodySmall),
             const SizedBox(height: 10),
-            Row(
-              children: [
-                Expanded(
-                  child: _modeButton(
-                      theme, "Студент", Icons.school_outlined, !isTeacher, () {
-                    ctrl.setUserMode("student");
-                    AnalyticsService.instance.logUserModeChanged("student");
-                    ScheduleBackgroundWorker.ensureRegisteredIfNeeded(
-                        prefs: prefs);
-                    _loadGroupsAsync();
-                  }),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: _modeButton(
-                      theme, "Преподаватель", Icons.person_outline, isTeacher,
-                      () {
-                    ctrl.setUserMode("teacher");
-                    AnalyticsService.instance.logUserModeChanged("teacher");
-                    ScheduleBackgroundWorker.ensureRegisteredIfNeeded(
-                        prefs: prefs);
-                    _loadGroupsAsync();
-                  }),
-                ),
+            // Та же «линза», что в таб-баре: едет на пружине, тянется
+            // пальцем.
+            LiquidSegmented<String>(
+              value: isTeacher ? "teacher" : "student",
+              segments: const [
+                ("student", "Студент", Icons.school_outlined),
+                ("teacher", "Преподаватель", Icons.person_outline),
               ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _modeButton(ThemeData theme, String label, IconData icon,
-      bool selected, VoidCallback onTap) {
-    return GestureDetector(
-      onTap: selected
-          ? null
-          : () {
-              HapticFeedback.lightImpact();
-              onTap();
-            },
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.symmetric(vertical: 14),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(12),
-          color: selected
-              ? theme.colorScheme.primary.withAlpha(25)
-              : theme.scaffoldBackgroundColor,
-          border: Border.all(
-            color: selected
-                ? theme.colorScheme.primary
-                : theme.colorScheme.onSurface.withAlpha(30),
-            width: selected ? 2 : 1,
-          ),
-        ),
-        child: Column(
-          children: [
-            Icon(icon,
-                color: selected
-                    ? theme.colorScheme.primary
-                    : theme.colorScheme.onSurface.withAlpha(120)),
-            const SizedBox(height: 6),
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-                color: selected
-                    ? theme.colorScheme.primary
-                    : theme.colorScheme.onSurface,
-              ),
+              onChanged: (mode) {
+                ctrl.setUserMode(mode);
+                AnalyticsService.instance.logUserModeChanged(mode);
+                ScheduleBackgroundWorker.ensureRegisteredIfNeeded(prefs: prefs);
+                _loadGroupsAsync();
+              },
             ),
           ],
         ),
@@ -340,17 +296,17 @@ class _SettingsPageState extends State<SettingsPage> {
               ],
             ),
             const SizedBox(height: 10),
-            GestureDetector(
+            Pressable(
+              scale: 0.98,
               onTap: () => _showCollegeSourcesSheet(theme),
               child: Container(
                 width: double.infinity,
                 padding:
                     const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                decoration: BoxDecoration(
-                  color: theme.scaffoldBackgroundColor,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                    color: theme.colorScheme.onSurface.withAlpha(30),
+                decoration: ShapeDecoration(
+                  color: theme.colorScheme.onSurface.withAlpha(16),
+                  shape: RoundedSuperellipseBorder(
+                    borderRadius: BorderRadius.circular(18),
                   ),
                 ),
                 child: Row(
@@ -383,13 +339,9 @@ class _SettingsPageState extends State<SettingsPage> {
 
   Future<void> _showCollegeSourcesSheet(ThemeData theme) async {
     _dismissKeyboard();
-    await showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: theme.cardTheme.color,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
+    await showGlassSheet<void>(
+      context,
+      heightFactor: 0.66,
       builder: (ctx) {
         final pingById = <String, _UrlProbeResult>{};
         final runningIds = <String>{};
@@ -402,24 +354,12 @@ class _SettingsPageState extends State<SettingsPage> {
             final cs = theme.colorScheme;
             return SafeArea(
               child: SizedBox(
-                height: MediaQuery.of(ctx).size.height * 0.62,
                 child: Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
+                  padding: const EdgeInsets.fromLTRB(16, 6, 16, 16),
                   child: Column(
                     mainAxisSize: MainAxisSize.max,
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      Center(
-                        child: Container(
-                          width: 36,
-                          height: 4,
-                          decoration: BoxDecoration(
-                            color: cs.onSurface.withAlpha(60),
-                            borderRadius: BorderRadius.circular(2),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 14),
                       Row(
                         children: [
                           Expanded(
@@ -428,8 +368,8 @@ class _SettingsPageState extends State<SettingsPage> {
                               children: [
                                 Text(
                                   "Техникум",
-                                  style: theme.textTheme.titleLarge
-                                      ?.copyWith(fontWeight: FontWeight.w600),
+                                  style: theme.textTheme.headlineMedium
+                                      ?.copyWith(fontWeight: FontWeight.w800),
                                 ),
                                 const SizedBox(height: 2),
                                 Text(
@@ -503,8 +443,8 @@ class _SettingsPageState extends State<SettingsPage> {
                                 : (probe.ok ? cs.primary : cs.error);
                             return Material(
                               color: Colors.transparent,
-                              child: InkWell(
-                                borderRadius: BorderRadius.circular(14),
+                              child: Pressable(
+                                scale: 0.97,
                                 onTap: () {
                                   HapticFeedback.lightImpact();
                                   ctrl.setCollege(s.id);
@@ -520,41 +460,52 @@ class _SettingsPageState extends State<SettingsPage> {
                                         mode: LaunchMode.externalApplication);
                                   }
                                 },
+                                // Выбранный — «линза» в цвет акцента, как
+                                // вкладка в таб-баре и строка выбора группы.
                                 child: AnimatedContainer(
-                                  duration: const Duration(milliseconds: 200),
+                                  duration: const Duration(milliseconds: 240),
+                                  curve: Curves.easeOutCubic,
                                   padding:
-                                      const EdgeInsets.fromLTRB(12, 10, 4, 10),
-                                  decoration: BoxDecoration(
-                                    borderRadius: BorderRadius.circular(14),
+                                      const EdgeInsets.fromLTRB(12, 12, 4, 12),
+                                  decoration: ShapeDecoration(
                                     color: selected
-                                        ? cs.primary.withAlpha(18)
-                                        : theme.scaffoldBackgroundColor,
-                                    border: Border.all(
-                                      color: selected
-                                          ? cs.primary
-                                          : cs.onSurface.withAlpha(25),
-                                      width: selected ? 1.5 : 1,
+                                        ? cs.primary.withAlpha(34)
+                                        : cs.onSurface.withAlpha(10),
+                                    shape: RoundedSuperellipseBorder(
+                                      borderRadius: BorderRadius.circular(20),
+                                      side: BorderSide(
+                                        color: selected
+                                            ? cs.primary.withAlpha(110)
+                                            : Colors.transparent,
+                                        width: 0.8,
+                                      ),
                                     ),
                                   ),
                                   child: Row(
                                     children: [
-                                      Container(
-                                        width: 36,
-                                        height: 36,
+                                      AnimatedContainer(
+                                        duration:
+                                            const Duration(milliseconds: 240),
+                                        width: 40,
+                                        height: 40,
                                         alignment: Alignment.center,
-                                        decoration: BoxDecoration(
-                                          shape: BoxShape.circle,
-                                          color: cs.primary
-                                              .withAlpha(selected ? 35 : 14),
+                                        decoration: ShapeDecoration(
+                                          color: selected
+                                              ? cs.primary
+                                              : cs.primary.withAlpha(20),
+                                          shape: RoundedSuperellipseBorder(
+                                            borderRadius:
+                                                BorderRadius.circular(13),
+                                          ),
                                         ),
                                         child: Icon(
                                           s.builtIn
                                               ? Icons.school_rounded
                                               : Icons.link_rounded,
-                                          size: 18,
+                                          size: 19,
                                           color: selected
-                                              ? cs.primary
-                                              : cs.onSurfaceVariant,
+                                              ? cs.onPrimary
+                                              : cs.primary,
                                         ),
                                       ),
                                       const SizedBox(width: 12),
@@ -785,24 +736,15 @@ class _SettingsPageState extends State<SettingsPage> {
     var name = "";
     var rawUrl = "";
     String? validationError;
-    final added = await showModalBottomSheet<bool>(
-      context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
+    final added = await showGlassSheet<bool>(
+      context,
       builder: (ctx) {
         final theme = Theme.of(ctx);
         return StatefulBuilder(
           builder: (ctx, setDialogState) {
+            // Отступ под клавиатуру даёт сама шторка.
             return Padding(
-              padding: EdgeInsets.fromLTRB(
-                16,
-                12,
-                16,
-                16 + MediaQuery.viewInsetsOf(ctx).bottom,
-              ),
+              padding: const EdgeInsets.fromLTRB(16, 6, 16, 16),
               child: SingleChildScrollView(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
@@ -1082,24 +1024,15 @@ class _SettingsPageState extends State<SettingsPage> {
     final urlCtrl = TextEditingController(text: source.baseUrl);
     String? validationError;
     try {
-      final saved = await showModalBottomSheet<bool>(
-        context: context,
-        isScrollControlled: true,
-        useSafeArea: true,
-        shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-        ),
+      final saved = await showGlassSheet<bool>(
+        context,
         builder: (ctx) {
           final theme = Theme.of(ctx);
           return StatefulBuilder(
             builder: (ctx, setDialogState) {
+              // Отступ под клавиатуру даёт сама шторка.
               return Padding(
-                padding: EdgeInsets.fromLTRB(
-                  16,
-                  12,
-                  16,
-                  16 + MediaQuery.viewInsetsOf(ctx).bottom,
-                ),
+                padding: const EdgeInsets.fromLTRB(16, 6, 16, 16),
                 child: SingleChildScrollView(
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
@@ -1298,7 +1231,8 @@ class _SettingsPageState extends State<SettingsPage> {
               ],
             ),
             const SizedBox(height: 10),
-            GestureDetector(
+            Pressable(
+              scale: 0.98,
               onTap: ctrl.groups.isEmpty
                   ? _loadGroupsAsync
                   : () => _showGroupBottomSheet(theme),
@@ -1306,11 +1240,10 @@ class _SettingsPageState extends State<SettingsPage> {
                 width: double.infinity,
                 padding:
                     const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                decoration: BoxDecoration(
-                  color: theme.scaffoldBackgroundColor,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                    color: theme.colorScheme.onSurface.withAlpha(30),
+                decoration: ShapeDecoration(
+                  color: theme.colorScheme.onSurface.withAlpha(16),
+                  shape: RoundedSuperellipseBorder(
+                    borderRadius: BorderRadius.circular(18),
                   ),
                 ),
                 child: Row(
@@ -1348,8 +1281,15 @@ class _SettingsPageState extends State<SettingsPage> {
               Row(
                 children: [
                   Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: () {
+                    child: AppActionButton(
+                      icon: prefs.isFavoriteGroup(selected.name)
+                          ? Icons.star_rounded
+                          : Icons.star_border_rounded,
+                      label: prefs.isFavoriteGroup(selected.name)
+                          ? "В избранном"
+                          : "В избранное",
+                      primary: prefs.isFavoriteGroup(selected.name),
+                      onTap: () {
                         final name = selected.name;
                         if (prefs.isFavoriteGroup(name)) {
                           prefs.removeFavoriteGroup(name);
@@ -1358,23 +1298,6 @@ class _SettingsPageState extends State<SettingsPage> {
                         }
                         setState(() {});
                       },
-                      icon: Icon(
-                        prefs.isFavoriteGroup(selected.name)
-                            ? Icons.star
-                            : Icons.star_border,
-                        size: 18,
-                      ),
-                      label: Text(
-                        prefs.isFavoriteGroup(selected.name)
-                            ? "В избранном"
-                            : "В избранное",
-                      ),
-                      style: OutlinedButton.styleFrom(
-                        side: BorderSide(
-                            color: theme.colorScheme.primary.withAlpha(80)),
-                        shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(10)),
-                      ),
                     ),
                   ),
                 ],
@@ -1388,13 +1311,9 @@ class _SettingsPageState extends State<SettingsPage> {
 
   void _showGroupBottomSheet(ThemeData theme) {
     _dismissKeyboard();
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: theme.cardTheme.color,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
+    showGlassSheet<void>(
+      context,
+      heightFactor: 0.86,
       builder: (ctx) => _GroupSelectorSheet(
         groups: ctrl.groups,
         favorites: () => prefs.favoriteGroups,
@@ -2718,7 +2637,7 @@ class _SettingsPageState extends State<SettingsPage> {
 
                           if (mounted) {
                             showAppSnack(
-                              context,
+                              this.context,
                               "Кэш расписания очищен",
                             );
                           }
@@ -2745,7 +2664,7 @@ class _SettingsPageState extends State<SettingsPage> {
 
                       if (mounted) {
                         showAppSnack(
-                          context,
+                          this.context,
                           "Временные файлы удалены",
                         );
                       }
@@ -2991,160 +2910,257 @@ class _GroupSelectorSheet extends StatefulWidget {
   State<_GroupSelectorSheet> createState() => _GroupSelectorSheetState();
 }
 
+/// Выбор группы/преподавателя в стиле таб-бара: поиск-капсула, избранное
+/// чипами сверху, выбранная строка — «линза» в цвет акцента. Поиск —
+/// [GroupSearch]: «сис 23» находит «СиС-23», раскладка и дефисы не важны.
 class _GroupSelectorSheetState extends State<_GroupSelectorSheet> {
+  final _search = TextEditingController();
   String _query = "";
+
+  @override
+  void dispose() {
+    _search.dispose();
+    super.dispose();
+  }
+
+  void _toggleFavorite(String name) {
+    HapticFeedback.selectionClick();
+    widget.onToggleFavorite(name);
+    setState(() {});
+  }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final filtered = widget.groups.where((g) {
-      if (_query.isEmpty) return true;
-      return g.name.toLowerCase().contains(_query.toLowerCase());
-    }).toList();
-
+    final cs = theme.colorScheme;
     final favorites = widget.favorites();
-    final favGroups =
-        filtered.where((g) => favorites.contains(g.name)).toList();
-    final otherGroups =
-        filtered.where((g) => !favorites.contains(g.name)).toList();
+    final searching = _query.trim().isNotEmpty;
+    final results = GroupSearch.filter(widget.groups, _query, (g) => g.name);
+    final favGroups = widget.groups
+        .where((g) => favorites.contains(g.name))
+        .toList()
+      ..sort((a, b) => a.name.compareTo(b.name));
 
-    return DraggableScrollableSheet(
-      initialChildSize: 0.65,
-      minChildSize: 0.3,
-      maxChildSize: 0.9,
-      expand: false,
-      builder: (ctx, scrollController) {
-        return Column(
-          children: [
-            const SizedBox(height: 8),
-            Container(
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(
-                color: theme.colorScheme.onSurface.withAlpha(40),
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-              child: TextField(
-                autofocus: false,
-                style: theme.textTheme.bodyLarge,
-                decoration: InputDecoration(
-                  hintText: widget.isTeacher
-                      ? "Поиск преподавателя..."
-                      : "Поиск группы...",
-                  hintStyle: theme.textTheme.bodyMedium?.copyWith(
-                      color: theme.colorScheme.onSurface.withAlpha(100)),
-                  prefixIcon: const Icon(Icons.search),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(14),
-                    borderSide: BorderSide.none,
-                  ),
-                  filled: true,
-                  fillColor: theme.scaffoldBackgroundColor,
-                  contentPadding:
-                      const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 6, 20, 12),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Expanded(
+                child: Text(
+                  widget.isTeacher ? "Преподаватель" : "Группа",
+                  style: theme.textTheme.headlineMedium
+                      ?.copyWith(fontWeight: FontWeight.w800),
                 ),
-                onChanged: (v) => setState(() => _query = v),
               ),
-            ),
-            Expanded(
-              child: ListView(
-                controller: scrollController,
-                padding: const EdgeInsets.symmetric(horizontal: 8),
-                children: [
-                  if (favGroups.isNotEmpty) ...[
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
-                      child:
-                          Text("ИЗБРАННЫЕ", style: theme.textTheme.titleSmall),
-                    ),
-                    ...favGroups.map((g) => _groupTile(theme, g, true)),
-                    const SizedBox(height: 8),
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(12, 0, 12, 4),
-                      child: Text("ВСЕ", style: theme.textTheme.titleSmall),
-                    ),
-                  ],
-                  ...otherGroups.map((g) => _groupTile(theme, g, false)),
-                  const SizedBox(height: 20),
-                ],
+              Text(
+                "${widget.groups.length}",
+                style: theme.textTheme.bodySmall
+                    ?.copyWith(color: cs.onSurfaceVariant),
               ),
+            ],
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: SizedBox(
+            height: 44,
+            child: TextField(
+              controller: _search,
+              textInputAction: TextInputAction.search,
+              autocorrect: false,
+              style: theme.textTheme.bodyLarge,
+              decoration: InputDecoration(
+                hintText: widget.isTeacher
+                    ? "Фамилия, например «иванов и»"
+                    : "Например «сис 23»",
+                hintStyle: theme.textTheme.bodyMedium
+                    ?.copyWith(color: cs.onSurfaceVariant.withAlpha(150)),
+                prefixIcon: Icon(Icons.search_rounded,
+                    size: 20, color: cs.onSurfaceVariant),
+                suffixIcon: searching
+                    ? IconButton(
+                        tooltip: "Очистить",
+                        icon: const Icon(Icons.cancel_rounded, size: 18),
+                        onPressed: () {
+                          _search.clear();
+                          setState(() => _query = "");
+                        },
+                      )
+                    : null,
+                filled: true,
+                fillColor: cs.onSurface.withAlpha(16),
+                contentPadding: const EdgeInsets.symmetric(vertical: 10),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(22),
+                  borderSide: BorderSide.none,
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(22),
+                  borderSide: BorderSide(color: cs.primary, width: 1.2),
+                ),
+              ),
+              onChanged: (v) => setState(() => _query = v),
             ),
-          ],
-        );
-      },
+          ),
+        ),
+        // Избранное — быстрый выбор чипами, пока не ищем.
+        AnimatedSize(
+          duration: const Duration(milliseconds: 280),
+          curve: AppMotion.sheetCurve,
+          child: (!searching && favGroups.isNotEmpty)
+              ? SizedBox(
+                  height: 52,
+                  child: ListView.separated(
+                    scrollDirection: Axis.horizontal,
+                    padding: const EdgeInsets.fromLTRB(16, 10, 16, 6),
+                    itemCount: favGroups.length,
+                    separatorBuilder: (_, __) => const SizedBox(width: 8),
+                    itemBuilder: (_, i) {
+                      final g = favGroups[i];
+                      final isSel = widget.selected?.name == g.name;
+                      return Pressable(
+                        scale: 0.92,
+                        onTap: () {
+                          HapticFeedback.lightImpact();
+                          widget.onSelect(g);
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 14),
+                          alignment: Alignment.center,
+                          decoration: ShapeDecoration(
+                            color:
+                                isSel ? cs.primary : cs.primary.withAlpha(26),
+                            shape: const StadiumBorder(),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.star_rounded,
+                                  size: 15,
+                                  color: isSel ? cs.onPrimary : cs.primary),
+                              const SizedBox(width: 5),
+                              Text(
+                                g.name,
+                                style: theme.textTheme.labelLarge?.copyWith(
+                                  color: isSel ? cs.onPrimary : cs.primary,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                )
+              : const SizedBox(width: double.infinity, height: 8),
+        ),
+        Expanded(
+          child: results.isEmpty
+              ? _emptyState(theme)
+              : ListView.builder(
+                  padding: const EdgeInsets.fromLTRB(10, 6, 10, 24),
+                  keyboardDismissBehavior:
+                      ScrollViewKeyboardDismissBehavior.onDrag,
+                  itemCount: results.length,
+                  itemBuilder: (_, i) {
+                    final g = results[i];
+                    return _row(theme, g, favorites.contains(g.name));
+                  },
+                ),
+        ),
+      ],
     );
   }
 
-  Widget _groupTile(ThemeData theme, Group g, bool isFav) {
+  Widget _emptyState(ThemeData theme) {
     final cs = theme.colorScheme;
-    final isSelected = widget.selected?.id == g.id;
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(4, 0, 4, 6),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          borderRadius: BorderRadius.circular(14),
-          onTap: () {
-            HapticFeedback.lightImpact();
-            widget.onSelect(g);
-          },
-          onLongPress: () {
-            HapticFeedback.selectionClick();
-            widget.onToggleFavorite(g.name);
-            setState(() {});
-          },
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 180),
-            padding: const EdgeInsets.fromLTRB(14, 4, 4, 4),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(14),
-              color: isSelected ? cs.primary.withAlpha(18) : Colors.transparent,
-              border: Border.all(
-                color: isSelected ? cs.primary : cs.onSurface.withAlpha(18),
-                width: isSelected ? 1.5 : 1,
-              ),
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.search_off_rounded,
+                size: 36, color: cs.onSurfaceVariant.withAlpha(150)),
+            const SizedBox(height: 10),
+            Text("Ничего не нашлось", style: theme.textTheme.titleMedium),
+            const SizedBox(height: 4),
+            Text(
+              widget.isTeacher
+                  ? "Попробуй только фамилию"
+                  : "Попробуй буквы и цифры группы, например «сис 23»",
+              textAlign: TextAlign.center,
+              style: theme.textTheme.bodySmall
+                  ?.copyWith(color: cs.onSurfaceVariant),
             ),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    g.name,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.bodyLarge?.copyWith(
-                      fontWeight:
-                          isSelected ? FontWeight.w700 : FontWeight.w500,
-                      color: isSelected ? cs.primary : cs.onSurface,
-                    ),
-                  ),
-                ),
-                if (isSelected)
-                  Padding(
-                    padding: const EdgeInsets.only(right: 2),
-                    child: Icon(Icons.check_circle_rounded,
-                        size: 18, color: cs.primary),
-                  ),
-                IconButton(
-                  tooltip: isFav ? "Убрать из избранного" : "В избранное",
-                  visualDensity: VisualDensity.compact,
-                  onPressed: () {
-                    HapticFeedback.selectionClick();
-                    widget.onToggleFavorite(g.name);
-                    setState(() {});
-                  },
-                  icon: Icon(
-                    isFav ? Icons.star_rounded : Icons.star_border_rounded,
-                    size: 20,
-                    color:
-                        isFav ? cs.primary : cs.onSurfaceVariant.withAlpha(140),
-                  ),
-                ),
-              ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _row(ThemeData theme, Group g, bool isFav) {
+    final cs = theme.colorScheme;
+    final isSelected = widget.selected?.name == g.name;
+    return Pressable(
+      scale: 0.97,
+      onTap: () {
+        HapticFeedback.lightImpact();
+        widget.onSelect(g);
+      },
+      onLongPress: () => _toggleFavorite(g.name),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOutCubic,
+        margin: const EdgeInsets.only(bottom: 2),
+        padding: const EdgeInsets.fromLTRB(16, 2, 4, 2),
+        decoration: ShapeDecoration(
+          color: isSelected ? cs.primary.withAlpha(34) : Colors.transparent,
+          shape: RoundedSuperellipseBorder(
+            borderRadius: BorderRadius.circular(18),
+            side: BorderSide(
+              color: isSelected ? cs.primary.withAlpha(90) : Colors.transparent,
+              width: 0.8,
             ),
           ),
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                g.name,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.bodyLarge?.copyWith(
+                  fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                  color: isSelected ? cs.primary : cs.onSurface,
+                ),
+              ),
+            ),
+            if (isSelected)
+              Icon(Icons.check_rounded, size: 20, color: cs.primary),
+            IconButton(
+              tooltip: isFav ? "Убрать из избранного" : "В избранное",
+              visualDensity: VisualDensity.compact,
+              onPressed: () => _toggleFavorite(g.name),
+              icon: AnimatedSwitcher(
+                duration: const Duration(milliseconds: 200),
+                transitionBuilder: (child, a) =>
+                    ScaleTransition(scale: a, child: child),
+                child: Icon(
+                  isFav ? Icons.star_rounded : Icons.star_border_rounded,
+                  key: ValueKey(isFav),
+                  size: 20,
+                  color:
+                      isFav ? cs.primary : cs.onSurfaceVariant.withAlpha(140),
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );

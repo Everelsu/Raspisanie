@@ -67,8 +67,21 @@ class ScheduleWidgetProvider : AppWidgetProvider() {
             return
         }
 
+        // Стандартные события уже обработал super (onUpdate /
+        // onAppWidgetOptionsChanged): повторная полная перерисовка давала
+        // двойные bitmap'ы шапки и лишний notifyAppWidgetViewDataChanged.
+        val handledBySuper = when (intent.action) {
+            AppWidgetManager.ACTION_APPWIDGET_UPDATE ->
+                intent.hasExtra(AppWidgetManager.EXTRA_APPWIDGET_IDS)
+            AppWidgetManager.ACTION_APPWIDGET_OPTIONS_CHANGED,
+            AppWidgetManager.ACTION_APPWIDGET_DELETED,
+            AppWidgetManager.ACTION_APPWIDGET_DISABLED -> true
+            else -> false
+        }
+        if (handledBySuper) return
+
         // Some launchers/plugins dispatch non-standard actions for widget updates.
-        // Force-refresh all existing instances on any broadcast received by provider.
+        // Force-refresh all existing instances on any other broadcast.
         for (id in ids) {
             updateWidget(context, manager, id, prefs)
         }
@@ -109,6 +122,31 @@ class ScheduleWidgetProvider : AppWidgetProvider() {
         private const val COUNT_CHIP_PADDING_H_DP = 8 // на сторону
         private const val REFRESH_BUTTON_SIZE_DP = 30
         private const val REFRESH_BUTTON_MARGIN_START_DP = 6
+
+        /**
+         * Тот же интент, что у иконки лаунчера (текущий alias): Android
+         * находит уже открытую задачу и поднимает её. Раньше виджет звал
+         * MainActivity напрямую, и при taskAffinity="" система не узнавала
+         * задачу, запущенную через alias, — стартовала вторая активити со
+         * вторым Flutter-движком (повторный main(), сплэш, двойная
+         * инициализация). CLEAR_TOP|SINGLE_TOP доставляют onNewIntent —
+         * по нему открывается вкладка расписания.
+         */
+        private fun openAppIntent(context: Context): Intent {
+            val launch = context.packageManager
+                .getLaunchIntentForPackage(context.packageName)
+                ?: Intent(context, MainActivity::class.java)
+                    .setAction(Intent.ACTION_MAIN)
+                    .addCategory(Intent.CATEGORY_LAUNCHER)
+            return launch.apply {
+                addFlags(
+                    Intent.FLAG_ACTIVITY_NEW_TASK or
+                        Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                        Intent.FLAG_ACTIVITY_SINGLE_TOP
+                )
+                putExtra(MainActivity.EXTRA_OPEN_SCHEDULE, true)
+            }
+        }
 
         private fun updateWidget(
             context: Context,
@@ -301,13 +339,10 @@ class ScheduleWidgetProvider : AppWidgetProvider() {
             }
             views.setRemoteAdapter(R.id.widget_list, listIntent)
 
-            val intent = Intent(context, MainActivity::class.java).apply {
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
-            }
             val pendingIntent = PendingIntent.getActivity(
                 context,
                 appWidgetId,
-                intent,
+                openAppIntent(context),
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             )
             views.setOnClickPendingIntent(R.id.widget_root, pendingIntent)

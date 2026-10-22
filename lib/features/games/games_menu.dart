@@ -6,15 +6,13 @@ import 'game_2048.dart';
 import 'reaction_game.dart';
 import 'snake_game.dart';
 import 'tic_tac_toe.dart';
+import '../../core/widgets/glass.dart';
 
 /// Скрытое меню с мини-играми. Открывается долгим нажатием на вкладку «Сеть».
 void showGamesMenu(BuildContext context) {
   HapticFeedback.heavyImpact();
-  showModalBottomSheet<void>(
-    context: context,
-    backgroundColor: Colors.transparent,
-    isScrollControlled: true,
-    useSafeArea: true,
+  showGlassSheet<void>(
+    context,
     builder: (ctx) => const _GamesMenuSheet(),
   );
 }
@@ -117,24 +115,12 @@ class _GamesMenuSheetState extends State<_GamesMenuSheet> {
     final theme = Theme.of(context);
     final cs = theme.colorScheme;
 
-    return Container(
-      decoration: BoxDecoration(
-        color: theme.cardTheme.color ?? cs.surface,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-      ),
+    // Фон, ручку и скругления даёт стеклянная шторка (showGlassSheet).
+    return SizedBox(
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const SizedBox(height: 12),
-          Container(
-            width: 40,
-            height: 4,
-            decoration: BoxDecoration(
-              color: cs.onSurface.withAlpha(50),
-              borderRadius: BorderRadius.circular(2),
-            ),
-          ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 10),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 20),
             child: Row(

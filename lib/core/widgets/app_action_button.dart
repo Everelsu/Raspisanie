@@ -1,6 +1,8 @@
 import "package:flutter/material.dart";
 import "package:flutter/services.dart";
 
+import "pressable.dart";
+
 /// Кнопка-действие внутри карточки или шторки: акцентная для основного
 /// действия, приглушённая для второстепенного.
 ///
@@ -43,46 +45,43 @@ class AppActionButton extends StatelessWidget {
         : (primary || danger
             ? accent.withAlpha(64)
             : cs.onSurface.withAlpha(30));
-    final radius = BorderRadius.circular(14);
-
-    return Material(
-      color: (primary || danger) && enabled
-          ? accent.withAlpha(22)
-          : Colors.transparent,
-      borderRadius: radius,
-      child: InkWell(
-        onTap: !enabled
-            ? null
-            : () {
-                HapticFeedback.selectionClick();
-                tap();
-              },
-        borderRadius: radius,
-        child: Container(
-          height: 46,
-          alignment: Alignment.center,
-          padding: const EdgeInsets.symmetric(horizontal: 12),
-          decoration: BoxDecoration(
-            borderRadius: radius,
-            border: Border.all(color: borderColor),
+    return Pressable(
+      scale: 0.96,
+      onTap: !enabled
+          ? null
+          : () {
+              HapticFeedback.selectionClick();
+              tap();
+            },
+      child: Container(
+        height: 46,
+        alignment: Alignment.center,
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        decoration: ShapeDecoration(
+          color: (primary || danger) && enabled
+              ? accent.withAlpha(26)
+              : cs.onSurface.withAlpha(8),
+          shape: RoundedSuperellipseBorder(
+            borderRadius: BorderRadius.circular(23),
+            side: BorderSide(color: borderColor, width: 0.8),
           ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(icon, size: 18, color: fg),
-              const SizedBox(width: 8),
-              Flexible(
-                child: Text(
-                  label,
-                  overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    fontWeight: FontWeight.w600,
-                    color: fg,
-                  ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 18, color: fg),
+            const SizedBox(width: 8),
+            Flexible(
+              child: Text(
+                label,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  fontWeight: FontWeight.w600,
+                  color: fg,
                 ),
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
@@ -109,60 +108,59 @@ class AppActionTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final cs = theme.colorScheme;
-    final radius = BorderRadius.circular(14);
-
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-      child: Material(
-        color: Colors.transparent,
-        borderRadius: radius,
-        child: InkWell(
-          onTap: () {
-            HapticFeedback.selectionClick();
-            onTap();
-          },
-          borderRadius: radius,
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-            decoration: BoxDecoration(
-              borderRadius: radius,
-              border: Border.all(color: cs.onSurface.withAlpha(30)),
+      child: Pressable(
+        scale: 0.97,
+        onTap: () {
+          HapticFeedback.selectionClick();
+          onTap();
+        },
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          decoration: ShapeDecoration(
+            color: cs.onSurface.withAlpha(8),
+            shape: RoundedSuperellipseBorder(
+              borderRadius: BorderRadius.circular(18),
+              side: BorderSide(color: cs.onSurface.withAlpha(24), width: 0.8),
             ),
-            child: Row(
-              children: [
-                Container(
-                  width: 38,
-                  height: 38,
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    color: cs.primary.withAlpha(22),
-                    borderRadius: BorderRadius.circular(11),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 38,
+                height: 38,
+                alignment: Alignment.center,
+                decoration: ShapeDecoration(
+                  color: cs.primary.withAlpha(22),
+                  shape: RoundedSuperellipseBorder(
+                    borderRadius: BorderRadius.circular(12),
                   ),
-                  child: Icon(icon, size: 19, color: cs.primary),
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
+                child: Icon(icon, size: 19, color: cs.primary),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      label,
+                      style: theme.textTheme.bodyLarge
+                          ?.copyWith(fontWeight: FontWeight.w600),
+                    ),
+                    if (caption != null)
                       Text(
-                        label,
-                        style: theme.textTheme.bodyLarge
-                            ?.copyWith(fontWeight: FontWeight.w600),
+                        caption!,
+                        style: theme.textTheme.bodySmall
+                            ?.copyWith(color: cs.onSurfaceVariant),
                       ),
-                      if (caption != null)
-                        Text(
-                          caption!,
-                          style: theme.textTheme.bodySmall
-                              ?.copyWith(color: cs.onSurfaceVariant),
-                        ),
-                    ],
-                  ),
+                  ],
                 ),
-                Icon(Icons.chevron_right_rounded,
-                    size: 20, color: cs.onSurfaceVariant.withAlpha(120)),
-              ],
-            ),
+              ),
+              Icon(Icons.chevron_right_rounded,
+                  size: 20, color: cs.onSurfaceVariant.withAlpha(120)),
+            ],
           ),
         ),
       ),

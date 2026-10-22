@@ -3,19 +3,23 @@ import 'dart:math' as math;
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_native_splash/flutter_native_splash.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 import '../../app/theme.dart' show AppThemeColors;
+import '../motion.dart';
 import 'refresh_logo_mark.dart';
 
-/// Анимированный сплэш поверх приложения.
+/// Анимированный сплэш поверх приложения (только холодный старт).
 ///
-/// Холодный старт: знак в цветах иконки лаунчера; цвет темы приложения
-/// расходится круговой волной из-под знака (как капля чернил) и накрывает
-/// цвет иконки, затем камера влетает внутрь левого кольца знака и оверлей
-/// растворяется. Приложение строится в паузе между волной и зумом за
-/// статичным оверлеем — его первая сборка не роняет кадры анимаций.
+/// Приложение строится в самом первом кадре, пока ещё висит нативный
+/// сплэш, — тяжёлая первая сборка не роняет кадры анимации и не добавляет
+/// паузу. Дальше: если иконка лаунчера другого цвета, цвет темы расходится
+/// волной из-под знака; затем камера влетает в левое треугольное окно
+/// знака, а сквозь окно уже видно приложение, которое мягко «подъезжает»
+/// из глубины. Окно в конце больше экрана — оверлей просто кончается, без
+/// растворения.
 ///
-/// Возврат из фона: та же волна + растворение, без зума.
+/// При «Уменьшении движения» — короткое растворение без полёта.
 class SplashIntro extends StatefulWidget {
   const SplashIntro({super.key, required this.fromColors, required this.child});
 
@@ -29,171 +33,100 @@ class SplashIntro extends StatefulWidget {
 }
 
 class _SplashIntroState extends State<SplashIntro>
-    with TickerProviderStateMixin, WidgetsBindingObserver {
-  static const _logoWidth = 120.0;
-
-  // Реплей показываем, только если приложение было в фоне дольше этого
-  // (отсекает шторки/диалоги, но ловит реальные повторные входы).
-  static const _replayAfterBackground = Duration(seconds: 2);
-
-  late final AnimationController _wave = AnimationController(
-    vsync: this,
-    duration: const Duration(milliseconds: 520),
-  );
-  late final AnimationController _zoom = AnimationController(
-    vsync: this,
-    duration: const Duration(milliseconds: 620),
-  );
-  late final AnimationController _fadeOut = AnimationController(
-    vsync: this,
-    duration: const Duration(milliseconds: 260),
-  );
-
-  bool _showChild = false;
+    with TickerProviderStateMixin {
+  late final AnimationController _wave;
+  late final AnimationController _zoom;
   bool _done = false;
-  bool _replaying = false;
-  DateTime? _pausedAt;
+  bool _reduced = false;
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addObserver(this);
+    _wave = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 420));
+    _zoom = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 720));
     _run();
   }
 
   Future<void> _run() async {
-    // Держим нативный сплэш все первые статичные кадры и убираем его
-    // ПЕРЕД самым стартом волны: возможный хитч от снятия нативного вью
-    // приходится на неподвижную картинку, а волна стартует уже чистой.
-    await Future<void>.delayed(const Duration(milliseconds: 80));
+    // Два кадра: первый — сборка приложения, второй — гарантия, что он
+    // дошёл до экрана. Всё это время пользователь видит нативный сплэш.
+    await WidgetsBinding.instance.endOfFrame;
+    // Шрифт темы (google_fonts) грузится асинхронно — ждём его под
+    // нативным сплэшем, иначе после раскрытия весь текст перескочил бы
+    // с запасного шрифта на нужный. Офлайн-первый запуск не держим долго.
+    try {
+      await GoogleFonts.pendingFonts()
+          .timeout(const Duration(milliseconds: 700));
+    } catch (_) {}
+    await WidgetsBinding.instance.endOfFrame;
     if (!mounted) return;
     if (!kIsWeb) FlutterNativeSplash.remove();
-    await Future<void>.delayed(const Duration(milliseconds: 48));
+    // Хитч от снятия нативного вью приходится на неподвижный кадр.
+    await Future<void>.delayed(const Duration(milliseconds: 60));
     if (!mounted) return;
-    // Пока идёт волна, приложение НЕ строится — дерево под оверлеем пустое,
-    // и анимация не теряет кадры из-за тяжёлой первой сборки.
-    await _wave.forward();
+
+    if (AppMotion.reduced(context)) setState(() => _reduced = true);
+    final theme = Theme.of(context);
+    final needsWave = !_reduced &&
+        (widget.fromColors.surface != theme.scaffoldBackgroundColor ||
+            widget.fromColors.primary != theme.colorScheme.primary);
+    if (needsWave) {
+      await _wave.forward();
+    } else {
+      _wave.value = 1;
+    }
     if (!mounted) return;
-    // Монтируем приложение за статичным непрозрачным оверлеем: вся его
-    // первая сборка происходит в паузе, когда ничего не движется.
-    setState(() => _showChild = true);
-    await Future<void>.delayed(const Duration(milliseconds: 200));
-    if (!mounted) return;
+    if (_reduced) _zoom.duration = const Duration(milliseconds: 220);
     await _zoom.forward();
     if (mounted) setState(() => _done = true);
   }
 
   @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.paused ||
-        state == AppLifecycleState.hidden) {
-      _pausedAt ??= DateTime.now();
-    } else if (state == AppLifecycleState.resumed) {
-      final pausedAt = _pausedAt;
-      _pausedAt = null;
-      if (pausedAt == null || !_done || _replaying) return;
-      if (DateTime.now().difference(pausedAt) < _replayAfterBackground) return;
-      final theme = Theme.of(context);
-      final sameColors =
-          widget.fromColors.surface == theme.scaffoldBackgroundColor &&
-              widget.fromColors.primary == theme.colorScheme.primary;
-      if (sameColors) return;
-      _replay();
-    }
-  }
-
-  Future<void> _replay() async {
-    setState(() {
-      _done = false;
-      _replaying = true;
-    });
-    _wave.value = 0;
-    _fadeOut.value = 0;
-    await _wave.animateTo(1.0, duration: const Duration(milliseconds: 400));
-    if (!mounted) return;
-    await _fadeOut.forward();
-    if (!mounted) return;
-    setState(() {
-      _done = true;
-      _replaying = false;
-    });
-  }
-
-  @override
   void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
     _wave.dispose();
     _zoom.dispose();
-    _fadeOut.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final bgFrom = widget.fromColors.surface;
-    final fgFrom = widget.fromColors.primary;
-    final bgTo = theme.scaffoldBackgroundColor;
-    final fgTo = theme.colorScheme.primary;
 
     // Структура Stack не меняется на протяжении всей анимации и после неё —
     // иначе Flutter пересоздал бы HomePage (потеря state = мерцание в конце).
     return Stack(
       fit: StackFit.expand,
       children: [
-        if (_showChild)
-          RepaintBoundary(child: widget.child)
-        else
-          const SizedBox.expand(),
+        AnimatedBuilder(
+          animation: _zoom,
+          child: RepaintBoundary(child: widget.child),
+          builder: (context, child) {
+            // Приложение «подъезжает» из глубины, пока камера пролетает
+            // окно: трансформ поверх готового слоя — без перерисовки.
+            final t = _reduced
+                ? 1.0
+                : Curves.easeOutCubic
+                    .transform(((_zoom.value - 0.2) / 0.8).clamp(0.0, 1.0));
+            return Transform.scale(scale: 1.08 - 0.08 * t, child: child);
+          },
+        ),
         if (!_done)
-          RepaintBoundary(
-            child: AnimatedBuilder(
-              animation: Listenable.merge([_wave, _zoom, _fadeOut]),
-              builder: (context, _) {
-                final waveT = Curves.fastOutSlowIn.transform(_wave.value);
-
-                final double opacity;
-                double zoomT = 0;
-                if (_replaying) {
-                  opacity = 1.0 - Curves.easeOut.transform(_fadeOut.value);
-                } else {
-                  zoomT = Curves.easeInCubic.transform(_zoom.value);
-                  opacity = _zoom.value < 0.75
-                      ? 1.0
-                      : 1.0 - ((_zoom.value - 0.75) / 0.25);
-                }
-                final a = opacity.clamp(0.0, 1.0);
-
-                // Знак перекрашивается быстро, в первой трети волны — фронт
-                // расходится из-под него, и он «первым» получает новый цвет.
-                final fgT = (waveT / 0.35).clamp(0.0, 1.0);
-                final fg =
-                    Color.lerp(fgFrom, fgTo, fgT)!.withValues(alpha: a);
-
-                // Камера влетает внутрь левого кольца знака.
-                final ringShift = 147.5 * (_logoWidth / 615);
-                final scale = 1.0 + zoomT * 26.0;
-
-                return IgnorePointer(
-                  child: CustomPaint(
-                    painter: _RippleTintPainter(
-                      from: bgFrom,
-                      to: bgTo,
-                      t: waveT,
-                      alpha: a,
-                    ),
-                    child: Center(
-                      child: Transform.translate(
-                        offset: Offset(ringShift * zoomT * scale, 0),
-                        child: Transform.scale(
-                          scale: scale,
-                          child: RefreshLogoMark(size: _logoWidth, color: fg),
-                        ),
-                      ),
-                    ),
-                  ),
-                );
-              },
+          IgnorePointer(
+            child: RepaintBoundary(
+              child: CustomPaint(
+                size: Size.infinite,
+                painter: _SplashPainter(
+                  wave: _wave,
+                  zoom: _zoom,
+                  reduced: _reduced,
+                  bgFrom: widget.fromColors.surface,
+                  fgFrom: widget.fromColors.primary,
+                  bgTo: theme.scaffoldBackgroundColor,
+                  fgTo: theme.colorScheme.primary,
+                ),
+              ),
             ),
           ),
       ],
@@ -201,52 +134,123 @@ class _SplashIntroState extends State<SplashIntro>
   }
 }
 
-/// Фон сплэша: цвет [from], поверх которого из центра расходится круг
-/// цвета [to] с мягкой кромкой. [t] — прогресс волны (0 — нет круга,
-/// 1 — круг накрыл весь экран). [alpha] — общая прозрачность оверлея
-/// на этапе растворения (без Opacity-виджета — дёшево для GPU).
-class _RippleTintPainter extends CustomPainter {
-  const _RippleTintPainter({
-    required this.from,
-    required this.to,
-    required this.t,
-    required this.alpha,
-  });
+/// Весь оверлей одним painter'ом: фон с волной, окно-проём и знак.
+/// Перерисовывается от анимаций напрямую (repaint), без пересборки виджетов.
+class _SplashPainter extends CustomPainter {
+  _SplashPainter({
+    required this.wave,
+    required this.zoom,
+    required this.reduced,
+    required this.bgFrom,
+    required this.fgFrom,
+    required this.bgTo,
+    required this.fgTo,
+  }) : super(repaint: Listenable.merge([wave, zoom]));
 
-  final Color from;
-  final Color to;
-  final double t;
-  final double alpha;
+  final Animation<double> wave;
+  final Animation<double> zoom;
+  final bool reduced;
+  final Color bgFrom, fgFrom, bgTo, fgTo;
+
+  static const _logoWidth = 120.0;
+  static const _unit = _logoWidth / 615;
+  static const _logoCenter = Offset(307.5, 215.5);
+  // Центр вписанной окружности левого окна и её радиус (в единицах знака):
+  // туда летит камера, и по радиусу считаем, когда окно накроет экран.
+  static const _holeCenter = Offset(131.4, 215.7);
+  static const _holeInradius = 76.4;
+  // Масштаб экспоненциальный (постоянная «скорость полёта» в восприятии),
+  // поверх — мягкий ease-in-out: без долгого замирания и рывка в конце.
+  static const _zoomCurve = Cubic(0.42, 0, 0.58, 1);
 
   @override
   void paint(Canvas canvas, Size size) {
     final rect = Offset.zero & size;
-    canvas.drawRect(rect, Paint()..color = from.withValues(alpha: alpha));
-    if (t <= 0) return;
-
     final center = size.center(Offset.zero);
+    final waveT = Curves.fastOutSlowIn.transform(wave.value);
+    final z = zoom.value;
+
+    if (reduced) {
+      final a = 1 - z;
+      canvas.drawRect(rect, Paint()..color = bgTo.withValues(alpha: a));
+      _drawLogo(canvas, _logoMatrix(center, 1, 0), fgTo.withValues(alpha: a));
+      return;
+    }
+
+    // Масштаб растёт экспоненциально — равномерная «скорость полёта».
+    // Конечный — такой, чтобы окно гарантированно накрыло экран.
+    final halfDiag = size.shortestSide <= 0
+        ? 0.0
+        : math.sqrt(size.width * size.width + size.height * size.height) / 2;
+    final maxScale = math.max(8.0, halfDiag / (_holeInradius * _unit) * 1.15);
+    final e = _zoomCurve.transform(z);
+    final scale = math.pow(maxScale, e).toDouble();
+    final m = _logoMatrix(center, scale, e);
+
+    final bg = Color.lerp(bgFrom, bgTo, waveT)!;
+    final fgT = (waveT / 0.35).clamp(0.0, 1.0);
+    final fg = Color.lerp(fgFrom, fgTo, fgT)!;
+
+    if (z <= 0) {
+      // Статичная фаза (и волна): сплошной фон, окно ещё «застеклено».
+      _paintBackground(canvas, rect, size, center, waveT);
+    } else {
+      final hole = logoMarkLeftHole.transform(m.storage);
+      canvas.save();
+      canvas.clipPath(Path()
+        ..fillType = PathFillType.evenOdd
+        ..addRect(rect)
+        ..addPath(hole, Offset.zero));
+      canvas.drawRect(rect, Paint()..color = bg);
+      canvas.restore();
+      // «Стекло» в окне тает в начале полёта — сквозь него видно приложение.
+      final glass = 1 - (z / 0.35).clamp(0.0, 1.0);
+      if (glass > 0) {
+        canvas.drawPath(hole, Paint()..color = bg.withValues(alpha: glass));
+      }
+    }
+    _drawLogo(canvas, m, fg);
+  }
+
+  /// Знак по центру экрана; по мере полёта [e] центр окна съезжает в центр.
+  Matrix4 _logoMatrix(Offset center, double scale, double e) {
+    final shift = (_holeCenter - _logoCenter) * _unit * scale * e;
+    return Matrix4.translationValues(
+        center.dx - shift.dx, center.dy - shift.dy, 0)
+      ..scaleByDouble(_unit * scale, _unit * scale, 1, 1)
+      ..translateByDouble(-_logoCenter.dx, -_logoCenter.dy, 0, 1);
+  }
+
+  void _drawLogo(Canvas canvas, Matrix4 m, Color color) {
+    canvas.save();
+    canvas.transform(m.storage);
+    canvas.drawPath(logoMarkPath, Paint()..color = color);
+    canvas.restore();
+  }
+
+  /// Цвет [bgFrom], поверх которого из центра расходится круг [bgTo] с
+  /// мягкой кромкой. Без шейдеров: RadialGradient на каждом кадре давал
+  /// компиляцию шейдера и подёргивал волну — кромку дают два кольца.
+  void _paintBackground(
+      Canvas canvas, Rect rect, Size size, Offset center, double t) {
+    canvas.drawRect(rect, Paint()..color = bgFrom);
+    if (t <= 0) return;
     final maxR = math.sqrt(
       size.width * size.width / 4 + size.height * size.height / 4,
     );
     final r = maxR * t;
-    // Сплошной круг без шейдеров: RadialGradient на каждом кадре давал
-    // компиляцию/аллокацию шейдера и подёргивал волну. Мягкость кромки
-    // дают два дешёвых полупрозрачных кольца поверх основного круга.
-    final toA = to.withValues(alpha: alpha);
-    canvas.drawCircle(center, r, Paint()..color = toA..isAntiAlias = true);
+    canvas.drawCircle(center, r, Paint()..color = bgTo);
     canvas.drawCircle(
-      center,
-      r + maxR * 0.02,
-      Paint()..color = toA.withValues(alpha: alpha * 0.35)..isAntiAlias = true,
-    );
-    canvas.drawCircle(
-      center,
-      r + maxR * 0.045,
-      Paint()..color = toA.withValues(alpha: alpha * 0.12)..isAntiAlias = true,
-    );
+        center, r + maxR * 0.02, Paint()..color = bgTo.withValues(alpha: 0.35));
+    canvas.drawCircle(center, r + maxR * 0.045,
+        Paint()..color = bgTo.withValues(alpha: 0.12));
   }
 
   @override
-  bool shouldRepaint(_RippleTintPainter old) =>
-      old.t != t || old.alpha != alpha || old.from != from || old.to != to;
+  bool shouldRepaint(_SplashPainter old) =>
+      old.reduced != reduced ||
+      old.bgFrom != bgFrom ||
+      old.fgFrom != fgFrom ||
+      old.bgTo != bgTo ||
+      old.fgTo != fgTo;
 }

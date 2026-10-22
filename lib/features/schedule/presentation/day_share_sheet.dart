@@ -11,6 +11,7 @@ import "../../../core/services/font_service.dart";
 import "../../../core/widgets/app_action_button.dart";
 import "../data/lesson_times.dart";
 import "../domain/models.dart";
+import "../../../core/widgets/glass.dart";
 
 Future<void> showDayShareSheet(
   BuildContext context, {
@@ -28,26 +29,14 @@ Future<void> showDayShareSheet(
       ? day.date
       : "${day.date} • ${subtitle.trim()}";
 
-  await showModalBottomSheet<void>(
-    context: context,
-    shape: const RoundedRectangleBorder(
-      borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-    ),
+  await showGlassSheet<void>(
+    context,
     builder: (ctx) => SafeArea(
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const SizedBox(height: 10),
-          Container(
-            width: 36,
-            height: 4,
-            decoration: BoxDecoration(
-              color: cs.onSurface.withAlpha(60),
-              borderRadius: BorderRadius.circular(2),
-            ),
-          ),
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 10),
             child: Row(
               children: [
                 Container(
@@ -292,7 +281,8 @@ Future<ui.Image> _renderDayImage(
     final lessonItems = grouped[lessonNum]!;
     double tileH = linePadding;
     for (final item in lessonItems) {
-      final time = LessonTimes.formatTime(item.lessonNumber, college: college);
+      final time = LessonTimes.formatTime(item.lessonNumber,
+          college: college, date: day.date);
       final itemTitle =
           item.subject?.trim().isNotEmpty == true ? item.subject!.trim() : "—";
       final detailsParts = <String>[
@@ -447,8 +437,8 @@ Future<ui.Image> _renderDayImage(
       final textX = badgeX + badgeSize + 8;
       var lineY = y + linePadding;
       for (final item in lessonItems) {
-        final time =
-            LessonTimes.formatTime(item.lessonNumber, college: college);
+        final time = LessonTimes.formatTime(item.lessonNumber,
+            college: college, date: day.date);
         final itemTitle = item.subject?.trim().isNotEmpty == true
             ? item.subject!.trim()
             : "—";

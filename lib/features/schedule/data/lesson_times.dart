@@ -1,3 +1,5 @@
+import "special_days.dart";
+
 class LessonTime {
   const LessonTime(this.number, this.startTime, this.endTime);
   final int number;
@@ -64,8 +66,22 @@ class LessonTimes {
   static Map<int, LessonTime> getBuiltInTimes(String college) =>
       Map<int, LessonTime>.from(_defaultForCollege(college));
 
-  static Map<int, LessonTime> _forCollege(String college) =>
-      _custom[college] ?? _defaultForCollege(college);
+  /// Время особого дня (Remote Config `special_days`) на дату [date].
+  static Map<int, LessonTime>? _specialFor(String college, String? date) {
+    final t = SpecialDays.forRawDate(date, college)?.timesFor(college);
+    return (t == null || t.isEmpty) ? null : t;
+  }
+
+  /// [date] — дата расписания (`DD.MM.YYYY` / `YYYY-MM-DD`): в особый день
+  /// со своим временем (сокращённый и т.п.) берётся оно.
+  static Map<int, LessonTime> _forCollege(String college, [String? date]) =>
+      _specialFor(college, date) ??
+      _custom[college] ??
+      _defaultForCollege(college);
+
+  /// Перемены/обеды считаем по времени, а не по встроенным таблицам.
+  static bool _computed(String college, String? date) =>
+      _custom.containsKey(college) || _specialFor(college, date) != null;
 
   static Map<int, LessonTime> timesForCollege(String college) =>
       Map<int, LessonTime>.from(_forCollege(college));
@@ -81,19 +97,21 @@ class LessonTimes {
     _custom.remove(college);
   }
 
-  static LessonTime? getTime(int lessonNumber, {String college = "chtotib"}) =>
-      _forCollege(college)[lessonNumber];
+  static LessonTime? getTime(int lessonNumber,
+          {String college = "chtotib", String? date}) =>
+      _forCollege(college, date)[lessonNumber];
 
-  static String formatTime(int lessonNumber, {String college = "chtotib"}) {
-    final t = getTime(lessonNumber, college: college);
+  static String formatTime(int lessonNumber,
+      {String college = "chtotib", String? date}) {
+    final t = getTime(lessonNumber, college: college, date: date);
     return t != null ? "${t.startTime} - ${t.endTime}" : "";
   }
 
   static String? getBreakText(int before, int after,
-      {String college = "chtotib"}) {
-    if (_custom.containsKey(college)) {
-      final prev = getTime(before, college: college);
-      final next = getTime(after, college: college);
+      {String college = "chtotib", String? date}) {
+    if (_computed(college, date)) {
+      final prev = getTime(before, college: college, date: date);
+      final next = getTime(after, college: college, date: date);
       if (prev == null || next == null) return null;
       final prevEnd = parseTimeToMinutes(prev.endTime);
       final nextStart = parseTimeToMinutes(next.startTime);
@@ -106,10 +124,11 @@ class LessonTimes {
     return breaks[(before, after)];
   }
 
-  static String? getLunchText(int afterLesson, {String college = "chtotib"}) {
-    if (_custom.containsKey(college)) {
-      final current = getTime(afterLesson, college: college);
-      final next = getTime(afterLesson + 1, college: college);
+  static String? getLunchText(int afterLesson,
+      {String college = "chtotib", String? date}) {
+    if (_computed(college, date)) {
+      final current = getTime(afterLesson, college: college, date: date);
+      final next = getTime(afterLesson + 1, college: college, date: date);
       if (current == null || next == null) return null;
       final currentEnd = parseTimeToMinutes(current.endTime);
       final nextStart = parseTimeToMinutes(next.startTime);
@@ -121,6 +140,45 @@ class LessonTimes {
     }
     final lunches = college == "zabgc" ? _lunchesZabgc : _lunchesChtotib;
     return lunches[afterLesson];
+  }
+
+  /// `{ "1": { "start": "08:15", "end": "09:45" }, … }` → время пар.
+  /// Битые записи пропускаются. Общий разбор для GitHub-файла, Remote
+  /// Config и особых дней.
+  static Map<int, LessonTime> parseTimes(Map<String, dynamic> raw) {
+    final parsed = <int, LessonTime>{};
+    for (final e in raw.entries) {
+      final n = int.tryParse(e.key);
+      final v = e.value;
+      if (n == null || v is! Map<String, dynamic>) continue;
+      final start = (v["start"] ?? v["from"]) as String?;
+      final end = (v["end"] ?? v["to"]) as String?;
+      if (!_isValidTime(start) || !_isValidTime(end)) continue;
+      parsed[n] = LessonTime(n, start!.trim(), end!.trim());
+    }
+    return parsed;
+  }
+
+  /// `{ "chtotib": { "1": {…} }, "zabgc": {…} }` → время по техникумам.
+  static Map<String, Map<int, LessonTime>> parseByCollege(
+      Map<String, dynamic> raw) {
+    final out = <String, Map<int, LessonTime>>{};
+    for (final e in raw.entries) {
+      final v = e.value;
+      if (v is! Map<String, dynamic>) continue;
+      final t = parseTimes(v);
+      if (t.isNotEmpty) out[e.key.trim().toLowerCase()] = t;
+    }
+    return out;
+  }
+
+  static bool _isValidTime(String? value) {
+    if (value == null) return false;
+    final m = RegExp(r"^(\d{1,2}):(\d{2})$").firstMatch(value.trim());
+    if (m == null) return false;
+    final h = int.parse(m.group(1)!);
+    final min = int.parse(m.group(2)!);
+    return h <= 23 && min <= 59;
   }
 
   static int parseTimeToMinutes(String timeStr) {
@@ -154,7 +212,7 @@ class LessonTimes {
       return LessonStatus.none;
     }
 
-    final t = getTime(lessonNumber, college: college);
+    final t = getTime(lessonNumber, college: college, date: scheduleDate);
     if (t == null) return LessonStatus.none;
 
     final nowMin = now.hour * 60 + now.minute;

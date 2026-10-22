@@ -31,9 +31,8 @@ class AppDialog extends StatelessWidget {
     final theme = Theme.of(context);
     final cs = theme.colorScheme;
 
-    return Dialog(
+    final dialog = Dialog(
       insetPadding: const EdgeInsets.symmetric(horizontal: 28, vertical: 24),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
       child: Padding(
         padding: const EdgeInsets.fromLTRB(20, 20, 20, 16),
         child: Column(
@@ -46,9 +45,11 @@ class AppDialog extends StatelessWidget {
                   width: 38,
                   height: 38,
                   alignment: Alignment.center,
-                  decoration: BoxDecoration(
+                  decoration: ShapeDecoration(
                     color: cs.primary.withAlpha(24),
-                    borderRadius: BorderRadius.circular(12),
+                    shape: RoundedSuperellipseBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
                   ),
                   child: Icon(icon, size: 20, color: cs.primary),
                 ),
@@ -105,6 +106,19 @@ class AppDialog extends StatelessWidget {
           ],
         ),
       ),
+    );
+
+    // Как алерт в iOS: всплывает из чуть увеличенного состояния вместе с
+    // затемнением фона. drive() без CurvedAnimation — без слушателей,
+    // висящих на анимации маршрута.
+    final route = ModalRoute.of(context)?.animation;
+    if (route == null || MediaQuery.disableAnimationsOf(context)) return dialog;
+    return ScaleTransition(
+      scale: route.drive(
+        Tween(begin: 1.08, end: 1.0)
+            .chain(CurveTween(curve: Curves.easeOutCubic)),
+      ),
+      child: dialog,
     );
   }
 }

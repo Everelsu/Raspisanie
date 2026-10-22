@@ -1,8 +1,21 @@
 import 'dart:math' as math;
 
+import 'package:flutter/gestures.dart' show DragStartBehavior;
 import 'package:flutter/material.dart';
+import 'package:flutter/physics.dart';
 import 'package:flutter/services.dart';
 
+import '../motion.dart';
+import 'glass.dart';
+import 'pressable.dart';
+
+/// Нижний бар в духе Liquid Glass (iOS 26): стеклянная капсула вкладок;
+/// выбранное «Расписание» раздаётся и «разделяет» линзу на две половинки —
+/// вторая открывает календарь (HistoryCalendarSheet), выезжающий над баром.
+///
+/// Выбранную вкладку отмечает «линза»: едет на пружине ([AppMotion]),
+/// тянется по скорости, а по бару можно вести пальцем — линза идёт за
+/// ним, цвет иконок перетекает, на отпускании защёлкивается на ближайшей.
 class BottomBarWithSheet extends StatefulWidget {
   const BottomBarWithSheet({
     super.key,
@@ -19,29 +32,23 @@ class BottomBarWithSheet extends StatefulWidget {
   final ValueChanged<int> onIndexChanged;
   final Widget sheetChild;
   final VoidCallback? onSheetToggle;
+
   /// Вызывается когда шторка закрыта свайпом — всегда означает «закрыть»,
   /// в отличие от [onSheetToggle] (toggle). Это предотвращает гонку состояний
   /// когда пользователь успевает нажать кнопку до перерисовки.
   final VoidCallback? onSheetClosedByDrag;
   final bool sheetOpen;
+
   /// Длинное нажатие на вкладку с индексом [i]. Используется для скрытых фич.
   final void Function(int i)? onNavItemLongPress;
 
   static const double barHeight = 64.0;
 
+  /// Отступ бара от нижнего края (над safe area).
+  static const double bottomGap = 10.0;
+
   @override
   State<BottomBarWithSheet> createState() => _BottomBarWithSheetState();
-
-  /// Нижний отступ для контента который не должен перекрываться баром.
-  /// Учитывает safe area устройства и масштаб текста.
-  static double contentBottomPadding(BuildContext context) {
-    final safeBottom = MediaQuery.paddingOf(context).bottom;
-    final scale = MediaQuery.textScalerOf(context).scale(1);
-    final barH = scale <= 1.15
-        ? barHeight
-        : (barHeight + 8).clamp(barHeight, barHeight + 14);
-    return safeBottom + barH + 16;
-  }
 }
 
 class _BottomBarWithSheetState extends State<BottomBarWithSheet>
@@ -49,20 +56,17 @@ class _BottomBarWithSheetState extends State<BottomBarWithSheet>
   // ─── Константы ──────────────────────────────────────────────────────────────
   static const _sheetMax = 420.0;
   static const _barH = BottomBarWithSheet.barHeight;
-  static const _dur = Duration(milliseconds: 320);
-  static const _curve = Curves.easeOutCubic;
-  static const _sheetMinContentH = 250.0;
-  static const _sheetHandleBlockH = 20.0;
   static const _closeSnapThreshold = 0.55;
 
   // Горизонтальный отступ — одинаковый для бара и шторки
   static const _hPad = 12.0;
-  // Нижний отступ бара
-  static const _bPad = 10.0;
-  // Верхний отступ бара
-  static const _tPad = 8.0;
-  // Радиус — одинаковый для бара и шторки
-  static const _radius = 26.0;
+  static const _bPad = BottomBarWithSheet.bottomGap;
+  // Зазор между шторкой и баром и между капсулой и кнопкой
+  static const _gap = 8.0;
+  static const _sheetRadius = 30.0;
+  static const _lensInset = 4.0;
+  // Ширина календарной половинки «Расписания».
+  static const _calW = 42.0;
 
   static const _items = <(IconData, IconData, String)>[
     (Icons.calendar_today_outlined, Icons.calendar_today, 'Расписание'),
@@ -71,125 +75,60 @@ class _BottomBarWithSheetState extends State<BottomBarWithSheet>
     (Icons.settings_outlined, Icons.settings, 'Настройки'),
   ];
 
-  late final AnimationController _sheetCtrl;
-  late final CurvedAnimation _sheetAnim;
-  late final AnimationController _btnCtrl;
-  late final CurvedAnimation _btnAnim;
-  late final AnimationController _leadCtrl;
-  late final AnimationController _followCtrl;
-  late final List<AnimationController> _itemScaleCtrl;
-  late final List<Animation<double>> _itemScaleAnim;
+  /// 0 — шторка закрыта, 1 — открыта.
+  late final AnimationController _sheet;
+
+  /// Позиция линзы в «индексах вкладок»; без границ — пружине нужен
+  /// перелёт за цель.
+  late final AnimationController _pill;
+
+  /// 0..1 — линза «приподнята» (палец ведёт её по бару).
+  late final AnimationController _lift;
   bool _closingByDrag = false;
-  bool _measureQueued = false;
-
-  final GlobalKey _barKey = GlobalKey();
-  final List<GlobalKey> _navKeys = List.generate(4, (_) => GlobalKey());
-  List<(double x, double w)>? _itemSlots;
-  Rect? _leadFrom, _leadTo, _followFrom, _followTo;
-
-  void _measureSlots() {
-    _measureQueued = false;
-    final barBox = _barKey.currentContext?.findRenderObject() as RenderBox?;
-    if (barBox == null) return;
-    final list = <(double, double)>[];
-    for (var i = 0; i < 4; i++) {
-      final box = _navKeys[i].currentContext?.findRenderObject() as RenderBox?;
-      if (box == null) { list.add((0, 0)); continue; }
-      final pos = barBox.globalToLocal(box.localToGlobal(Offset.zero));
-      list.add((pos.dx, box.size.width));
-    }
-    if (!mounted) return;
-    final changed = _itemSlots == null ||
-        _itemSlots!.length != list.length ||
-        list.asMap().entries.any((e) =>
-            _itemSlots![e.key].$1 != e.value.$1 ||
-            _itemSlots![e.key].$2 != e.value.$2);
-    if (!changed && _itemSlots != null && _leadTo != null) return;
-    setState(() {
-      _itemSlots = list;
-      if (list.length == 4 && _leadTo == null) {
-        final bH = _effectiveBarHeight(context);
-        final idx = widget.selectedIndex.clamp(0, 3);
-        final r = Rect.fromLTWH(list[idx].$1, 0, list[idx].$2, bH);
-        _leadFrom = _leadTo = _followFrom = _followTo = r;
-      }
-    });
-  }
+  double _releaseVelocity = 0;
+  // Флаг, а не `_lift.value == 0`: пружина гаснет не ровно в ноль, и после
+  // первого перетаскивания линза переставала анимироваться совсем.
+  bool _dragging = false;
 
   @override
   void initState() {
     super.initState();
-    _sheetCtrl = AnimationController(
-        vsync: this, duration: _dur, value: widget.sheetOpen ? 1.0 : 0.0);
-    _sheetAnim = CurvedAnimation(parent: _sheetCtrl, curve: _curve);
-    _btnCtrl = AnimationController(
-        vsync: this, duration: _dur, value: widget.sheetOpen ? 1.0 : 0.0);
-    _btnAnim = CurvedAnimation(parent: _btnCtrl, curve: _curve);
-    _leadCtrl = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 180));
-    _followCtrl = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 340));
-    _itemScaleCtrl = List.generate(
-      4,
-      (_) => AnimationController(
-          vsync: this, duration: const Duration(milliseconds: 220)),
-    );
-    _itemScaleAnim = _itemScaleCtrl.map((c) {
-      return TweenSequence<double>([
-        TweenSequenceItem(
-            tween: Tween(begin: 1.0, end: 0.78)
-                .chain(CurveTween(curve: Curves.easeIn)),
-            weight: 35),
-        TweenSequenceItem(
-            tween: Tween(begin: 0.78, end: 1.12)
-                .chain(CurveTween(curve: Curves.easeOut)),
-            weight: 40),
-        TweenSequenceItem(
-            tween: Tween(begin: 1.12, end: 1.0)
-                .chain(CurveTween(curve: Curves.easeInOut)),
-            weight: 25),
-      ]).animate(c);
-    }).toList();
+    _sheet =
+        AnimationController(vsync: this, value: widget.sheetOpen ? 1.0 : 0.0);
+    _pill = AnimationController.unbounded(
+        vsync: this, value: widget.selectedIndex.toDouble());
+    _lift = AnimationController(vsync: this);
   }
 
   @override
   void didUpdateWidget(BottomBarWithSheet old) {
     super.didUpdateWidget(old);
     if (widget.sheetOpen != old.sheetOpen) {
-      if (widget.sheetOpen) {
-        _sheetCtrl.forward();
-        _btnCtrl.forward();
-      } else {
-        _sheetCtrl.reverse();
-        _btnCtrl.reverse();
-      }
+      _springTo(
+          _sheet, widget.sheetOpen ? 1 : 0, AppMotion.smooth, _releaseVelocity);
+      _releaseVelocity = 0;
     }
-    if (widget.selectedIndex != old.selectedIndex && _itemSlots != null) {
-      final bH = _effectiveBarHeight(context);
-      final target = Rect.fromLTWH(
-        _itemSlots![widget.selectedIndex].$1, 0,
-        _itemSlots![widget.selectedIndex].$2, bH,
-      );
-      _leadFrom = _leadTo ?? target;
-      _leadTo = target;
-      _followFrom = _followTo ?? target;
-      _followTo = target;
-      _leadCtrl.forward(from: 0);
-      _followCtrl.forward(from: 0);
-      _itemScaleCtrl[widget.selectedIndex].forward(from: 0);
+    if (widget.selectedIndex != old.selectedIndex && !_dragging) {
+      _springTo(_pill, widget.selectedIndex.toDouble(), AppMotion.snappy,
+          _pill.velocity);
     }
   }
 
   @override
   void dispose() {
-    _sheetAnim.dispose();
-    _btnAnim.dispose();
-    _leadCtrl.dispose();
-    _followCtrl.dispose();
-    _sheetCtrl.dispose();
-    _btnCtrl.dispose();
-    for (final c in _itemScaleCtrl) { c.dispose(); }
+    _sheet.dispose();
+    _pill.dispose();
+    _lift.dispose();
     super.dispose();
+  }
+
+  void _springTo(AnimationController c, double target, SpringDescription spring,
+      [double velocity = 0]) {
+    if (AppMotion.reduced(context)) {
+      c.value = target;
+      return;
+    }
+    c.animateWith(SpringSimulation(spring, c.value, target, velocity));
   }
 
   double _effectiveBarHeight(BuildContext context) {
@@ -198,41 +137,52 @@ class _BottomBarWithSheetState extends State<BottomBarWithSheet>
     return (_barH + 8).clamp(_barH, _barH + 14).toDouble();
   }
 
+  // ─── Перетаскивание линзы ───────────────────────────────────────────────────
+
+  void _dragStart() {
+    _dragging = true;
+    _pill.stop();
+    _springTo(_lift, 1, AppMotion.smooth);
+  }
+
+  void _dragUpdate(DragUpdateDetails d, double itemW) {
+    _pill.value = (_pill.value + d.delta.dx / itemW).clamp(-0.25, 3.25);
+  }
+
+  void _dragEnd(DragEndDetails d, double itemW) {
+    final v = d.velocity.pixelsPerSecond.dx / itemW;
+    // Короткий бросок досылает линзу на соседнюю вкладку, как в iOS.
+    final target =
+        (_pill.value + (v * 0.08).clamp(-0.5, 0.5)).round().clamp(0, 3);
+    _dragging = false;
+    _springTo(_lift, 0, AppMotion.smooth);
+    _springTo(_pill, target.toDouble(), AppMotion.snappy, v);
+    if (target != widget.selectedIndex) widget.onIndexChanged(target);
+  }
+
   // ─── Build ──────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final cs = theme.colorScheme;
     final isDark = theme.brightness == Brightness.dark;
-    final navBg = theme.navigationBarTheme.backgroundColor ?? cs.surface;
-    final unselected = theme.navigationBarTheme.iconTheme?.resolve({})?.color ??
-        cs.onSurfaceVariant;
     final barH = _effectiveBarHeight(context);
-
-    // Единый цвет фона для бара и шторки. Почти непрозрачный:
-    // BackdropFilter убран — blur под баром пере-рендерил контент каждый
-    // кадр скролла и был главным источником лагов.
-    final sharedBg = Color.alphaBlend(
-      cs.primary.withAlpha(isDark ? 16 : 10),
-      navBg.withAlpha(isDark ? 242 : 246),
-    );
 
     return SafeArea(
       top: false,
       child: Padding(
-        // Единый горизонтальный отступ для всего блока
         padding: const EdgeInsets.fromLTRB(_hPad, 0, _hPad, _bPad),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // Шторка — та же ширина, те же скруглённые края сверху
-            Flexible(
-              child: _sheet(sharedBg, cs, barH, isDark),
+            Flexible(child: _buildSheet(theme, isDark, barH)),
+            const SizedBox(height: _gap),
+            SizedBox(
+              height: barH,
+              child: RepaintBoundary(
+                child: _buildCapsule(theme, barH, isDark),
+              ),
             ),
-            const SizedBox(height: _tPad),
-            // Бар
-            _bar(sharedBg, cs.primary, cs.onPrimary, unselected, theme, barH, isDark),
           ],
         ),
       ),
@@ -241,120 +191,110 @@ class _BottomBarWithSheetState extends State<BottomBarWithSheet>
 
   // ─── Sheet ──────────────────────────────────────────────────────────────────
 
-  Widget _sheet(Color bg, ColorScheme cs, double barH, bool isDark) {
+  Widget _buildSheet(ThemeData theme, bool isDark, double barH) {
+    final cs = theme.colorScheme;
+    final screenH = MediaQuery.sizeOf(context).height;
+    final safeBottom = MediaQuery.paddingOf(context).bottom;
+    final availableH =
+        math.max(0.0, screenH - barH - safeBottom - _gap - _bPad);
+    final maxSheet = math.min(_sheetMax, availableH * 0.78);
+    final radius = BorderRadius.circular(_sheetRadius);
+    // Шторка большая и анимируется — без размытия (дорого на всю площадь),
+    // почти непрозрачная, в той же гамме, что стекло бара.
+    final navBg = theme.navigationBarTheme.backgroundColor ?? cs.surface;
+    final decoration = ShapeDecoration(
+      color: Color.alphaBlend(
+        cs.primary.withAlpha(isDark ? 14 : 8),
+        navBg.withAlpha(isDark ? 246 : 250),
+      ),
+      shape: RoundedSuperellipseBorder(
+        borderRadius: radius,
+        side: BorderSide(
+          color:
+              isDark ? Colors.white.withAlpha(30) : Colors.black.withAlpha(14),
+          width: 0.8,
+        ),
+      ),
+      shadows: [
+        BoxShadow(
+          color: Colors.black.withAlpha(isDark ? 70 : 26),
+          blurRadius: 26,
+          spreadRadius: -6,
+          offset: const Offset(0, 10),
+        ),
+      ],
+    );
+
     return AnimatedBuilder(
-      animation: _sheetAnim,
+      animation: _sheet,
+      child: RepaintBoundary(child: widget.sheetChild),
       builder: (context, child) {
-        final media = MediaQuery.of(context);
-        final screenH = media.size.height;
-        // safeBottom уже снят SafeArea выше, но считаем для правильного maxSheet
-        final safeBottom = media.padding.bottom;
-        final availableH =
-            math.max(0.0, screenH - barH - safeBottom - _tPad - _bPad);
-        final maxSheet = math.min(_sheetMax, availableH * 0.78);
-        final h = _sheetAnim.value * maxSheet;
-        if (h < 1) return const SizedBox.shrink();
-
-        final revealAt = math.min(_sheetMinContentH, maxSheet * 0.42);
-        final contentOpacity =
-            ((h - _sheetHandleBlockH) / (revealAt - _sheetHandleBlockH))
-                .clamp(0.0, 1.0);
-        final showHandle = h >= _sheetHandleBlockH;
-
-        return LayoutBuilder(builder: (context, pc) {
-          final actualH = math.min(h, pc.maxHeight);
-          if (actualH < 1) return const SizedBox.shrink();
-          final contentH = math.min(maxSheet, pc.maxHeight.isFinite
-              ? pc.maxHeight
-              : maxSheet);
-
-          return ClipRRect(
-            // Верхние углы совпадают с радиусом бара
-            borderRadius: const BorderRadius.all(Radius.circular(_radius)),
-            child: Container(
-              height: actualH,
-              width: double.infinity,
-              decoration: BoxDecoration(
-                color: bg,
-                // Тонкий бордер — тот же стиль что у бара
-                border: Border.all(
-                  color: cs.primary.withAlpha(isDark ? 28 : 18),
-                  width: 0.8,
-                ),
-                borderRadius: const BorderRadius.all(Radius.circular(_radius)),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withAlpha(isDark ? 42 : 22),
-                    blurRadius: 20,
-                    spreadRadius: -4,
-                    offset: const Offset(0, 6),
-                  ),
-                ],
-              ),
-              child: GestureDetector(
-                behavior: HitTestBehavior.translucent,
-                onVerticalDragStart: (_) {},
-                onVerticalDragUpdate: (d) {
-                  if (!widget.sheetOpen) return;
-                  final next =
-                      (_sheetCtrl.value - (d.delta.dy / maxSheet))
-                          .clamp(0.0, 1.0);
-                  _sheetCtrl.value = next;
-                  _btnCtrl.value = next;
-                },
-                onVerticalDragEnd: (d) {
-                  final v = d.primaryVelocity ?? 0;
-                  final shouldClose =
-                      _sheetCtrl.value < _closeSnapThreshold || v > 700;
-                  if (shouldClose && widget.sheetOpen && !_closingByDrag) {
-                    _triggerDragClose();
-                    return;
-                  }
-                  if (widget.sheetOpen) {
-                    _sheetCtrl.forward();
-                    _btnCtrl.forward();
-                  }
-                },
-                // OverflowBox держит контент на полной высоте шторки:
-                // при анимации высоты меняется только клип, а календарь
-                // не перелэйаутится каждый кадр (главный источник лагов).
-                child: ClipRect(
+        final h = _sheet.value * maxSheet;
+        // Закрытая шторка не выбрасывается, а уходит в Offstage (тикеры
+        // выключены): иначе каждое открытие заново строило календарь и
+        // ходило в SQLite прямо в первых кадрах анимации.
+        return Visibility(
+          visible: h >= 1,
+          maintainState: true,
+          child: SizedBox(
+            height: h,
+            width: double.infinity,
+            child: DecoratedBox(
+              decoration: decoration,
+              child: ClipRSuperellipse(
+                borderRadius: radius,
+                child: GestureDetector(
+                  behavior: HitTestBehavior.translucent,
+                  onVerticalDragStart: (_) {},
+                  onVerticalDragUpdate: (d) {
+                    if (!widget.sheetOpen) return;
+                    _sheet.value =
+                        (_sheet.value - d.delta.dy / maxSheet).clamp(0.0, 1.0);
+                  },
+                  onVerticalDragEnd: (d) {
+                    if (!widget.sheetOpen) return;
+                    // px/с вниз → «долей шторки»/с вверх, для пружины.
+                    final v = d.primaryVelocity ?? 0;
+                    final velocity = -v / maxSheet;
+                    if (_sheet.value < _closeSnapThreshold || v > 700) {
+                      if (!_closingByDrag) {
+                        _releaseVelocity = velocity;
+                        _triggerDragClose();
+                      }
+                      return;
+                    }
+                    _springTo(_sheet, 1, AppMotion.smooth, velocity);
+                  },
+                  // OverflowBox держит контент на полной высоте шторки: при
+                  // анимации меняется только клип, календарь не перелэйаутится
+                  // каждый кадр. Контент «выезжает» из-за бара вместе с краем.
                   child: OverflowBox(
                     alignment: Alignment.topCenter,
-                    minHeight: contentH,
-                    maxHeight: contentH,
+                    minHeight: maxSheet,
+                    maxHeight: maxSheet,
                     child: Column(
                       children: [
-                        if (showHandle)
-                          Padding(
-                            padding: const EdgeInsets.only(top: 10, bottom: 6),
-                            child: Container(
-                              width: 36, height: 4,
-                              decoration: BoxDecoration(
-                                color: cs.onSurface.withAlpha(45),
-                                borderRadius: BorderRadius.circular(2),
-                              ),
-                            ),
-                          ),
-                        Expanded(
-                          child: IgnorePointer(
-                            ignoring: contentOpacity < 0.98,
-                            child: Opacity(
-                              opacity: contentOpacity,
-                              child: RepaintBoundary(child: child!),
+                        Padding(
+                          padding: const EdgeInsets.only(top: 10, bottom: 6),
+                          child: Container(
+                            width: 36,
+                            height: 4,
+                            decoration: BoxDecoration(
+                              color: cs.onSurface.withAlpha(45),
+                              borderRadius: BorderRadius.circular(2),
                             ),
                           ),
                         ),
+                        Expanded(child: child!),
                       ],
                     ),
                   ),
                 ),
               ),
             ),
-          );
-        });
+          ),
+        );
       },
-      child: widget.sheetChild,
     );
   }
 
@@ -368,285 +308,296 @@ class _BottomBarWithSheetState extends State<BottomBarWithSheet>
         const Duration(milliseconds: 250), () => _closingByDrag = false);
   }
 
-  // ─── Bar ────────────────────────────────────────────────────────────────────
+  // ─── Капсула вкладок ────────────────────────────────────────────────────────
 
-  Widget _bar(Color bg, Color primary, Color onPrimary, Color unselected,
-      ThemeData theme, double barH, bool isDark) {
-    if (!_measureQueued) {
-      _measureQueued = true;
-      WidgetsBinding.instance.addPostFrameCallback((_) => _measureSlots());
+  /// Слоты вкладок для «насколько линза на Расписании» [v]: «Расписание»
+  /// раздаётся на [_calW] × v под календарную половинку, остальные
+  /// поровну поджимаются. Возвращает (x, ширина) каждого слота.
+  List<(double, double)> _slots(double inner, double v) {
+    final b = inner / 4;
+    final extra = _calW * v;
+    final w0 = b + extra;
+    final wo = b - extra / 3;
+    return [(0, w0), (w0, wo), (w0 + wo, wo), (w0 + 2 * wo, wo)];
+  }
+
+  Widget _buildCapsule(ThemeData theme, double barH, bool isDark) {
+    final cs = theme.colorScheme;
+    final unselected = theme.navigationBarTheme.iconTheme?.resolve({})?.color ??
+        cs.onSurfaceVariant;
+    return Glass(
+      radius: BorderRadius.circular(barH / 2),
+      child: LayoutBuilder(builder: (context, c) {
+        final inner = c.maxWidth - _lensInset * 2;
+        final baseW = inner / 4;
+        return GestureDetector(
+          // Линза идёт за пальцем с момента касания, а не с точки, где
+          // жест выиграл арену (иначе отставала на ширину touch slop).
+          dragStartBehavior: DragStartBehavior.down,
+          onHorizontalDragStart: (_) => _dragStart(),
+          onHorizontalDragUpdate: (d) => _dragUpdate(d, baseW),
+          onHorizontalDragEnd: (d) => _dragEnd(d, baseW),
+          onHorizontalDragCancel: () => _dragEnd(DragEndDetails(), baseW),
+          child: AnimatedBuilder(
+            animation: Listenable.merge([_pill, _lift, _sheet]),
+            builder: (context, _) {
+              final t = _pill.value;
+              // Насколько «Расписание» раскрыто под календарь: следом за
+              // линзой (и за пальцем), а при открытой шторке — полностью.
+              final v = math.max(
+                _sheet.value,
+                Curves.easeOutCubic.transform((1 - t).clamp(0.0, 1.0)),
+              );
+              final slots = _slots(inner, v);
+              return Stack(
+                fit: StackFit.expand,
+                children: [
+                  _lens(cs.primary, slots, t, baseW, inner, barH, isDark),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: _lensInset),
+                    child: Row(
+                      children: [
+                        for (var i = 0; i < 4; i++)
+                          SizedBox(
+                            width: slots[i].$2,
+                            child: i == 0
+                                ? _scheduleSlot(cs, unselected, t, v)
+                                : _navItem(i, cs, unselected, t),
+                          ),
+                      ],
+                    ),
+                  ),
+                ],
+              );
+            },
+          ),
+        );
+      }),
+    );
+  }
+
+  Widget _navItem(int i, ColorScheme cs, Color unselected, double t,
+      {VoidCallback? onTap}) {
+    return _NavItem(
+      item: _items[i],
+      selected: widget.selectedIndex == i,
+      // Цвет тянется за линзой, а не за индексом.
+      tint: (1 - (t - i).abs()).clamp(0.0, 1.0),
+      primary: cs.primary,
+      unselected: unselected,
+      onTap: onTap ?? () => widget.onIndexChanged(i),
+      onLongPress: widget.onNavItemLongPress == null
+          ? null
+          : () {
+              HapticFeedback.mediumImpact();
+              widget.onNavItemLongPress!(i);
+            },
+    );
+  }
+
+  /// «Расписание» + календарная половинка за тонкой перегородкой.
+  /// Повторный тап по уже выбранному «Расписанию» тоже открывает календарь.
+  Widget _scheduleSlot(ColorScheme cs, Color unselected, double t, double v) {
+    final main = _navItem(
+      0,
+      cs,
+      unselected,
+      t,
+      onTap: () {
+        if (widget.selectedIndex == 0) {
+          widget.onSheetToggle?.call();
+        } else {
+          widget.onIndexChanged(0);
+        }
+      },
+    );
+    if (v < 0.02) return main;
+    final s = _sheet.value.clamp(0.0, 1.0);
+    final iconColor = Color.lerp(cs.primary, cs.onPrimary, s)!;
+    return Row(
+      children: [
+        Expanded(child: main),
+        SizedBox(
+          width: _calW * v,
+          child: Opacity(
+            opacity: v.clamp(0.0, 1.0),
+            child: Semantics(
+              label:
+                  widget.sheetOpen ? 'Закрыть календарь' : 'Открыть календарь',
+              button: true,
+              excludeSemantics: true,
+              child: Pressable(
+                scale: 0.84,
+                onTap: () => widget.onSheetToggle?.call(),
+                child: Row(
+                  children: [
+                    // Перегородка — линза «разделяется» на две половинки.
+                    Container(
+                      width: 1,
+                      height: 24,
+                      color: cs.primary.withAlpha((70 * (1 - s)).round()),
+                    ),
+                    Expanded(
+                      child: Center(
+                        child: Container(
+                          width: 32,
+                          height: 32,
+                          decoration: ShapeDecoration(
+                            color: cs.primary.withValues(alpha: s),
+                            shape: const CircleBorder(),
+                          ),
+                          // Иконки перетекают вслед за шторкой (и за пальцем,
+                          // когда её тянут): четверть оборота + прозрачность.
+                          child: Stack(
+                            alignment: Alignment.center,
+                            children: [
+                              Transform.rotate(
+                                angle: s * math.pi / 2,
+                                child: Icon(Icons.calendar_month_rounded,
+                                    size: 19,
+                                    color: iconColor.withValues(alpha: 1 - s)),
+                              ),
+                              Transform.rotate(
+                                angle: (s - 1) * math.pi / 2,
+                                child: Icon(Icons.close_rounded,
+                                    size: 19,
+                                    color: iconColor.withValues(alpha: s)),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// Линза под выбранной вкладкой: между слотами её край и ширина
+  /// интерполируются, тянется по скорости и «приподнимается» под пальцем.
+  Widget _lens(Color primary, List<(double, double)> slots, double t,
+      double baseW, double inner, double barH, bool isDark) {
+    final i = t.floor().clamp(0, 3);
+    final f = t - i;
+    final double left;
+    final double w;
+    if (t < 0) {
+      left = t * baseW;
+      w = slots[0].$2;
+    } else if (i >= 3) {
+      left = slots[3].$1 + f * baseW;
+      w = slots[3].$2;
+    } else {
+      left = slots[i].$1 + (slots[i + 1].$1 - slots[i].$1) * f;
+      w = slots[i].$2 + (slots[i + 1].$2 - slots[i].$2) * f;
     }
-
-    return RepaintBoundary(
-      child: ClipRRect(
-      borderRadius: BorderRadius.circular(_radius),
-      child: Container(
-          decoration: BoxDecoration(
-            color: bg,
-            borderRadius: BorderRadius.circular(_radius),
-            border: Border.all(
-              color: primary.withAlpha(isDark ? 28 : 18),
-              width: 0.8,
+    final x = _lensInset + left.clamp(0.0, inner - w);
+    final h = barH - _lensInset * 2;
+    final stretch = (_pill.velocity.abs() * 0.03).clamp(0.0, 0.2);
+    final lift = _lift.value;
+    final sx = 1 + stretch + lift * 0.1;
+    final sy = 1 - stretch * 0.3 + lift * 0.14;
+    return Positioned(
+      left: 0,
+      top: _lensInset,
+      width: w,
+      height: h,
+      child: Transform(
+        transform: Matrix4.translationValues(x, 0, 0)
+          ..scaleByDouble(sx, sy, 1, 1),
+        alignment: Alignment.center,
+        child: DecoratedBox(
+          decoration: ShapeDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              // Линза в цвет акцента темы; под пальцем — чуть ярче.
+              colors: [
+                primary.withAlpha((isDark ? 56 : 40) + (lift * 18).round()),
+                primary.withAlpha((isDark ? 30 : 20) + (lift * 12).round()),
+              ],
             ),
-            boxShadow: [
+            shape: RoundedSuperellipseBorder(
+              borderRadius: BorderRadius.circular(h / 2),
+              side: BorderSide(
+                color: primary.withAlpha(isDark ? 70 : 50),
+                width: 0.8,
+              ),
+            ),
+            shadows: isDark
+                ? null
+                : [
                     BoxShadow(
-                      color: Colors.black.withAlpha(isDark ? 42 : 22),
-                      blurRadius: 20,
-                      spreadRadius: -4,
-                      offset: const Offset(0, 6),
+                      color: Colors.black.withAlpha(18),
+                      blurRadius: 8,
+                      offset: const Offset(0, 2),
                     ),
-              BoxShadow(
-                color: primary.withAlpha(isDark ? 18 : 10),
-                blurRadius: 0,
-                spreadRadius: 0,
-                offset: const Offset(0, -1),
-              ),
-            ],
-          ),
-          child: Material(
-            color: Colors.transparent,
-            child: SizedBox(
-              key: _barKey,
-              height: barH,
-              child: Stack(
-                children: [
-                  Row(
-                    children: [
-                      _navItem(0, primary, unselected, barH, theme),
-                      _navItem(1, primary, unselected, barH, theme),
-                      _centerBtn(primary, onPrimary, isDark),
-                      _navItem(2, primary, unselected, barH, theme),
-                      _navItem(3, primary, unselected, barH, theme),
-                    ],
-                  ),
-                  if (_itemSlots != null &&
-                      _leadFrom != null && _leadTo != null &&
-                      _followFrom != null && _followTo != null)
-                    IgnorePointer(child: _jellyLayer(primary, barH, isDark)),
-                ],
-              ),
-            ),
+                  ],
           ),
         ),
       ),
     );
   }
+}
 
-  // ─── Jelly ──────────────────────────────────────────────────────────────────
+/// Вкладка: иконка и подпись. [tint] (0..1) — насколько над ней линза:
+/// цвет перетекает непрерывно, пока линза едет или её ведут пальцем.
+class _NavItem extends StatelessWidget {
+  const _NavItem({
+    required this.item,
+    required this.selected,
+    required this.tint,
+    required this.primary,
+    required this.unselected,
+    required this.onTap,
+    this.onLongPress,
+  });
 
-  Widget _jellyLayer(Color primary, double barH, bool isDark) {
-    final leadCurve =
-        CurvedAnimation(parent: _leadCtrl, curve: Curves.easeOutCubic);
-    final followCurve =
-        CurvedAnimation(parent: _followCtrl, curve: Curves.easeOutBack);
-    return RepaintBoundary(
-      child: ListenableBuilder(
-        listenable: Listenable.merge([leadCurve, followCurve]),
-        builder: (context, _) {
-          final leadR = Rect.lerp(_leadFrom!, _leadTo!, leadCurve.value)!;
-          final followR =
-              Rect.lerp(_followFrom!, _followTo!, followCurve.value)!;
-          const pad = 4.0;
-          const r = 18.0;
-          return Stack(
-            children: [
-              Positioned(
-                left: followR.left + pad, top: followR.top + pad,
-                width: followR.width - pad * 2,
-                height: followR.height - pad * 2,
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [
-                        primary.withAlpha(isDark ? 30 : 22),
-                        primary.withAlpha(isDark ? 18 : 12),
-                      ],
-                    ),
-                    borderRadius: BorderRadius.circular(r),
-                  ),
-                ),
-              ),
-              Positioned(
-                left: leadR.left + pad, top: leadR.top + pad,
-                width: leadR.width - pad * 2,
-                height: leadR.height - pad * 2,
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [
-                        primary.withAlpha(isDark ? 60 : 44),
-                        primary.withAlpha(isDark ? 40 : 28),
-                      ],
-                    ),
-                    borderRadius: BorderRadius.circular(r),
-                  ),
-                ),
-              ),
-            ],
-          );
-        },
-      ),
-    );
-  }
+  final (IconData, IconData, String) item;
+  final bool selected;
+  final double tint;
+  final Color primary;
+  final Color unselected;
+  final VoidCallback onTap;
+  final VoidCallback? onLongPress;
 
-  // ─── Nav item ───────────────────────────────────────────────────────────────
-
-  Widget _navItem(int i, Color primary, Color unselected, double barH,
-      ThemeData theme) {
-    final sel = widget.selectedIndex == i;
-    final item = _items[i];
-    final color = sel ? primary : unselected;
-    return Expanded(
-      key: _navKeys[i],
-      child: Semantics(
-        label: sel ? '${item.$3}, выбран' : item.$3,
-        selected: sel,
-        button: true,
-        child: Material(
-          color: Colors.transparent,
-          clipBehavior: Clip.antiAlias,
-          borderRadius: BorderRadius.circular(20),
-          child: InkWell(
-            onTap: () => widget.onIndexChanged(i),
-            onLongPress: widget.onNavItemLongPress != null
-                ? () {
-                    HapticFeedback.mediumImpact();
-                    widget.onNavItemLongPress!(i);
-                  }
-                : null,
-            splashFactory: InkRipple.splashFactory,
-            splashColor: primary.withAlpha(35),
-            highlightColor: primary.withAlpha(18),
-            borderRadius: BorderRadius.circular(20),
-            child: SizedBox(
-              height: barH,
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  AnimatedBuilder(
-                    animation: _itemScaleAnim[i],
-                    builder: (_, child) => Transform.scale(
-                      scale: sel ? _itemScaleAnim[i].value : 1.0,
-                      child: child,
-                    ),
-                    child: AnimatedSwitcher(
-                      duration: const Duration(milliseconds: 200),
-                      transitionBuilder: (child, anim) => ScaleTransition(
-                        scale: anim,
-                        child: FadeTransition(opacity: anim, child: child),
-                      ),
-                      child: Icon(
-                        sel ? item.$2 : item.$1,
-                        key: ValueKey('${i}_$sel'),
-                        color: color, size: 23,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 3),
-                  AnimatedSize(
-                    duration: const Duration(milliseconds: 180),
-                    curve: Curves.easeOutCubic,
-                    child: sel
-                        ? Text(
-                            item.$3,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              color: color,
-                              fontSize: 10,
-                              fontWeight: FontWeight.w700,
-                              letterSpacing: 0.2,
-                            ),
-                          )
-                        : const SizedBox.shrink(),
-                  ),
-                ],
+  @override
+  Widget build(BuildContext context) {
+    final (iconOff, iconOn, label) = item;
+    final color = Color.lerp(unselected, primary, tint)!;
+    return Semantics(
+      label: label,
+      selected: selected,
+      button: true,
+      excludeSemantics: true,
+      child: Pressable(
+        scale: 0.86,
+        onTap: onTap,
+        onLongPress: onLongPress,
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(tint > 0.5 ? iconOn : iconOff, color: color, size: 22),
+            const SizedBox(height: 2),
+            Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textScaler:
+                  MediaQuery.textScalerOf(context).clamp(maxScaleFactor: 1.3),
+              style: TextStyle(
+                color: color,
+                fontSize: 10.5,
+                fontWeight: tint > 0.5 ? FontWeight.w700 : FontWeight.w500,
+                letterSpacing: 0.1,
               ),
             ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  // ─── Centre FAB ─────────────────────────────────────────────────────────────
-
-  Widget _centerBtn(Color primary, Color onPrimary, bool isDark) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 6),
-      child: Semantics(
-        label: widget.sheetOpen ? 'Закрыть календарь' : 'Открыть календарь',
-        button: true,
-        child: AnimatedBuilder(
-          animation: _btnAnim,
-          builder: (context, _) {
-            final t = _btnAnim.value;
-            return GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: () => widget.onSheetToggle?.call(),
-              child: Transform.scale(
-                scale: 1.0 + t * 0.06,
-                child: SizedBox(
-                  width: 50, height: 50,
-                  child: Transform.rotate(
-                    angle: t * math.pi,
-                    child: Container(
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        gradient: LinearGradient(
-                          begin: const Alignment(-0.7, -0.7),
-                          end: const Alignment(0.9, 0.9),
-                          stops: const [0.0, 0.5, 1.0],
-                          colors: [
-                            Color.alphaBlend(
-                                Colors.white.withAlpha(isDark ? 20 : 30),
-                                primary),
-                            primary,
-                            Color.alphaBlend(
-                                Colors.black.withAlpha(isDark ? 30 : 20),
-                                primary),
-                          ],
-                        ),
-                        boxShadow: [
-                          BoxShadow(
-                            color: primary.withAlpha(
-                                widget.sheetOpen ? 100 : 70),
-                            blurRadius: widget.sheetOpen ? 18 : 12,
-                            spreadRadius: widget.sheetOpen ? -2 : -4,
-                            offset: const Offset(0, 4),
-                          ),
-                          BoxShadow(
-                            color: Colors.white.withAlpha(isDark ? 20 : 35),
-                            blurRadius: 0,
-                            offset: const Offset(0, -1),
-                          ),
-                        ],
-                      ),
-                      child: AnimatedSwitcher(
-                        duration: const Duration(milliseconds: 200),
-                        transitionBuilder: (child, anim) => ScaleTransition(
-                          scale: anim,
-                          child: FadeTransition(opacity: anim, child: child),
-                        ),
-                        child: Icon(
-                          t < 0.5
-                              ? Icons.calendar_month_rounded
-                              : Icons.close_rounded,
-                          key: ValueKey(t < 0.5),
-                          color: onPrimary, size: 22,
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            );
-          },
+          ],
         ),
       ),
     );

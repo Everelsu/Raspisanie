@@ -2,6 +2,7 @@ import "dart:async";
 
 import "package:flutter/foundation.dart";
 import "package:flutter/material.dart";
+import "package:flutter/rendering.dart" show ScrollCacheExtent;
 import "package:flutter/services.dart";
 import "package:package_info_plus/package_info_plus.dart";
 
@@ -15,6 +16,8 @@ import "../../../core/update/update_dialog.dart";
 import "../../../core/update/version_utils.dart";
 import "../../../core/widgets/animated_app_bar.dart";
 import "../../../core/widgets/bottom_bar_sheet.dart";
+import "../../../core/widgets/glass.dart";
+import "../../../core/widgets/liquid_segmented.dart";
 import "../../games/games_menu.dart";
 import "../../network/presentation/browser_bar.dart";
 import "../../network/presentation/network_page.dart";
@@ -25,6 +28,7 @@ import "../../schedule/presentation/schedule_page.dart";
 import "../../settings/presentation/settings_page.dart";
 import "../../statistics/presentation/statistics_page.dart";
 import "../../../core/platform.dart";
+import "../../../core/motion.dart";
 
 class HomePage extends StatefulWidget {
   const HomePage({
@@ -42,6 +46,8 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
+  static const _launchChannel = MethodChannel("com.relsev.raspisanie/launch");
+
   /// Варианты «за сколько минут до пары» в настройках уведомлений.
   static const List<int> _kNotificationOffsets = [5, 10, 15];
 
@@ -49,6 +55,10 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   bool _sheetOpen = false;
   bool _appUpdateDialogOpen = false;
   bool _isProgrammaticNavigation = false;
+  bool _warmTabs = false;
+
+  /// Страница, на которой PageView реально остановился (см. physics).
+  int _settledPage = 0;
   PageController? _pageController;
 
   /// Контроллеры прокрутки вкладок — для «скролла наверх» по долгому
@@ -83,9 +93,23 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     _pageController = PageController(initialPage: _currentIndex);
     WidgetsBinding.instance.addObserver(this);
     NotificationService.openScheduleOnTap.addListener(_onOpenScheduleRequested);
+    // Тап по виджету при уже открытом приложении (MainActivity.onNewIntent).
+    if (isAndroid) {
+      _launchChannel.setMethodCallHandler((call) async {
+        if (call.method == "openSchedule") {
+          NotificationService.openScheduleOnTap.value = true;
+        }
+      });
+    }
     AnalyticsService.instance.logScreen(_screenIds[_currentIndex]);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _maybeShowWhatsNewSnackbar();
+    });
+    // Прогрев: когда старт и сплэш позади, строим остальные вкладки в
+    // фоне. Иначе первый заход на «Настройки»/«Итоги» — длинный кадр
+    // прямо посреди анимации таб-бара.
+    Future<void>.delayed(const Duration(milliseconds: 2500), () {
+      if (mounted) setState(() => _warmTabs = true);
     });
     if (isAndroid && widget.controller.prefs.autoCheckAppUpdate) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -138,7 +162,19 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     WidgetsBinding.instance.removeObserver(this);
     NotificationService.openScheduleOnTap
         .removeListener(_onOpenScheduleRequested);
+    if (isAndroid) _launchChannel.setMethodCallHandler(null);
     super.dispose();
+  }
+
+  /// Клавиатура открыта. Читаем из View, а не MediaQuery: body получает
+  /// MediaQuery без viewInsets, а подписка выше Scaffold пересобирала бы
+  /// экран каждый кадр анимации клавиатуры — тут setState только на смене.
+  bool _keyboardOpen = false;
+
+  @override
+  void didChangeMetrics() {
+    final open = View.of(context).viewInsets.bottom > 0;
+    if (open != _keyboardOpen) setState(() => _keyboardOpen = open);
   }
 
   @override
@@ -175,7 +211,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     if (_tabPagesCache != null && _tabPagesNetworkActive == networkActive) {
       return _tabPagesCache!;
     }
-    final networkPage = RepaintBoundary(
+    final networkPage = _KeepAlive(
       child: NetworkPage(
         key: const ValueKey<Object>("network_browser_v2"),
         scheduleController: widget.controller,
@@ -198,7 +234,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       _tabPagesCache = List.of(_tabPagesCache!)..[2] = networkPage;
     } else {
       _tabPagesCache = [
-        RepaintBoundary(
+        _KeepAlive(
           child: SchedulePage(
             key: const ValueKey<Object>("home_tab_schedule"),
             controller: widget.controller,
@@ -206,7 +242,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
             scrollController: _scheduleScrollCtrl,
           ),
         ),
-        RepaintBoundary(
+        _KeepAlive(
           child: StatisticsPage(
             key: const ValueKey<Object>("home_tab_stats"),
             controller: widget.controller,
@@ -214,7 +250,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
           ),
         ),
         networkPage,
-        RepaintBoundary(
+        _KeepAlive(
           child: SettingsPage(
             key: const ValueKey<Object>("home_tab_settings"),
             controller: widget.controller,
@@ -293,6 +329,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       });
       _goToPage(0);
     });
+    // Интент виджета может прийти до resume, когда кадры ещё не идут.
+    WidgetsBinding.instance.ensureVisualUpdate();
   }
 
   Future<void> _goToPage(int index) async {
@@ -300,13 +338,20 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     _applyTabChange(index);
     final controller = _pageController;
     if (controller == null) return;
+    // Тап по дальней вкладке — мгновенно, как в iOS-таб-баре: прокрутка
+    // через промежуточные страницы (в т.ч. WebView) — лишние кадры и шум.
+    if (controller.hasClients &&
+        ((controller.page ?? index) - index).abs() > 1.01) {
+      controller.jumpToPage(index);
+      return;
+    }
     if (controller.hasClients) {
       _isProgrammaticNavigation = true;
       try {
         await controller.animateToPage(
           index,
-          duration: const Duration(milliseconds: 260),
-          curve: Curves.easeOutCubic,
+          duration: const Duration(milliseconds: 360),
+          curve: AppMotion.sheetCurve,
         );
       } finally {
         _isProgrammaticNavigation = false;
@@ -332,20 +377,12 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       _sheetOpen = false;
     });
     AnalyticsService.instance.logScreen(_screenIds[index]);
-  }
-
-  Future<void> _handleNetworkBottomZoneSwipe(DragEndDetails details) async {
-    if (!mounted || _currentIndex != 2 || _networkImmersive || _sheetOpen) {
-      return;
+    // «Итоги» грузим при показе вкладки, а не при постройке страницы:
+    // прогретая заранее вкладка иначе дёргала бы сеть на каждом старте.
+    final ctrl = widget.controller;
+    if (index == 1 && ctrl.prefs.isGroupSelected && !ctrl.isLoadingStats) {
+      unawaited(ctrl.loadStatistics());
     }
-    final velocity = details.primaryVelocity ?? 0.0;
-    const threshold = 320.0;
-    if (velocity.abs() < threshold) return;
-    if (velocity < 0) {
-      await _goToPage(3);
-      return;
-    }
-    await _goToPage(1);
   }
 
   /// Долгое нажатие на AppBar — плавный скролл наверх (расписание и итоги).
@@ -466,28 +503,55 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       body: Stack(
         fit: StackFit.expand,
         children: [
-          PageView(
-            controller: _safePageController,
-            physics: (_networkImmersive || _currentIndex == 2)
-                ? const NeverScrollableScrollPhysics()
-                : const PageScrollPhysics(),
-            onPageChanged: (index) {
-              if (!_isProgrammaticNavigation) {
-                _applyTabChange(index);
+          NotificationListener<ScrollEndNotification>(
+            onNotification: (n) {
+              final page = _pageController?.page?.round();
+              if (n.depth == 0 && page != null && page != _settledPage) {
+                setState(() => _settledPage = page);
               }
+              return false;
             },
-            children: _buildTabPages(),
+            child: PageView(
+              controller: _safePageController,
+              allowImplicitScrolling: _warmTabs,
+              scrollCacheExtent:
+                  _warmTabs ? const ScrollCacheExtent.viewport(3) : null,
+              // Свайп страниц на «Сети» отдан WebView. Физику меняем только
+              // когда прокрутка встала (_settledPage): смена физики на ходу
+              // пересоздаёт позицию и обрывает animateToPage / докат свайпа —
+              // переход на «Сеть» застревал между страницами.
+              physics: (_networkImmersive || _settledPage == 2)
+                  ? const NeverScrollableScrollPhysics()
+                  : const PageScrollPhysics(),
+              onPageChanged: (index) {
+                if (!_isProgrammaticNavigation) {
+                  _applyTabChange(index);
+                }
+              },
+              children: _buildTabPages(),
+            ),
           ),
           // Растворение контента у нижнего края (кроме «Сети» — там WebView).
           // Дешёвая вуаль цветом фона вместо ShaderMask: без saveLayer на
           // весь экран, стоимость — один маленький градиент.
-          if (widget.controller.prefs.contentEdgeFade && _currentIndex != 2)
-            Positioned(
-              left: 0,
-              right: 0,
-              bottom: 0,
-              height: 110,
-              child: IgnorePointer(
+          //
+          // Вуаль всегда в дереве и гаснет прозрачностью. Раньше её убирали
+          // через `if` на «Сети» — дети Stack сдвигались, Flutter по порядку
+          // сопоставлял её Positioned с Positioned бара, и таб-бар
+          // создавался заново: линза прыгала без анимации на «Сеть» и с неё.
+          Positioned(
+            key: const ValueKey("edge_fade"),
+            left: 0,
+            right: 0,
+            bottom: 0,
+            height: 110,
+            child: IgnorePointer(
+              child: AnimatedOpacity(
+                duration: const Duration(milliseconds: 220),
+                opacity: widget.controller.prefs.contentEdgeFade &&
+                        _currentIndex != 2
+                    ? 1
+                    : 0,
                 child: DecoratedBox(
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
@@ -504,10 +568,23 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                 ),
               ),
             ),
+          ),
+          // Нижний бар — оверлей в body, а не Scaffold.bottomNavigationBar:
+          // там каждый кадр анимации шторки менял высоту слота, Scaffold
+          // отдавал body новый MediaQuery.padding, и все вкладки
+          // пересобирались 60 раз в секунду.
+          Positioned(
+            key: const ValueKey("bottom_bar"),
+            left: 0,
+            right: 0,
+            bottom: 0,
+            child: _bottomBar(context),
+          ),
           // Единый AppBar на все вкладки: на «Сети» вместо заголовка —
           // браузерный тулбар (BrowserToolbar). Прячется только в
           // полноэкранном режиме WebView.
           Positioned(
+            key: const ValueKey("app_bar"),
             top: 0,
             left: 0,
             right: 0,
@@ -537,7 +614,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                             controller: widget.controller,
                             title: _titles[_currentIndex],
                             tabIndex: _currentIndex,
-                            showNotificationsAction: _currentIndex == 3 && !kIsWeb,
+                            showNotificationsAction:
+                                _currentIndex == 3 && !kIsWeb,
                             onNotificationsTap: () =>
                                 _showNotificationSheet(context),
                             browserToolbar: _currentIndex == 2
@@ -554,41 +632,42 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
           ),
         ],
       ),
-      bottomNavigationBar: AnimatedSize(
-        duration: const Duration(milliseconds: 320),
-        curve: Curves.easeOutCubic,
-        alignment: Alignment.bottomCenter,
-        clipBehavior: Clip.hardEdge,
-        child: (_currentIndex == 2 && _networkImmersive)
-            ? const SizedBox(width: double.infinity, height: 0)
-            : GestureDetector(
-                behavior: HitTestBehavior.translucent,
-                onHorizontalDragEnd: _currentIndex == 2
-                    ? (d) => _handleNetworkBottomZoneSwipe(d)
-                    : null,
-                child: BottomBarWithSheet(
-                  selectedIndex: _currentIndex,
-                  onIndexChanged: (index) async {
-                    FocusScope.of(context).unfocus();
-                    HapticFeedback.selectionClick();
-                    await _goToPage(index);
-                  },
-                  sheetOpen: _sheetOpen,
-                  onSheetToggle: () {
-                    HapticFeedback.lightImpact();
-                    FocusScope.of(context).unfocus();
-                    setState(() => _sheetOpen = !_sheetOpen);
-                  },
-                  onSheetClosedByDrag: () {
-                    setState(() => _sheetOpen = false);
-                  },
-                  onNavItemLongPress: (i) {
-                    if (i == 2) showGamesMenu(context);
-                  },
-                  sheetChild:
-                      HistoryCalendarSheet(controller: widget.controller),
-                ),
-              ),
+    );
+  }
+
+  /// Бар уезжает вниз в полноэкранном WebView и под открытой клавиатурой
+  /// (body ужат клавиатурой — иначе бар всплыл бы над ней).
+  Widget _bottomBar(BuildContext context) {
+    final hidden = (_currentIndex == 2 && _networkImmersive) || _keyboardOpen;
+    return IgnorePointer(
+      ignoring: hidden,
+      child: AnimatedSlide(
+        duration: const Duration(milliseconds: 340),
+        curve: hidden ? Curves.easeInCubic : Curves.easeOutCubic,
+        offset: hidden ? const Offset(0, 1.3) : Offset.zero,
+        // Переключать вкладки можно и ведя пальцем по бару — в том числе
+        // на «Сети», где свайп страниц отдан WebView.
+        child: BottomBarWithSheet(
+          selectedIndex: _currentIndex,
+          onIndexChanged: (index) async {
+            FocusScope.of(context).unfocus();
+            HapticFeedback.selectionClick();
+            await _goToPage(index);
+          },
+          sheetOpen: _sheetOpen,
+          onSheetToggle: () {
+            HapticFeedback.lightImpact();
+            FocusScope.of(context).unfocus();
+            setState(() => _sheetOpen = !_sheetOpen);
+          },
+          onSheetClosedByDrag: () {
+            setState(() => _sheetOpen = false);
+          },
+          onNavItemLongPress: (i) {
+            if (i == 2) showGamesMenu(context);
+          },
+          sheetChild: HistoryCalendarSheet(controller: widget.controller),
+        ),
       ),
     );
   }
@@ -597,19 +676,11 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     final theme = Theme.of(context);
     final ctrl = widget.controller;
     final prefs = ctrl.prefs;
-    final surface = theme.colorScheme.surface;
-
-    showModalBottomSheet<void>(
-      context: context,
-      backgroundColor: Colors.transparent,
-      isScrollControlled: true,
+    showGlassSheet<void>(
+      context,
       builder: (ctx) => Container(
         constraints: BoxConstraints(
           maxHeight: MediaQuery.of(ctx).size.height * 0.72,
-        ),
-        decoration: BoxDecoration(
-          color: surface,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
         ),
         child: ListenableBuilder(
           listenable: ctrl,
@@ -622,17 +693,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Center(
-                      child: Container(
-                        width: 36,
-                        height: 4,
-                        decoration: BoxDecoration(
-                          color: theme.colorScheme.onSurface.withAlpha(60),
-                          borderRadius: BorderRadius.circular(2),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 14),
                     Row(
                       children: [
                         Container(
@@ -857,28 +917,18 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       opacity: remindersOn ? 1 : 0.45,
       child: IgnorePointer(
         ignoring: !remindersOn,
-        child: Row(
-          children: [
-            for (var i = 0; i < _kNotificationOffsets.length; i++) ...[
-              if (i > 0) const SizedBox(width: 10),
-              Expanded(
-                child: _notificationOffsetButton(
-                  theme,
-                  minutes: _kNotificationOffsets[i],
-                  selected:
-                      prefs.notificationOffset == _kNotificationOffsets[i],
-                  onTap: () async {
-                    final m = _kNotificationOffsets[i];
-                    setSheetState(() => prefs.notificationOffset = m);
-                    await ctrl.syncNotificationsNow();
-                    WidgetsBinding.instance.addPostFrameCallback((_) {
-                      if (mounted) setState(() {});
-                    });
-                  },
-                ),
-              ),
-            ],
+        child: LiquidSegmented<int>(
+          value: prefs.notificationOffset,
+          segments: [
+            for (final m in _kNotificationOffsets) (m, "$m мин", null),
           ],
+          onChanged: (m) async {
+            setSheetState(() => prefs.notificationOffset = m);
+            await ctrl.syncNotificationsNow();
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted) setState(() {});
+            });
+          },
         ),
       ),
     );
@@ -890,50 +940,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       indent: 16,
       endIndent: 16,
       color: theme.dividerTheme.color,
-    );
-  }
-
-  Widget _notificationOffsetButton(
-    ThemeData theme, {
-    required int minutes,
-    required bool selected,
-    required VoidCallback onTap,
-  }) {
-    final cs = theme.colorScheme;
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(12),
-        onTap: () {
-          HapticFeedback.lightImpact();
-          onTap();
-        },
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 200),
-          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 6),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(12),
-            color: selected
-                ? cs.primary.withAlpha(25)
-                : theme.scaffoldBackgroundColor,
-            border: Border.all(
-              color: selected ? cs.primary : cs.onSurface.withAlpha(30),
-              width: selected ? 2 : 1,
-            ),
-          ),
-          child: Center(
-            child: Text(
-              "$minutes мин",
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: theme.textTheme.bodyMedium?.copyWith(
-                fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-                color: selected ? cs.primary : cs.onSurface,
-              ),
-            ),
-          ),
-        ),
-      ),
     );
   }
 
@@ -1077,7 +1083,8 @@ class _NotificationPermissionCardState
                   subtitle: _notifPermanentlyDenied
                       ? "Выдайте разрешение в настройках приложения"
                       : "Приложению нужно ваше разрешение",
-                  buttonLabel: _notifPermanentlyDenied ? "Настройки" : "Разрешить",
+                  buttonLabel:
+                      _notifPermanentlyDenied ? "Настройки" : "Разрешить",
                   onTap: () async {
                     if (_notifPermanentlyDenied) {
                       await NotificationService.instance
@@ -1231,5 +1238,28 @@ class _HomeAnimatedAppBar extends StatelessWidget
         );
       },
     );
+  }
+}
+
+/// Держит вкладку живой вне экрана. Без этого PageView выбрасывал ушедшую
+/// страницу и строил заново при каждом возвращении: «Настройки» — целиком,
+/// «Сеть» — с новым нативным WebView и перезагрузкой страницы.
+class _KeepAlive extends StatefulWidget {
+  const _KeepAlive({required this.child});
+  final Widget child;
+
+  @override
+  State<_KeepAlive> createState() => _KeepAliveState();
+}
+
+class _KeepAliveState extends State<_KeepAlive>
+    with AutomaticKeepAliveClientMixin {
+  @override
+  bool get wantKeepAlive => true;
+
+  @override
+  Widget build(BuildContext context) {
+    super.build(context);
+    return widget.child;
   }
 }

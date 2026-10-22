@@ -1,14 +1,21 @@
 import "package:flutter/material.dart";
+import "package:flutter/services.dart";
 
-/// Пункты меню «⋯» браузерного тулбара.
+import "../../../core/motion.dart";
+import "../../../core/widgets/glass.dart";
+import "../../../core/widgets/pressable.dart";
+
+/// Действия браузерного меню (шторка «⋯»).
 enum BrowserMenuAction {
   home,
-  editStartUrl,
+  forward,
   reload,
+  fullscreen,
   google,
   openExternal,
   copy,
   paste,
+  editStartUrl,
 }
 
 /// Мост между единым AppBar (HomePage) и WebView-логикой (NetworkPage).
@@ -43,6 +50,14 @@ class BrowserBarController extends ChangeNotifier {
     return _currentUrl;
   }
 
+  /// Как в Safari: в капсуле только домен, полный адрес — при редактировании.
+  String get hostLabel {
+    final uri = Uri.tryParse(_currentUrl.isEmpty ? addressLabel : _currentUrl);
+    final host = uri?.host ?? "";
+    if (host.isEmpty) return addressLabel;
+    return host.startsWith("www.") ? host.substring(4) : host;
+  }
+
   bool get isHttps => Uri.tryParse(addressLabel)?.scheme == "https";
 
   // Обработчики действий — назначает NetworkPage.
@@ -69,6 +84,7 @@ class BrowserBarController extends ChangeNotifier {
   /// Текущий URL из WebView; синхронизирует адресную строку, если её
   /// сейчас не редактируют.
   void setCurrentUrl(String url) {
+    if (_currentUrl == url) return;
     _currentUrl = url;
     if (!addressFocus.hasFocus && address.text != url) {
       address.value = TextEditingValue(
@@ -114,353 +130,423 @@ class BrowserBarController extends ChangeNotifier {
   }
 }
 
-/// Браузерный тулбар: назад/вперёд, адресная строка (чип ↔ редактор),
-/// полноэкранный режим, обновление и меню «⋯». Рисуется как `titleWidget`
+/// Браузерный тулбар в стиле Safari: «Назад» (появляется, когда есть
+/// куда), адрес-капсула с доменом и прогрессом загрузки по нижней кромке,
+/// «⋯» открывает стеклянную шторку действий. Рисуется как `titleWidget`
 /// единого AnimatedAppBar на вкладке «Сеть».
 class BrowserToolbar extends StatelessWidget {
   const BrowserToolbar({super.key, required this.controller});
 
   final BrowserBarController controller;
 
-  Widget _icon({
-    required IconData icon,
-    required String tooltip,
-    VoidCallback? onPressed,
-    double size = 20,
-  }) {
-    return IconButton(
-      tooltip: tooltip,
-      onPressed: onPressed,
-      icon: Icon(icon, size: size),
-      visualDensity: VisualDensity.compact,
-      padding: EdgeInsets.zero,
-      constraints: const BoxConstraints.tightFor(width: 40, height: 40),
-      splashRadius: 18,
-    );
-  }
-
-  PopupMenuItem<BrowserMenuAction> _menuItem({
-    required BrowserMenuAction value,
-    required IconData icon,
-    required String label,
-    required ThemeData theme,
-  }) {
-    return PopupMenuItem<BrowserMenuAction>(
-      value: value,
-      height: 44,
-      child: Row(
-        children: [
-          Icon(icon, size: 20, color: theme.colorScheme.onSurface),
-          const SizedBox(width: 10),
-          Text(label, style: theme.textTheme.bodyMedium),
-        ],
-      ),
-    );
-  }
-
-  Widget _leading() {
-    return AnimatedSwitcher(
-      duration: const Duration(milliseconds: 220),
-      switchInCurve: Curves.easeOutCubic,
-      switchOutCurve: Curves.easeInCubic,
-      transitionBuilder: (child, animation) {
-        return FadeTransition(
-          opacity: animation,
-          // SizeTransition с горизонтальной осью прижимает контент к верху
-          // (внутренний Align top-aligned) — Center возвращает стрелки на
-          // одну линию с адресной строкой и остальными кнопками.
-          child: SizeTransition(
-            sizeFactor: animation,
-            axis: Axis.horizontal,
-            child: Center(child: child),
-          ),
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final duration = AppMotion.reduced(context)
+        ? Duration.zero
+        : const Duration(milliseconds: 260);
+    return ListenableBuilder(
+      listenable: controller,
+      builder: (context, _) {
+        final showBack = controller.canGoBack && !controller.editing;
+        return Row(
+          children: [
+            // Кнопка «Назад» выдвигается из-за капсулы, а не возникает.
+            AnimatedSize(
+              duration: duration,
+              curve: AppMotion.sheetCurve,
+              child: showBack
+                  ? Padding(
+                      padding: const EdgeInsets.only(right: 8),
+                      child: _CircleButton(
+                        icon: Icons.arrow_back_ios_new_rounded,
+                        tooltip: "Назад",
+                        onTap: controller.onBack,
+                      ),
+                    )
+                  : const SizedBox(height: 40),
+            ),
+            Expanded(child: _AddressCapsule(controller: controller)),
+            const SizedBox(width: 8),
+            AnimatedSwitcher(
+              duration: duration,
+              transitionBuilder: (child, a) => FadeTransition(
+                opacity: a,
+                child: ScaleTransition(scale: a, child: child),
+              ),
+              child: controller.editing
+                  ? _TextAction(
+                      key: const ValueKey("cancel"),
+                      label: "Отмена",
+                      color: theme.colorScheme.primary,
+                      onTap: controller.stopEditing,
+                    )
+                  : _CircleButton(
+                      key: const ValueKey("more"),
+                      icon: Icons.more_horiz_rounded,
+                      tooltip: "Ещё",
+                      onTap: () => _showMenu(context),
+                    ),
+            ),
+          ],
         );
       },
-      child: controller.editing
-          ? const SizedBox(key: ValueKey("leading_empty"))
-          : Row(
-              key: const ValueKey("leading_nav"),
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                _icon(
-                  icon: Icons.arrow_back_ios_new_rounded,
-                  tooltip: "Назад",
-                  onPressed: controller.canGoBack ? controller.onBack : null,
-                  size: 18,
-                ),
-                _icon(
-                  icon: Icons.arrow_forward_ios_rounded,
-                  tooltip: "Вперёд",
-                  onPressed:
-                      controller.canGoForward ? controller.onForward : null,
-                  size: 18,
-                ),
-              ],
-            ),
     );
   }
 
-  Widget _address(ThemeData theme) {
-    return AnimatedSwitcher(
-      duration: const Duration(milliseconds: 230),
-      switchInCurve: Curves.easeOutCubic,
-      switchOutCurve: Curves.easeInCubic,
-      transitionBuilder: (child, animation) {
-        final slide = Tween<Offset>(
-          begin: const Offset(0.0, 0.08),
-          end: Offset.zero,
-        ).animate(animation);
-        return FadeTransition(
-          opacity: animation,
-          child: SlideTransition(position: slide, child: child),
-        );
-      },
-      child: controller.editing
-          ? TextField(
-              key: const ValueKey("url_editor"),
-              controller: controller.address,
-              focusNode: controller.addressFocus,
-              keyboardType: TextInputType.url,
-              textInputAction: TextInputAction.go,
-              autocorrect: false,
-              enableSuggestions: false,
-              style: theme.textTheme.bodyMedium?.copyWith(fontSize: 13.5),
-              decoration: InputDecoration(
-                hintText: "https://...",
-                isDense: true,
-                filled: true,
-                fillColor:
-                    theme.colorScheme.surfaceContainerHighest.withAlpha(130),
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 8,
-                ),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(11),
-                  borderSide: BorderSide(
-                    color: theme.colorScheme.outline.withAlpha(100),
-                  ),
-                ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(11),
-                  borderSide: BorderSide(
-                    color: theme.colorScheme.outline.withAlpha(100),
-                  ),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(11),
-                  borderSide: BorderSide(
-                    color: theme.colorScheme.primary,
-                    width: 1.4,
-                  ),
-                ),
-                suffixIcon: IconButton(
-                  icon: const Icon(Icons.clear_rounded, size: 18),
-                  onPressed: controller.address.clear,
-                  tooltip: "Очистить",
-                  visualDensity: VisualDensity.compact,
-                ),
-              ),
-              onSubmitted: (_) => controller.onSubmit?.call(),
-            )
-          : Material(
-              key: const ValueKey("url_chip"),
-              color: theme.colorScheme.surfaceContainerHighest.withAlpha(90),
-              borderRadius: BorderRadius.circular(11),
-              child: InkWell(
-                onTap: controller.startEditing,
-                borderRadius: BorderRadius.circular(11),
-                child: Padding(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 9, vertical: 8),
-                  child: Row(
-                    children: [
-                      Icon(
-                        controller.isHttps
-                            ? Icons.lock_outline_rounded
-                            : Icons.link_rounded,
-                        size: 14,
-                        color: theme.colorScheme.onSurfaceVariant,
-                      ),
-                      const SizedBox(width: 6),
-                      Expanded(
-                        child: Text(
-                          controller.addressLabel,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: theme.textTheme.bodyMedium?.copyWith(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
+  Future<void> _showMenu(BuildContext context) async {
+    HapticFeedback.selectionClick();
+    final action = await showGlassSheet<BrowserMenuAction>(
+      context,
+      builder: (ctx) => _BrowserMenu(controller: controller),
     );
+    if (action != null) controller.onMenuAction?.call(action);
   }
+}
 
-  Widget _trailing(ThemeData theme) {
-    return AnimatedSwitcher(
-      duration: const Duration(milliseconds: 190),
-      switchInCurve: Curves.easeOutCubic,
-      switchOutCurve: Curves.easeInCubic,
-      transitionBuilder: (child, animation) => FadeTransition(
-        opacity: animation,
-        child: ScaleTransition(scale: animation, child: child),
-      ),
-      child: controller.editing
-          ? Row(
-              key: const ValueKey("edit_actions"),
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                _icon(
-                  icon: Icons.close_rounded,
-                  tooltip: "Отмена",
-                  onPressed: controller.stopEditing,
-                ),
-                _icon(
-                  icon: Icons.check_rounded,
-                  tooltip: "Перейти",
-                  onPressed: controller.onSubmit,
-                ),
-              ],
-            )
-          : Row(
-              key: const ValueKey("normal_actions"),
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                _icon(
-                  icon: controller.immersive
-                      ? Icons.fullscreen_exit_rounded
-                      : Icons.fullscreen_rounded,
-                  tooltip: controller.immersive
-                      ? "Показать панель"
-                      : "Полный экран",
-                  onPressed: controller.onToggleImmersive,
-                ),
-                ValueListenableBuilder<int>(
-                  valueListenable: controller.progress,
-                  builder: (context, p, _) {
-                    final loading = p > 0 && p < 100;
-                    return _icon(
-                      icon: loading
-                          ? Icons.close_rounded
-                          : Icons.refresh_rounded,
-                      tooltip: loading ? "Остановить загрузку" : "Обновить",
-                      onPressed: controller.onReloadOrStop,
-                    );
-                  },
-                ),
-                SizedBox(
-                  width: 40,
-                  height: 40,
-                  child: PopupMenuButton<BrowserMenuAction>(
-                  tooltip: "Ещё",
-                  color: theme.cardTheme.color ?? theme.cardColor,
-                  elevation: 14,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  icon: const Icon(Icons.more_vert_rounded, size: 20),
-                  padding: EdgeInsets.zero,
-                  onSelected: (a) => controller.onMenuAction?.call(a),
-                  itemBuilder: (_) => [
-                    PopupMenuItem<BrowserMenuAction>(
-                      enabled: false,
-                      height: 56,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Text(
-                            "Текущая ссылка",
-                            style: theme.textTheme.labelSmall?.copyWith(
-                              color: theme.colorScheme.onSurfaceVariant,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            controller.addressLabel,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: theme.textTheme.bodySmall?.copyWith(
-                              color: theme.colorScheme.onSurface,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const PopupMenuDivider(height: 8),
-                    _menuItem(
-                      value: BrowserMenuAction.home,
-                      icon: Icons.home_rounded,
-                      label: "Стартовая страница",
-                      theme: theme,
-                    ),
-                    _menuItem(
-                      value: BrowserMenuAction.editStartUrl,
-                      icon: Icons.home_work_outlined,
-                      label: "Адрес при открытии вкладки…",
-                      theme: theme,
-                    ),
-                    _menuItem(
-                      value: BrowserMenuAction.reload,
-                      icon: Icons.refresh_rounded,
-                      label: "Обновить страницу",
-                      theme: theme,
-                    ),
-                    _menuItem(
-                      value: BrowserMenuAction.google,
-                      icon: Icons.travel_explore_rounded,
-                      label: "Открыть Google",
-                      theme: theme,
-                    ),
-                    const PopupMenuDivider(height: 8),
-                    _menuItem(
-                      value: BrowserMenuAction.openExternal,
-                      icon: Icons.open_in_new_rounded,
-                      label: "Открыть в браузере",
-                      theme: theme,
-                    ),
-                    _menuItem(
-                      value: BrowserMenuAction.copy,
-                      icon: Icons.content_copy_rounded,
-                      label: "Копировать ссылку",
-                      theme: theme,
-                    ),
-                    _menuItem(
-                      value: BrowserMenuAction.paste,
-                      icon: Icons.content_paste_rounded,
-                      label: "Вставить и перейти",
-                      theme: theme,
-                    ),
-                  ],
-                  ),
-                ),
-              ],
-            ),
-    );
-  }
+/// Капсула адреса: домен (полный URL — при редактировании), замок для
+/// https, «обновить/стоп» справа и прогресс загрузки по нижней кромке.
+class _AddressCapsule extends StatelessWidget {
+  const _AddressCapsule({required this.controller});
+
+  final BrowserBarController controller;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return ListenableBuilder(
-      listenable: controller,
-      builder: (context, _) {
-        return Row(
-          children: [
-            _leading(),
-            Expanded(child: _address(theme)),
-            const SizedBox(width: 4),
-            _trailing(theme),
-          ],
-        );
-      },
+    final cs = theme.colorScheme;
+    final fill = cs.onSurface.withAlpha(16);
+    final shape = RoundedSuperellipseBorder(
+      borderRadius: BorderRadius.circular(20),
+    );
+    if (controller.editing) {
+      return SizedBox(
+        height: 40,
+        child: TextField(
+          controller: controller.address,
+          focusNode: controller.addressFocus,
+          keyboardType: TextInputType.url,
+          textInputAction: TextInputAction.go,
+          autocorrect: false,
+          enableSuggestions: false,
+          style: theme.textTheme.bodyMedium?.copyWith(fontSize: 14),
+          decoration: InputDecoration(
+            hintText: "Адрес или поиск",
+            isDense: true,
+            filled: true,
+            fillColor: fill,
+            prefixIcon: Icon(Icons.search_rounded,
+                size: 18, color: cs.onSurfaceVariant),
+            prefixIconConstraints:
+                const BoxConstraints(minWidth: 36, minHeight: 36),
+            contentPadding:
+                const EdgeInsets.symmetric(horizontal: 4, vertical: 10),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(20),
+              borderSide: BorderSide.none,
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(20),
+              borderSide: BorderSide.none,
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(20),
+              borderSide: BorderSide(color: cs.primary, width: 1.2),
+            ),
+            suffixIcon: IconButton(
+              icon: const Icon(Icons.cancel_rounded, size: 18),
+              onPressed: controller.address.clear,
+              tooltip: "Очистить",
+              visualDensity: VisualDensity.compact,
+            ),
+          ),
+          onSubmitted: (_) => controller.onSubmit?.call(),
+        ),
+      );
+    }
+    return Pressable(
+      scale: 0.97,
+      onTap: controller.startEditing,
+      child: SizedBox(
+        height: 40,
+        child: DecoratedBox(
+          decoration: ShapeDecoration(color: fill, shape: shape),
+          child: ClipRSuperellipse(
+            borderRadius: BorderRadius.circular(20),
+            child: Stack(
+              children: [
+                Row(
+                  children: [
+                    const SizedBox(width: 14),
+                    Icon(
+                      controller.isHttps
+                          ? Icons.lock_rounded
+                          : Icons.public_rounded,
+                      size: 13,
+                      color: cs.onSurfaceVariant,
+                    ),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        controller.hostLabel,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        textAlign: TextAlign.center,
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                    ValueListenableBuilder<int>(
+                      valueListenable: controller.progress,
+                      builder: (context, p, _) {
+                        final loading = p > 0 && p < 100;
+                        return IconButton(
+                          tooltip: loading ? "Остановить" : "Обновить",
+                          onPressed: controller.onReloadOrStop,
+                          visualDensity: VisualDensity.compact,
+                          icon: Icon(
+                            loading
+                                ? Icons.close_rounded
+                                : Icons.refresh_rounded,
+                            size: 18,
+                          ),
+                        );
+                      },
+                    ),
+                  ],
+                ),
+                // Прогресс — тонкая полоса по нижней кромке капсулы.
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  height: 2.5,
+                  child: ValueListenableBuilder<int>(
+                    valueListenable: controller.progress,
+                    builder: (context, p, _) {
+                      final loading = p > 0 && p < 100;
+                      return AnimatedOpacity(
+                        duration: const Duration(milliseconds: 220),
+                        opacity: loading ? 1 : 0,
+                        child: TweenAnimationBuilder<double>(
+                          tween: Tween(end: p.clamp(0, 100) / 100),
+                          duration: const Duration(milliseconds: 240),
+                          curve: Curves.easeOut,
+                          builder: (context, v, _) => FractionallySizedBox(
+                            alignment: Alignment.centerLeft,
+                            widthFactor: v,
+                            child: ColoredBox(color: cs.primary),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _CircleButton extends StatelessWidget {
+  const _CircleButton({
+    super.key,
+    required this.icon,
+    required this.tooltip,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Tooltip(
+      message: tooltip,
+      child: Pressable(
+        scale: 0.86,
+        onTap: onTap == null
+            ? null
+            : () {
+                HapticFeedback.selectionClick();
+                onTap!();
+              },
+        child: Container(
+          width: 40,
+          height: 40,
+          decoration: ShapeDecoration(
+            color: cs.onSurface.withAlpha(16),
+            shape: const CircleBorder(),
+          ),
+          child: Icon(icon, size: 18, color: cs.onSurface),
+        ),
+      ),
+    );
+  }
+}
+
+class _TextAction extends StatelessWidget {
+  const _TextAction({
+    super.key,
+    required this.label,
+    required this.color,
+    required this.onTap,
+  });
+
+  final String label;
+  final Color color;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Pressable(
+      scale: 0.92,
+      onTap: onTap,
+      child: SizedBox(
+        height: 40,
+        child: Center(
+          child: Text(
+            label,
+            style: TextStyle(
+              color: color,
+              fontSize: 15,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Шторка действий браузера: шапка с текущим адресом и сетка плиток.
+class _BrowserMenu extends StatelessWidget {
+  const _BrowserMenu({required this.controller});
+
+  final BrowserBarController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+    final tiles = <(BrowserMenuAction, IconData, String)>[
+      (BrowserMenuAction.home, Icons.home_rounded, "Домой"),
+      if (controller.canGoForward)
+        (BrowserMenuAction.forward, Icons.arrow_forward_ios_rounded, "Вперёд"),
+      (BrowserMenuAction.reload, Icons.refresh_rounded, "Обновить"),
+      (
+        BrowserMenuAction.fullscreen,
+        controller.immersive
+            ? Icons.fullscreen_exit_rounded
+            : Icons.fullscreen_rounded,
+        controller.immersive ? "Свернуть" : "Во весь экран",
+      ),
+      (BrowserMenuAction.google, Icons.travel_explore_rounded, "Google"),
+      (BrowserMenuAction.openExternal, Icons.open_in_new_rounded, "В браузере"),
+      (BrowserMenuAction.copy, Icons.content_copy_rounded, "Копировать"),
+      (BrowserMenuAction.paste, Icons.content_paste_go_rounded, "Вставить"),
+      (BrowserMenuAction.editStartUrl, Icons.push_pin_outlined, "Стартовая"),
+    ];
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 20),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 40,
+                height: 40,
+                alignment: Alignment.center,
+                decoration: ShapeDecoration(
+                  color: cs.primary.withAlpha(30),
+                  shape: RoundedSuperellipseBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                child: Icon(
+                  controller.isHttps
+                      ? Icons.lock_rounded
+                      : Icons.public_rounded,
+                  size: 18,
+                  color: cs.primary,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      controller.hostLabel,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.titleMedium
+                          ?.copyWith(fontWeight: FontWeight.w700),
+                    ),
+                    Text(
+                      controller.addressLabel,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.bodySmall
+                          ?.copyWith(color: cs.onSurfaceVariant),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          GridView.count(
+            crossAxisCount: 4,
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            mainAxisSpacing: 10,
+            crossAxisSpacing: 10,
+            childAspectRatio: 0.92,
+            children: [
+              for (final (action, icon, label) in tiles)
+                Pressable(
+                  scale: 0.9,
+                  onTap: () {
+                    HapticFeedback.selectionClick();
+                    Navigator.pop(context, action);
+                  },
+                  child: DecoratedBox(
+                    decoration: ShapeDecoration(
+                      color: cs.onSurface.withAlpha(14),
+                      shape: RoundedSuperellipseBorder(
+                        borderRadius: BorderRadius.circular(18),
+                      ),
+                    ),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(icon, size: 22, color: cs.primary),
+                        const SizedBox(height: 6),
+                        Text(
+                          label,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.labelMedium
+                              ?.copyWith(color: cs.onSurface),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 }

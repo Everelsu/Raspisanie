@@ -34,14 +34,15 @@ class ScheduleCache {
     return ageHours > _expiryHours;
   }
 
-  void save(List<DaySchedule> schedules, String groupFile, String college) {
+  /// [encodedDays] — уже готовый JSON-массив дней (сериализован в изоляте
+  /// вместе с разбором), чтобы не кодировать расписание в UI-потоке.
+  void save(List<DaySchedule> schedules, String groupFile, String college,
+      {String? encodedDays}) {
     if (groupFile.isEmpty || college.isEmpty || schedules.isEmpty) return;
     final t = DateTime.now().millisecondsSinceEpoch;
-    final daysJson = schedules.map((e) => e.toJson()).toList();
-    final payload = jsonEncode(<String, dynamic>{
-      "t": t,
-      "d": daysJson,
-    });
+    final daysJson =
+        encodedDays ?? jsonEncode(schedules.map((e) => e.toJson()).toList());
+    final payload = '{"t":$t,"d":$daysJson}';
     _prefs.setString(_bundleKey(college, groupFile), payload);
     _prefs.remove(_scheduleKey(college, groupFile));
     try {
@@ -176,23 +177,14 @@ class ScheduleCache {
     }
   }
 
-  static const _maxHistoryEntries = 15;
-
-  void saveToHistory(
-    List<DaySchedule> schedules,
-    String groupFile,
-    String college,
-  ) {
-    if (schedules.isEmpty) return;
-    final histKey = "history_${college}_$groupFile";
-    final existing = _prefs.getStringList(histKey) ?? [];
-    final json = jsonEncode(schedules.map((e) => e.toJson()).toList());
-    final entry = "${DateTime.now().millisecondsSinceEpoch}|$json";
-    existing.add(entry);
-    if (existing.length > _maxHistoryEntries) {
-      existing.removeRange(0, existing.length - _maxHistoryEntries);
+  /// Раньше каждая загрузка из сети дописывала полную копию расписания в
+  /// `history_*` (до 15 на группу), но читать их было некому — история в
+  /// SQLite. SharedPreferences на Android целиком парсятся в память при
+  /// старте, так что эти мегабайты тормозили каждый запуск. Удаляем остатки.
+  void dropLegacyHistory() {
+    for (final key in _prefs.getKeys().toList()) {
+      if (key.startsWith("history_")) _prefs.remove(key);
     }
-    _prefs.setStringList(histKey, existing);
   }
 
   /// Оставляет в кэше только [maxPairs] последних пар (college, groupFile) по времени.
@@ -217,29 +209,6 @@ class ScheduleCache {
       final groupFile = suffix.substring(lastUnderscore + 1);
       clear(groupFile, college);
     }
-  }
-
-  List<(DateTime date, List<DaySchedule> schedule)> loadHistory(
-    String groupFile,
-    String college,
-  ) {
-    final histKey = "history_${college}_$groupFile";
-    final entries = _prefs.getStringList(histKey) ?? [];
-    final result = <(DateTime, List<DaySchedule>)>[];
-    for (final entry in entries) {
-      final sep = entry.indexOf("|");
-      if (sep < 0) continue;
-      final ts = int.tryParse(entry.substring(0, sep));
-      if (ts == null) continue;
-      try {
-        final json = jsonDecode(entry.substring(sep + 1)) as List;
-        final days = json
-            .map((e) => DaySchedule.fromJson(e as Map<String, dynamic>))
-            .toList();
-        result.add((DateTime.fromMillisecondsSinceEpoch(ts), days));
-      } catch (_) {}
-    }
-    return result;
   }
 
   static DaySchedule _pickFirstDayForFastPreview(List<DaySchedule> schedules) {

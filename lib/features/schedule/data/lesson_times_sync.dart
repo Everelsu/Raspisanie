@@ -41,6 +41,12 @@ class LessonTimesSync {
   static const Duration _totalTimeout = Duration(seconds: 12);
 
   Future<LessonTimesSyncResult> run({bool force = false}) async {
+    // Время пар отдаёт Firebase Remote Config — GitHub-файл только запасной
+    // (веб, где Firebase нет).
+    if (_prefs.remoteConfigOwnsLessonTimes) {
+      return const LessonTimesSyncResult(
+          ok: true, changed: false, skipped: true);
+    }
     final url = _prefs.lessonTimesRemoteUrl.trim();
     if (url.isEmpty ||
         (!url.startsWith("http://") && !url.startsWith("https://"))) {
@@ -92,6 +98,10 @@ class LessonTimesSync {
       return const LessonTimesSyncResult(ok: true, changed: false);
     }
 
+    // Пока шёл запрос, время мог отдать Remote Config — он главнее.
+    if (_prefs.remoteConfigOwnsLessonTimes) {
+      return const LessonTimesSyncResult(ok: true, changed: false);
+    }
     for (final entry in data.byCollege.entries) {
       if (entry.value.isEmpty) continue;
       _prefs.setRemoteLessonTimes(entry.key, entry.value);

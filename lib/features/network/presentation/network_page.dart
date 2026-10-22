@@ -9,6 +9,8 @@ import "package:flutter/material.dart";
 
 import "../../../core/widgets/app_action_button.dart";
 import "../../../core/widgets/app_dialog.dart";
+import "../../../core/widgets/glass.dart";
+import "../../../core/widgets/pressable.dart";
 import "package:flutter/services.dart";
 import "package:url_launcher/url_launcher.dart";
 import "package:webview_flutter/webview_flutter.dart";
@@ -63,9 +65,19 @@ class _NetworkPageState extends State<NetworkPage>
     with SingleTickerProviderStateMixin {
   /// 0 = normal chrome, 1 = fullscreen WebView.
   late final AnimationController _immersiveCtrl;
+  // Кнопка «показать панель» — анимации создаются один раз: в builder они
+  // плодили бы по два CurvedAnimation на кадр с вечными слушателями.
+  late final Animation<double> _exitFade;
+  late final Animation<double> _exitScale;
 
   WebViewController? _controller;
-  bool _initialLoadDone = false;
+
+  /// Platform view WebView в дереве только пока вкладка открыта и
+  /// улеглась анимация перехода: его появление в кадре — дорогая
+  /// пересборка композиции на Android, она «съедала» пружину таб-бара.
+  /// Сам браузер (страница, история) живёт в [_controller] и не теряется.
+  bool _viewMounted = false;
+  Timer? _mountTimer;
 
   /// Hides browser chrome + bottom nav (via parent) for more WebView space.
   bool _immersive = false;
@@ -94,55 +106,82 @@ class _NetworkPageState extends State<NetworkPage>
       duration: const Duration(milliseconds: 320),
       reverseDuration: const Duration(milliseconds: 320),
     );
+    _exitFade = CurvedAnimation(
+      parent: _immersiveCtrl,
+      curve: const Interval(0.25, 0.85, curve: Curves.easeOut),
+    );
+    _exitScale = Tween<double>(begin: 0.86, end: 1.0).animate(
+      CurvedAnimation(
+        parent: _immersiveCtrl,
+        curve: const Interval(0.2, 0.95, curve: Curves.easeOutBack),
+      ),
+    );
     widget.parentImmersiveNotifier.addListener(_onParentImmersiveNotifier);
     _wireBarController();
+    _syncActive();
+  }
 
-    if (_webViewSupported) {
-      _controller = WebViewController()
-        ..setJavaScriptMode(JavaScriptMode.unrestricted)
-        ..setBackgroundColor(Colors.transparent)
-        ..setNavigationDelegate(
-          NavigationDelegate(
-            onProgress: (progress) {
-              if (!mounted) return;
-              _bar.progress.value = progress;
-            },
-            onPageStarted: (url) {
-              if (!mounted) return;
-              _bar.progress.value = 8;
-              _bar.setCurrentUrl(url);
-              setState(() => _pageLoadError = null);
-            },
-            onUrlChange: (change) {
-              final url = change.url;
-              if (url == null || !mounted) return;
-              _bar.setCurrentUrl(url);
-            },
-            onPageFinished: (url) async {
-              await _refreshNavigationState();
-              if (!mounted) return;
-              _bar.progress.value = 100;
-              _bar.setCurrentUrl(url);
-            },
-            onWebResourceError: (WebResourceError error) {
-              if (!mounted) return;
-              if (error.isForMainFrame != true) return;
-              final msg = _describeWebResourceError(error);
-              setState(() => _pageLoadError = msg);
-              showAppSnack(
-                context,
-                msg,
-                isError: true,
-                action: SnackBarAction(
-                  label: "Повторить",
-                  onPressed: _retryPageLoad,
-                ),
-              );
-            },
-          ),
-        );
-      if (widget.isActive) _triggerInitialLoad();
+  void _syncActive() {
+    _mountTimer?.cancel();
+    if (!widget.isActive) {
+      if (_viewMounted) setState(() => _viewMounted = false);
+      return;
     }
+    _mountTimer = Timer(const Duration(milliseconds: 450), () {
+      if (!mounted || !widget.isActive) return;
+      _createWebView();
+      setState(() => _viewMounted = true);
+    });
+  }
+
+  /// Нативный WebView создаётся при первом заходе на вкладку: кто не
+  /// открывает «Сеть», вовсе не платит за него памятью.
+  void _createWebView() {
+    if (!_webViewSupported || _controller != null) return;
+    _controller = WebViewController()
+      ..setJavaScriptMode(JavaScriptMode.unrestricted)
+      ..setBackgroundColor(Colors.transparent)
+      ..setNavigationDelegate(
+        NavigationDelegate(
+          onProgress: (progress) {
+            if (!mounted) return;
+            _bar.progress.value = progress;
+          },
+          onPageStarted: (url) {
+            if (!mounted) return;
+            _bar.progress.value = 8;
+            _bar.setCurrentUrl(url);
+            setState(() => _pageLoadError = null);
+          },
+          onUrlChange: (change) {
+            final url = change.url;
+            if (url == null || !mounted) return;
+            _bar.setCurrentUrl(url);
+          },
+          onPageFinished: (url) async {
+            await _refreshNavigationState();
+            if (!mounted) return;
+            _bar.progress.value = 100;
+            _bar.setCurrentUrl(url);
+          },
+          onWebResourceError: (WebResourceError error) {
+            if (!mounted) return;
+            if (error.isForMainFrame != true) return;
+            final msg = _describeWebResourceError(error);
+            setState(() => _pageLoadError = msg);
+            showAppSnack(
+              context,
+              msg,
+              isError: true,
+              action: SnackBarAction(
+                label: "Повторить",
+                onPressed: _retryPageLoad,
+              ),
+            );
+          },
+        ),
+      );
+    _controller!.loadRequest(_resolvedStartUri);
   }
 
   /// Подписывает обработчики действий тулбара на этот State.
@@ -162,25 +201,18 @@ class _NetworkPageState extends State<NetworkPage>
     bar.onMenuAction = (a) => unawaited(_handleMenuAction(a));
   }
 
-  void _triggerInitialLoad() {
-    if (_initialLoadDone) return;
-    _initialLoadDone = true;
-    _controller?.loadRequest(_resolvedStartUri);
-  }
-
   @override
   void didUpdateWidget(NetworkPage oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.barController != widget.barController) {
       _wireBarController();
     }
-    if (!oldWidget.isActive && widget.isActive) {
-      _triggerInitialLoad();
-    }
+    if (oldWidget.isActive != widget.isActive) _syncActive();
   }
 
   @override
   void dispose() {
+    _mountTimer?.cancel();
     _immersiveCtrl.dispose();
     widget.parentImmersiveNotifier.removeListener(_onParentImmersiveNotifier);
     // Контроллер бара живёт в HomePage — снимаем только свои обработчики.
@@ -218,11 +250,15 @@ class _NetworkPageState extends State<NetworkPage>
 
   double _topSpacer(BuildContext context, double t) {
     final top = MediaQuery.viewPaddingOf(context).top;
-    return top + (1 - t) * (_browserAppBarHeight + 10);
+    return top + (1 - t) * (_browserAppBarHeight + 6);
   }
 
-  double _webviewBottomPadding(double t) =>
-      lerpDouble(104, 12, t.clamp(0.0, 1.0))!;
+  /// Под таб-баром — над ним; во весь экран — у самого края.
+  double _webviewBottomPadding(BuildContext context, double t) => lerpDouble(
+        contentBottomPadding(context) - 10,
+        MediaQuery.viewPaddingOf(context).bottom + 8,
+        t.clamp(0.0, 1.0),
+      )!;
 
   double _contentTopInset(BuildContext context) {
     return MediaQuery.viewPaddingOf(context).top + _browserAppBarHeight + 10;
@@ -331,6 +367,13 @@ class _NetworkPageState extends State<NetworkPage>
       case BrowserMenuAction.home:
         _bar.progress.value = 12;
         unawaited(controller.loadRequest(_resolvedStartUri));
+        break;
+      case BrowserMenuAction.forward:
+        await _goForward();
+        break;
+      case BrowserMenuAction.fullscreen:
+        HapticFeedback.selectionClick();
+        _setImmersive(!_immersive);
         break;
       case BrowserMenuAction.editStartUrl:
         await _showEditStartUrlDialog();
@@ -496,41 +539,14 @@ class _NetworkPageState extends State<NetworkPage>
     }
 
     final controller = _controller;
-    if (controller == null) return const SizedBox.shrink();
-
-    final curve = Curves.easeOutCubic;
-    final bottomSafe = MediaQuery.viewPaddingOf(context).bottom;
-
-    // Полоска прогресса на своём ValueListenableBuilder — тики onProgress
-    // не перестраивают остальной экран. Когда не грузимся, индикатор
-    // снимается из дерева (indeterminate-анимация не крутится зря).
-    final progressBar = ValueListenableBuilder<int>(
-      valueListenable: _bar.progress,
-      builder: (context, p, _) {
-        final loading = p > 0 && p < 100;
-        return AnimatedOpacity(
-          duration: const Duration(milliseconds: 180),
-          opacity: loading ? 1 : 0,
-          child: SizedBox(
-            height: 3,
-            child: loading
-                ? ClipRRect(
-                    borderRadius: BorderRadius.circular(99),
-                    child: LinearProgressIndicator(
-                      value: p.clamp(0, 100) / 100.0,
-                      minHeight: 3,
-                      backgroundColor:
-                          theme.colorScheme.outlineVariant.withAlpha(60),
-                    ),
-                  )
-                : null,
-          ),
-        );
-      },
-    );
+    final cs = theme.colorScheme;
+    final cardColor = theme.cardTheme.color ?? theme.cardColor;
+    final radius = BorderRadius.circular(24);
 
     return PopScope(
-      canPop: false,
+      // «Назад» перехватываем только на открытой вкладке: страница живёт и
+      // вне её (keep-alive), и раньше листала историю WebView откуда угодно.
+      canPop: !widget.isActive,
       onPopInvokedWithResult: (didPop, result) async {
         if (didPop) return;
         if (_immersive) {
@@ -546,71 +562,71 @@ class _NetworkPageState extends State<NetworkPage>
           SystemNavigator.pop();
         }
       },
-      child: Scaffold(
-        backgroundColor: theme.colorScheme.surface,
-        body: AnimatedBuilder(
+      child: ColoredBox(
+        color: cs.surface,
+        child: AnimatedBuilder(
           animation: _immersiveCtrl,
           // WebView — child, а не часть builder: platform view не
           // пересоздаётся на каждый кадр анимации перехода в fullscreen.
           child: RepaintBoundary(
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(18),
+            child: ClipRSuperellipse(
+              borderRadius: radius,
               child: ColoredBox(
-                color: theme.cardTheme.color ?? theme.cardColor,
-                child: WebViewWidget(controller: controller),
+                color: cardColor,
+                child: (_viewMounted && controller != null)
+                    ? WebViewWidget(controller: controller)
+                    : _WebPlaceholder(host: _bar.hostLabel),
               ),
             ),
           ),
           builder: (context, webView) {
-            final t = curve.transform(_immersiveCtrl.value.clamp(0.0, 1.0));
-            final topSpacer = _topSpacer(context, t);
-            final bottomPad = _webviewBottomPadding(t);
-
+            final t = Curves.easeOutCubic
+                .transform(_immersiveCtrl.value.clamp(0.0, 1.0));
             return Stack(
-              clipBehavior: Clip.hardEdge,
               children: [
-                Column(
-                  children: [
-                    SizedBox(height: topSpacer),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 12),
-                      child: progressBar,
-                    ),
-                    Expanded(
-                      child: Padding(
-                        padding: EdgeInsets.fromLTRB(12, 10, 12, bottomPad),
-                        child: webView!,
-                      ),
-                    ),
-                  ],
+                Padding(
+                  padding: EdgeInsets.fromLTRB(
+                    10,
+                    _topSpacer(context, t),
+                    10,
+                    _webviewBottomPadding(context, t),
+                  ),
+                  child: webView,
                 ),
                 if (_pageLoadError != null)
                   Positioned.fill(
-                    child: Material(
-                      color: theme.colorScheme.surface.withAlpha(242),
-                      child: SafeArea(
-                        child: Center(
-                          child: SingleChildScrollView(
-                            padding: const EdgeInsets.all(24),
+                    child: Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(24),
+                        child: Glass(
+                          radius: BorderRadius.circular(28),
+                          color: glassBase(theme, opacity: 0.94),
+                          child: Padding(
+                            padding: const EdgeInsets.fromLTRB(24, 24, 24, 20),
                             child: Column(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                Icon(
-                                  Icons.cloud_off_outlined,
-                                  size: 52,
-                                  color: theme.colorScheme.error,
+                                Icon(Icons.wifi_off_rounded,
+                                    size: 40, color: cs.error),
+                                const SizedBox(height: 12),
+                                Text(
+                                  "Страница не загрузилась",
+                                  style: theme.textTheme.titleMedium
+                                      ?.copyWith(fontWeight: FontWeight.w700),
                                 ),
-                                const SizedBox(height: 16),
+                                const SizedBox(height: 6),
                                 Text(
                                   _pageLoadError!,
                                   textAlign: TextAlign.center,
-                                  style: theme.textTheme.bodyLarge,
+                                  style: theme.textTheme.bodySmall
+                                      ?.copyWith(color: cs.onSurfaceVariant),
                                 ),
-                                const SizedBox(height: 20),
-                                FilledButton.icon(
-                                  onPressed: _retryPageLoad,
-                                  icon: const Icon(Icons.refresh_rounded),
-                                  label: const Text("Повторить"),
+                                const SizedBox(height: 16),
+                                AppActionButton(
+                                  icon: Icons.refresh_rounded,
+                                  label: "Повторить",
+                                  primary: true,
+                                  onTap: _retryPageLoad,
                                 ),
                               ],
                             ),
@@ -619,36 +635,29 @@ class _NetworkPageState extends State<NetworkPage>
                       ),
                     ),
                   ),
+                // Во весь экран: стеклянная кнопка возврата панели.
                 Positioned(
-                  right: 12,
-                  bottom: 12 + bottomSafe,
+                  right: 18,
+                  bottom: MediaQuery.viewPaddingOf(context).bottom + 18,
                   child: FadeTransition(
-                    opacity: CurvedAnimation(
-                      parent: _immersiveCtrl,
-                      curve: const Interval(0.25, 0.85, curve: Curves.easeOut),
-                    ),
+                    opacity: _exitFade,
                     child: ScaleTransition(
-                      scale: Tween<double>(begin: 0.86, end: 1.0).animate(
-                        CurvedAnimation(
-                          parent: _immersiveCtrl,
-                          curve: const Interval(0.2, 0.95,
-                              curve: Curves.easeOutBack),
-                        ),
-                      ),
+                      scale: _exitScale,
                       child: IgnorePointer(
                         ignoring: t < 0.15,
-                        child: Material(
-                          elevation: 8,
-                          shadowColor: Colors.black54,
-                          shape: const CircleBorder(),
-                          color: theme.colorScheme.surfaceContainerHigh,
-                          child: IconButton(
-                            tooltip: "Показать панель",
-                            onPressed: () {
-                              HapticFeedback.lightImpact();
-                              _setImmersive(false);
-                            },
-                            icon: const Icon(Icons.fullscreen_exit_rounded),
+                        child: Pressable(
+                          scale: 0.86,
+                          onTap: () {
+                            HapticFeedback.lightImpact();
+                            _setImmersive(false);
+                          },
+                          child: Glass(
+                            radius: BorderRadius.circular(26),
+                            child: SizedBox.square(
+                              dimension: 52,
+                              child: Icon(Icons.fullscreen_exit_rounded,
+                                  color: cs.primary),
+                            ),
                           ),
                         ),
                       ),
@@ -659,6 +668,37 @@ class _NetworkPageState extends State<NetworkPage>
             );
           },
         ),
+      ),
+    );
+  }
+}
+
+/// Заглушка на месте WebView, пока он не подключён (переход на вкладку,
+/// первый запуск): спокойная карточка вместо мигания пустотой.
+class _WebPlaceholder extends StatelessWidget {
+  const _WebPlaceholder({required this.host});
+
+  final String host;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.public_rounded,
+              size: 34, color: cs.primary.withAlpha(120)),
+          const SizedBox(height: 10),
+          Text(
+            host,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style:
+                theme.textTheme.bodySmall?.copyWith(color: cs.onSurfaceVariant),
+          ),
+        ],
       ),
     );
   }

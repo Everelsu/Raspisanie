@@ -1,4 +1,5 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
     <uses-permission android:name="android.permission.INTERNET"/>
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
@@ -24,6 +25,17 @@
               android:name="io.flutter.embedding.android.NormalTheme"
               android:resource="@style/NormalTheme"
               />
+            <!--
+              Только для flutter_tools: без собранного APK (чистый checkout,
+              flutter clean) `flutter run` ищет MAIN/LAUNCHER у <activity>,
+              а не у alias'ов ниже, и падает с «launch activity not found».
+              tools:node="remove" вырезает фильтр из итогового манифеста —
+              лишней иконки в лаунчере нет.
+            -->
+            <intent-filter tools:node="remove">
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
         </activity>
         <!--
           Иконка лаунчера в цвет темы: по одному alias на тему.

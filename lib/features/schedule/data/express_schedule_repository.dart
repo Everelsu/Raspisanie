@@ -16,22 +16,13 @@ import "sub_schedule_cache.dart";
 class ExpressScheduleRepository {
   ExpressScheduleRepository({
     HttpClientService? client,
-    EncodingDecoder? decoder,
-    ExpressScheduleParser? parser,
-    StatisticsPageParser? statsParser,
     this.scheduleCache,
     this.groupsCache,
     this.statisticsCache,
     this.subScheduleCache,
-  })  : _client = client ?? HttpClientService(),
-        _decoder = decoder ?? EncodingDecoder(),
-        _parser = parser ?? ExpressScheduleParser(),
-        _statsParser = statsParser ?? StatisticsPageParser();
+  }) : _client = client ?? HttpClientService();
 
   final HttpClientService _client;
-  final EncodingDecoder _decoder;
-  final ExpressScheduleParser _parser;
-  final StatisticsPageParser _statsParser;
   final ScheduleCache? scheduleCache;
   final GroupsCache? groupsCache;
   final StatisticsCache? statisticsCache;
@@ -39,8 +30,15 @@ class ExpressScheduleRepository {
   final Map<String, Future<List<DaySchedule>>> _inflightSchedule = {};
   final Set<String> _backgroundRefreshing = {};
   final Map<String, DateTime> _lastBackgroundRefresh = {};
+  final Map<String, String> _lastSnapshotJson = {};
   Map<String, String> _customBaseUrls = const {};
   static const _backgroundRefreshThrottle = Duration(minutes: 2);
+
+  /// Свежее расписание из фонового обновления — после того как
+  /// [fetchSchedule] уже отдал кэш. Без него новые данные оседали только
+  /// в кэше, и экран показывал старое до ручного pull-to-refresh.
+  void Function(String groupFile, String college, List<DaySchedule> days)?
+      onBackgroundSchedule;
 
   static const baseUrls = <String, String>{
     "chtotib": "https://www.chtotib.ru/schedule_gl/",
@@ -68,9 +66,8 @@ class ExpressScheduleRepository {
       try {
         final response = await _client.getBytes("$base$page");
         if (response.statusCode < 200 || response.statusCode >= 300) continue;
-        final decoded = _decoder.decode(
-            bytes: response.bodyBytes, headers: response.headers);
-        final groups = _parser.parseGroupList(decoded.html, base);
+        final groups = await compute(
+            _parseGroupsIsolate, (response.bodyBytes, response.headers, base));
         if (groups.isNotEmpty) {
           groupsCache?.save(college, groups, scope: "groups");
           return groups;
@@ -122,13 +119,11 @@ class ExpressScheduleRepository {
 
     final response = await _client.getBytes(url);
     if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw StateError(
-          "HTTP ${response.statusCode} при загрузке расписания.");
+      throw StateError("HTTP ${response.statusCode} при загрузке расписания.");
     }
 
-    final decoded =
-        _decoder.decode(bytes: response.bodyBytes, headers: response.headers);
-    final days = await compute(_parseInIsolate, decoded.html);
+    final (days, daysJson) = await compute(
+        _parseScheduleJsonIsolate, (response.bodyBytes, response.headers));
     if (days.isEmpty) {
       final cached = scheduleCache?.loadAllowingExpired(groupFile, college);
       if (cached != null && cached.isNotEmpty) {
@@ -141,13 +136,19 @@ class ExpressScheduleRepository {
       if (oldCached != null && oldCached.isNotEmpty) {
         _scheduleChanged = _fingerprint(oldCached) != _fingerprint(days);
       }
-      scheduleCache?.save(days, groupFile, college);
-      scheduleCache?.saveToHistory(days, groupFile, college);
-      final snapshotJson = jsonEncode(days.map((e) => e.toJson()).toList());
-      await ScheduleDatabase.instance.saveScheduleSnapshot(
-        groupFile, college, snapshotJson,
-        parsedDays: days,
-      );
+      scheduleCache?.save(days, groupFile, college, encodedDays: daysJson);
+      // Тот же ответ, что в прошлый раз (автообновление, фоновый рефреш) —
+      // в SQLite не пишем: снапшот был бы точной копией предыдущего.
+      final snapKey = "$college::$groupFile";
+      if (_lastSnapshotJson[snapKey] != daysJson) {
+        await ScheduleDatabase.instance.saveScheduleSnapshot(
+          groupFile,
+          college,
+          daysJson,
+          parsedDays: days,
+        );
+        _lastSnapshotJson[snapKey] = daysJson;
+      }
     }
     return days;
   }
@@ -178,9 +179,8 @@ class ExpressScheduleRepository {
     try {
       final response = await _client.getBytes(url);
       if (response.statusCode < 200 || response.statusCode >= 300) return null;
-      final decoded = _decoder.decode(
-          bytes: response.bodyBytes, headers: response.headers);
-      final parsed = _statsParser.parse(decoded.html);
+      final parsed = await compute(
+          _parseStatsIsolate, (response.bodyBytes, response.headers));
       if (parsed != null) {
         statisticsCache?.save(parsed, groupFile, college);
       }
@@ -204,9 +204,8 @@ class ExpressScheduleRepository {
       if (response.statusCode < 200 || response.statusCode >= 300) {
         throw StateError("HTTP ${response.statusCode}");
       }
-      final decoded = _decoder.decode(
-          bytes: response.bodyBytes, headers: response.headers);
-      final teachers = _parser.parseTeacherList(decoded.html, base);
+      final teachers = await compute(
+          _parseTeachersIsolate, (response.bodyBytes, response.headers, base));
       if (teachers.isNotEmpty) {
         groupsCache?.save(college, teachers, scope: "teachers");
       }
@@ -226,9 +225,8 @@ class ExpressScheduleRepository {
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw StateError("HTTP ${response.statusCode}");
     }
-    final decoded =
-        _decoder.decode(bytes: response.bodyBytes, headers: response.headers);
-    final days = _parser.parseSchedulePage(decoded.html);
+    final days = await compute(
+        _parseScheduleIsolate, (response.bodyBytes, response.headers));
     if (days.isEmpty) {
       throw StateError("Не удалось распознать подрасписание.");
     }
@@ -258,8 +256,7 @@ class ExpressScheduleRepository {
     }();
   }
 
-  Future<void> _refreshInBackground(
-      String groupFile, String college) async {
+  Future<void> _refreshInBackground(String groupFile, String college) async {
     final key = "$college::$groupFile";
     final now = DateTime.now();
     final lastStartedAt = _lastBackgroundRefresh[key];
@@ -272,9 +269,10 @@ class ExpressScheduleRepository {
     _backgroundRefreshing.add(key);
     _lastBackgroundRefresh[key] = now;
     try {
-      await _fetchFromNetwork(groupFile, college);
-    } catch (_) {}
-    finally {
+      final days = await _fetchFromNetwork(groupFile, college);
+      onBackgroundSchedule?.call(groupFile, college, days);
+    } catch (_) {
+    } finally {
       _backgroundRefreshing.remove(key);
     }
   }
@@ -295,9 +293,35 @@ class ExpressScheduleRepository {
     return hash;
   }
 
-  static List<DaySchedule> _parseInIsolate(String html) {
-    return ExpressScheduleParser().parseSchedulePage(html);
+  // Декодирование cp1251 и разбор HTML — в отдельном изоляте: страницы
+  // колледжа большие, в главном потоке это были десятки мс фриза UI.
+  static String _html((List<int>, Map<String, String>) page) =>
+      EncodingDecoder().decode(bytes: page.$1, headers: page.$2).html;
+
+  static List<DaySchedule> _parseScheduleIsolate(
+          (List<int>, Map<String, String>) page) =>
+      ExpressScheduleParser().parseSchedulePage(_html(page));
+
+  /// Разбор + сериализация в JSON для кэша и SQLite — тоже вне UI-потока.
+  static (List<DaySchedule>, String) _parseScheduleJsonIsolate(
+      (List<int>, Map<String, String>) page) {
+    final days = _parseScheduleIsolate(page);
+    return (days, jsonEncode(days.map((e) => e.toJson()).toList()));
   }
+
+  static GroupStatistics? _parseStatsIsolate(
+          (List<int>, Map<String, String>) page) =>
+      StatisticsPageParser().parse(_html(page));
+
+  static List<Group> _parseGroupsIsolate(
+          (List<int>, Map<String, String>, String) page) =>
+      ExpressScheduleParser()
+          .parseGroupList(_html((page.$1, page.$2)), page.$3);
+
+  static List<Group> _parseTeachersIsolate(
+          (List<int>, Map<String, String>, String) page) =>
+      ExpressScheduleParser()
+          .parseTeacherList(_html((page.$1, page.$2)), page.$3);
 
   void dispose() => _client.dispose();
 }

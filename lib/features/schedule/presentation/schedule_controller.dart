@@ -3,6 +3,7 @@ import "dart:async";
 import "package:flutter/foundation.dart";
 import "package:shared_preferences/shared_preferences.dart";
 
+import "../../../core/services/remote_config_service.dart";
 import "../../../core/notifications/notification_service.dart"
     show Lesson, NotificationService;
 import "../../../core/widgets/home_widget_service.dart";
@@ -30,6 +31,7 @@ class ScheduleController extends ChangeNotifier {
       statisticsCache: stCache,
       subScheduleCache: subCache,
     );
+    _repository.onBackgroundSchedule = _onBackgroundSchedule;
     _lessonTimesSync = LessonTimesSync(_prefsManager);
     _applyCustomBaseUrls();
     _applyCustomLessonTimes();
@@ -225,8 +227,37 @@ class ScheduleController extends ChangeNotifier {
     }
   }
 
+  /// Репозиторий отдал кэш, а потом догрузил сеть: подставляем свежее,
+  /// если группа не сменилась. Одинаковые данные экран не перестраивают.
+  void _onBackgroundSchedule(
+      String groupFile, String college, List<DaySchedule> days) {
+    if (days.isEmpty ||
+        selectedGroup?.fileName != groupFile ||
+        this.college != college) {
+      return;
+    }
+    _lastScheduleRefreshAt = DateTime.now();
+    _prefsManager.lastScheduleNetworkOkMs =
+        DateTime.now().millisecondsSinceEpoch;
+    if (_repository.scheduleChanged) _repository.clearChangedFlag();
+    final stale = error != null;
+    if (!stale && _hashOf(days) == _hashOf(schedule)) {
+      return;
+    }
+    schedule = days;
+    error = null;
+    _checkScheduleHashAndNotify();
+    unawaited(_syncLessonNotifications());
+    _updateHomeWidget();
+    notifyListeners();
+  }
+
+  /// Хэш — это jsonEncode всего расписания: считаем один раз на список.
+  final _hashes = Expando<String>();
+  String _hashOf(List<DaySchedule> s) => _hashes[s] ??= computeScheduleHash(s);
+
   void _checkScheduleHashAndNotify() {
-    final newHash = computeScheduleHash(schedule);
+    final newHash = _hashOf(schedule);
     final old = _prefsManager.lastScheduleHash;
     if (old.isNotEmpty &&
         old != newHash &&
@@ -283,7 +314,9 @@ class ScheduleController extends ChangeNotifier {
           (e) => Lesson(
             number: e.lessonNumber,
             subject: e.subject ?? "Пара ${e.lessonNumber}",
-            startTime: LessonTimes.getTime(e.lessonNumber, college: college)
+            // Особый день (сокращённый) — его время, а не обычное.
+            startTime: LessonTimes.getTime(e.lessonNumber,
+                        college: college, date: todayKey)
                     ?.startTime ??
                 "08:00",
             classroom: e.classroom,
@@ -349,6 +382,21 @@ class ScheduleController extends ChangeNotifier {
     }
   }
 
+  /// Настройки отображения поменялись (они лежат в prefs, не в полях
+  /// контроллера) — перерисовать вкладки, которые держатся живыми.
+  /// Несколько изменений за кадр (setState настроек подряд) сливаются в
+  /// одно уведомление.
+  void prefsChanged() {
+    if (_prefsNotifyQueued) return;
+    _prefsNotifyQueued = true;
+    scheduleMicrotask(() {
+      _prefsNotifyQueued = false;
+      notifyListeners();
+    });
+  }
+
+  bool _prefsNotifyQueued = false;
+
   Future<void> refreshStatistics() async {
     await loadStatistics();
   }
@@ -404,21 +452,38 @@ class ScheduleController extends ChangeNotifier {
   int _widgetAccentColor(String widgetTheme) =>
       widgetAccentColorFor(_prefsManager, widgetTheme);
 
-  void _updateHomeWidget() {
+  String? _lastWidgetKey;
+  DateTime? _lastWidgetAt;
+
+  void _updateHomeWidget({bool force = false}) {
     final widgetTheme = _prefsManager.effectiveWidgetTheme;
+    final groupName = selectedGroup?.name ?? _prefsManager.selectedGroupName;
+    final accent = _widgetAccentColor(widgetTheme);
+    final fontScale = _prefsManager.widgetFontScale;
+    // Те же данные в ту же минуту (на старте: кэш, через секунду сеть с тем
+    // же содержимым) — без ~15 platform-вызовов и перерисовки виджета.
+    final key =
+        "${_hashOf(schedule)}|$groupName|$college|$widgetTheme|$accent|$fontScale";
+    final now = DateTime.now();
+    if (!force &&
+        key == _lastWidgetKey &&
+        now.difference(_lastWidgetAt ?? DateTime(0)) <
+            const Duration(minutes: 1)) {
+      return;
+    }
+    _lastWidgetKey = key;
+    _lastWidgetAt = now;
     HomeWidgetService.updateWidget(
       schedule: schedule,
-      groupName: selectedGroup?.name ?? _prefsManager.selectedGroupName,
+      groupName: groupName,
       themeKey: widgetTheme,
-      fontScale: _prefsManager.widgetFontScale,
+      fontScale: fontScale,
       college: college,
-      accentColorValue: _widgetAccentColor(widgetTheme),
+      accentColorValue: accent,
     );
   }
 
-  void refreshHomeWidget() {
-    _updateHomeWidget();
-  }
+  void refreshHomeWidget() => _updateHomeWidget(force: true);
 
   void refreshHomeWidgetTheme() {
     final widgetTheme = _prefsManager.effectiveWidgetTheme;
@@ -461,7 +526,19 @@ class ScheduleController extends ChangeNotifier {
   }
 
   Future<bool> refreshLessonTimesFromRemote({bool silent = false}) async {
+    if (_prefsManager.remoteConfigOwnsLessonTimes &&
+        RemoteConfigService.instance.available) {
+      return RemoteConfigService.instance.refresh();
+    }
     return _syncRemoteLessonTimesIfNeeded(force: true, silent: silent);
+  }
+
+  /// Remote Config поменял время пар или особые дни: перерисовать экран,
+  /// перепланировать напоминания и обновить виджет.
+  void scheduleConfigChanged() {
+    unawaited(_syncLessonNotifications());
+    _updateHomeWidget(force: true);
+    notifyListeners();
   }
 
   Future<bool> _syncRemoteLessonTimesIfNeeded({

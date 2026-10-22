@@ -113,7 +113,8 @@ class HomeWidgetService {
         countLabel =
             "${lessonNumbers.length} ${_lessonWord(lessonNumbers.length)}";
         dayItemsPayload = lessonNumbers
-            .map((n) => _blockRowForWidget(n, grouped[n]!, college))
+            .map((n) =>
+                _blockRowForWidget(n, grouped[n]!, college, displayDay!.date))
             .join(_itemSeparator);
       }
 
@@ -334,11 +335,14 @@ class HomeWidgetService {
     int lessonNumber,
     List<ScheduleItem> block,
     String college,
+    String date,
   ) {
     final sorted = block.toList()
       ..sort((a, b) => (a.subgroup ?? 0).compareTo(b.subgroup ?? 0));
     final subject = (sorted.first.subject ?? "—").trim();
-    final time = LessonTimes.getTime(lessonNumber, college: college);
+    // Особый день (сокращённый) — его время.
+    final time =
+        LessonTimes.getTime(lessonNumber, college: college, date: date);
     final details = _blockDetailsForWidget(sorted);
     return [
       "$lessonNumber",
@@ -357,7 +361,8 @@ class HomeWidgetService {
   static bool _dayIsOver(DaySchedule day, String college, DateTime now) {
     var lastEndMinutes = -1;
     for (final item in day.items) {
-      final t = LessonTimes.getTime(item.lessonNumber, college: college);
+      final t = LessonTimes.getTime(item.lessonNumber,
+          college: college, date: day.date);
       if (t == null) continue;
       final end = LessonTimes.parseTimeToMinutes(t.endTime);
       if (end > lastEndMinutes) lastEndMinutes = end;

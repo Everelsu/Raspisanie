@@ -6,6 +6,7 @@ import "../core/services/analytics_service.dart";
 import "../core/notifications/notification_service.dart";
 import "../core/services/font_service.dart";
 import "../core/services/app_icon_service.dart";
+import "../core/services/remote_config_service.dart";
 import "../core/widgets/splash_intro.dart";
 import "../features/home/presentation/home_page.dart";
 import "../features/schedule/presentation/schedule_controller.dart";
@@ -41,6 +42,11 @@ class _RaspiFlutterAppState extends State<RaspiFlutterApp>
       // Синхронизирует alias иконки и тему системного сплэша (API 33+)
       // со следующим запуском — идемпотентно.
       AppIconService.setIcon(_controller.prefs.effectiveAppIcon);
+      // Время пар и особые дни из Firebase Remote Config (без веба).
+      RemoteConfigService.instance.start(
+        prefs: _controller.prefs,
+        onChanged: _controller.scheduleConfigChanged,
+      );
     });
   }
 
@@ -96,7 +102,8 @@ class _RaspiFlutterAppState extends State<RaspiFlutterApp>
           theme: AppThemes.forKey(
             _themeKey,
             textThemeBuilder: widget.fontService.applyTo,
-            accentColorOverride: _accentColorValue != null ? Color(_accentColorValue!) : null,
+            accentColorOverride:
+                _accentColorValue != null ? Color(_accentColorValue!) : null,
           ),
           builder: (context, child) {
             final media = MediaQuery.of(context);

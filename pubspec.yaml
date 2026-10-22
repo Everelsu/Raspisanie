@@ -4,7 +4,7 @@ publish_to: "none"
 
 # Версия — единственный источник истины для релиза (workflow читает её отсюда).
 # Build-номер после «+» становится versionCode Android: major*10000 + minor*100 + patch.
-version: 2.2.0+20200
+version: 2.3.0+20300
 
 environment:
   sdk: ">=3.6.0 <4.0.0"
@@ -57,6 +57,7 @@ dependencies:
   workmanager: ^0.10.9
   easy_refresh: ^3.5.0
   flutter_native_splash: ^2.4.6
+  firebase_remote_config: ^6.7.0
 
 dev_dependencies:
   flutter_test:

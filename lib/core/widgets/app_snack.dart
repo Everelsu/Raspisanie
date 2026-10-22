@@ -35,9 +35,11 @@ void showAppSnack(
             width: 28,
             height: 28,
             alignment: Alignment.center,
-            decoration: BoxDecoration(
+            decoration: ShapeDecoration(
               color: accent.withAlpha(36),
-              borderRadius: BorderRadius.circular(9),
+              shape: RoundedSuperellipseBorder(
+                borderRadius: BorderRadius.circular(9),
+              ),
             ),
             child: Icon(
               icon ??
@@ -64,9 +66,9 @@ void showAppSnack(
       elevation: 0,
       behavior: SnackBarBehavior.floating,
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-        side: BorderSide(color: accent.withAlpha(70)),
+      shape: RoundedSuperellipseBorder(
+        borderRadius: BorderRadius.circular(20),
+        side: BorderSide(color: accent.withAlpha(70), width: 0.8),
       ),
       // Тот же расчёт, что у контента списков, — уведомление встаёт вплотную
       // над нижним баром, а не зависает посреди экрана.

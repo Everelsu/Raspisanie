@@ -3,11 +3,14 @@ import 'package:flutter/services.dart';
 import 'package:table_calendar/table_calendar.dart';
 
 import '../../../core/database/schedule_database.dart';
+import '../../../core/motion.dart';
 import '../data/holidays.dart';
+import '../data/special_days.dart';
 import '../domain/models.dart';
 import 'day_share_sheet.dart';
 import 'holiday_card.dart';
 import 'schedule_controller.dart';
+import '../../../core/widgets/pressable.dart';
 
 class HistoryCalendarSheet extends StatefulWidget {
   const HistoryCalendarSheet({super.key, required this.controller});
@@ -26,6 +29,7 @@ class _HistoryCalendarSheetState extends State<HistoryCalendarSheet>
   bool _loading = true;
   bool _loadingDay = false;
   String _lastScopeKey = '';
+  List<DaySchedule>? _lastSchedule;
 
   // true = переходим «вперёд» (calendar→day), false = «назад» (day→calendar)
   bool _slideForward = true;
@@ -34,6 +38,7 @@ class _HistoryCalendarSheetState extends State<HistoryCalendarSheet>
   void initState() {
     super.initState();
     _lastScopeKey = _scopeKey();
+    _lastSchedule = widget.controller.schedule;
     widget.controller.addListener(_onControllerChanged);
     _loadMarkedDays();
   }
@@ -46,7 +51,16 @@ class _HistoryCalendarSheetState extends State<HistoryCalendarSheet>
 
   void _onControllerChanged() {
     final nextKey = _scopeKey();
-    if (nextKey == _lastScopeKey) return;
+    if (nextKey == _lastScopeKey) {
+      // Шторка живёт постоянно: новое расписание (уже записанное в SQLite)
+      // — повод перечитать отмеченные дни, не сбрасывая выбор.
+      final schedule = widget.controller.schedule;
+      if (!identical(schedule, _lastSchedule) && schedule.isNotEmpty) {
+        _lastSchedule = schedule;
+        _loadMarkedDays();
+      }
+      return;
+    }
     _lastScopeKey = nextKey;
     if (!mounted) return;
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -216,8 +230,9 @@ class _HistoryCalendarSheetState extends State<HistoryCalendarSheet>
             ),
             Expanded(
               child: AnimatedSwitcher(
-                duration: const Duration(milliseconds: 300),
-                switchInCurve: Curves.easeOutCubic,
+                duration: const Duration(milliseconds: 320),
+                reverseDuration: const Duration(milliseconds: 200),
+                switchInCurve: AppMotion.sheetCurve,
                 switchOutCurve: Curves.easeInCubic,
                 layoutBuilder: (currentChild, previousChildren) {
                   return ClipRect(
@@ -234,17 +249,14 @@ class _HistoryCalendarSheetState extends State<HistoryCalendarSheet>
                   final offset = _slideForward
                       ? const Offset(0.08, 0)
                       : const Offset(-0.08, 0);
+                  // Как push в навигации iOS: новый экран въезжает по
+                  // направлению перехода, старый растворяется.
                   return FadeTransition(
                     opacity: anim,
                     child: SlideTransition(
                       position: Tween<Offset>(begin: offset, end: Offset.zero)
                           .animate(anim),
-                      child: AnimatedScale(
-                        duration: const Duration(milliseconds: 300),
-                        curve: Curves.easeOutCubic,
-                        scale: 0.985 + (anim.value * 0.015),
-                        child: child,
-                      ),
+                      child: child,
                     ),
                   );
                 },
@@ -259,9 +271,12 @@ class _HistoryCalendarSheetState extends State<HistoryCalendarSheet>
                             key: ValueKey('day_$_selectedDay'),
                             day: _selectedSchedule!,
                             college: widget.controller.college,
-                            holiday: widget.controller.prefs.showHolidays
-                                ? Holidays.forRawDate(_selectedSchedule!.date)
-                                : null,
+                            holiday: SpecialDays.cardFor(
+                              _selectedSchedule!.date,
+                              widget.controller.college,
+                              builtInHolidays:
+                                  widget.controller.prefs.showHolidays,
+                            ),
                             selectedDay: _selectedDay ?? DateTime.now(),
                             onBack: _backToCalendar,
                             primary: primary,
@@ -367,7 +382,8 @@ class _Header extends StatelessWidget {
               AnimatedSwitcher(
                 duration: const Duration(milliseconds: 200),
                 child: showBack
-                    ? GestureDetector(
+                    ? Pressable(
+                        scale: 0.88,
                         key: const ValueKey('back'),
                         onTap: onBack,
                         child: Container(
@@ -500,7 +516,8 @@ class _NavBtn extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final active = onTap != null;
-    return GestureDetector(
+    return Pressable(
+      scale: 0.85,
       onTap: onTap,
       child: Container(
         width: 30,

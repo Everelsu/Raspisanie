@@ -45,6 +45,11 @@ android {
         versionCode = flutter.versionCode
         versionName = flutter.versionName
         multiDexEnabled = true
+        // По умолчанию Crashlytics выключен — для всех типов сборки, включая
+        // profile (его создаёт Flutter-плагин, своих плейсхолдеров у него нет,
+        // и без дефолта `flutter run --profile` падал на слиянии манифеста).
+        // Release ниже включает.
+        manifestPlaceholders["firebaseCrashlyticsEnabled"] = false
     }
 
     buildTypes {

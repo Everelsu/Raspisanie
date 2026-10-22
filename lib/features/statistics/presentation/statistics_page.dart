@@ -12,6 +12,7 @@ import "../../../core/widgets/custom_refresh.dart";
 import "../../../core/widgets/empty_state_view.dart";
 import "../../schedule/domain/models.dart";
 import "../../schedule/presentation/schedule_controller.dart";
+import "../../../core/widgets/glass.dart";
 
 class StatisticsPage extends StatefulWidget {
   const StatisticsPage(
@@ -27,7 +28,6 @@ class StatisticsPage extends StatefulWidget {
 }
 
 class _StatisticsPageState extends State<StatisticsPage> {
-  bool _loaded = false;
   // Увеличивается только при первой загрузке данных — AnimationLimiter
   // пересоздаётся ровно один раз, анимации при рефреше не повторяются.
   int _listAnimKey = 0;
@@ -36,7 +36,6 @@ class _StatisticsPageState extends State<StatisticsPage> {
   void initState() {
     super.initState();
     widget.controller.addListener(_onController);
-    WidgetsBinding.instance.addPostFrameCallback((_) => _maybeLoad());
   }
 
   void _onController() {
@@ -49,13 +48,6 @@ class _StatisticsPageState extends State<StatisticsPage> {
   void dispose() {
     widget.controller.removeListener(_onController);
     super.dispose();
-  }
-
-  void _maybeLoad() {
-    if (!_loaded && widget.controller.prefs.isGroupSelected) {
-      _loaded = true;
-      widget.controller.loadStatistics();
-    }
   }
 
   @override
@@ -111,7 +103,8 @@ class _StatisticsPageState extends State<StatisticsPage> {
         const headerCount = 3;
         final disciplineCount = stats.disciplines.length;
         final totalItems = headerCount + disciplineCount + 1;
-        final useAnim = disciplineCount <= 30;
+        final useAnim =
+            disciplineCount <= 30 && !MediaQuery.disableAnimationsOf(context);
 
         Widget itemBuilder(BuildContext context, int index) {
           Widget child;
@@ -141,7 +134,8 @@ class _StatisticsPageState extends State<StatisticsPage> {
             position: index,
             duration: const Duration(milliseconds: 250),
             child: SlideAnimation(
-              verticalOffset: 20.0,
+              verticalOffset: 14.0,
+              curve: Curves.easeOutCubic,
               child: FadeInAnimation(child: child),
             ),
           );
@@ -512,29 +506,15 @@ class _DisciplineCard extends StatelessWidget {
     ].join("\n");
 
     HapticFeedback.mediumImpact();
-    showModalBottomSheet<void>(
-      context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
+    showGlassSheet<void>(
+      context,
       builder: (ctx) => SafeArea(
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 10, 20, 20),
+          padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Center(
-                child: Container(
-                  width: 36,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: cs.onSurface.withAlpha(60),
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 16),
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [

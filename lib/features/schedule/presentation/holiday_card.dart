@@ -25,10 +25,12 @@ class HolidayCard extends StatelessWidget {
     return Container(
       margin: const EdgeInsets.only(top: 10),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      decoration: BoxDecoration(
+      decoration: ShapeDecoration(
         color: accent.withAlpha(26),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: accent.withAlpha(70)),
+        shape: RoundedSuperellipseBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: BorderSide(color: accent.withAlpha(70), width: 0.8),
+        ),
       ),
       child: Row(
         children: [
@@ -36,9 +38,11 @@ class HolidayCard extends StatelessWidget {
             width: 32,
             height: 32,
             alignment: Alignment.center,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
+            decoration: ShapeDecoration(
               color: accent.withAlpha(40),
+              shape: RoundedSuperellipseBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
             ),
             child: Text(holiday.emoji, style: const TextStyle(fontSize: 16)),
           ),

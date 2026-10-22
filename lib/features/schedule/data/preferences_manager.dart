@@ -4,6 +4,7 @@ import "package:shared_preferences/shared_preferences.dart";
 
 import "../../../core/update/github_urls.dart";
 import "lesson_times.dart";
+import "special_days.dart";
 
 class CollegeSource {
   const CollegeSource({
@@ -112,7 +113,9 @@ class PreferencesManager {
 
   // --- App icon ---
   /// "auto" — иконка лаунчера следует теме приложения; иначе ключ темы.
-  String get appIcon => _prefs.getString("app_icon") ?? "auto";
+  /// По умолчанию — стандартная (тёмная) иконка: следовать теме — выбор
+  /// пользователя в «Оформлении», а не поведение из коробки.
+  String get appIcon => _prefs.getString("app_icon") ?? "dark";
   set appIcon(String v) => _prefs.setString("app_icon", v);
 
   /// Ключ темы, чья иконка должна стоять в лаунчере прямо сейчас.
@@ -501,6 +504,7 @@ class PreferencesManager {
   /// строит расписание: фоновый воркер и колбэк виджета стартуют с чистым
   /// кэшем и иначе считали бы время по встроенным дефолтам.
   void applyStoredLessonTimes() {
+    SpecialDays.load(SpecialDays.parse(specialDaysJson));
     for (final college in const [collegeDefault, collegeZabgc]) {
       final effective =
           getCustomLessonTimes(college) ?? getRemoteLessonTimes(college);
@@ -511,6 +515,23 @@ class PreferencesManager {
       }
     }
   }
+
+  // --- Firebase Remote Config (см. RemoteConfigService) ---
+  /// Особые дни (`special_days`) — сырой JSON; читают и фоновые изоляты.
+  String? get specialDaysJson => _prefs.getString("rc_special_days");
+  set specialDaysJson(String? v) => v == null
+      ? _prefs.remove("rc_special_days")
+      : _prefs.setString("rc_special_days", v);
+
+  /// Последнее применённое значение `lesson_times` (чтобы не дёргать UI зря).
+  String get rcLessonTimesRaw => _prefs.getString("rc_lesson_times") ?? "";
+  set rcLessonTimesRaw(String v) => _prefs.setString("rc_lesson_times", v);
+
+  /// Время пар отдаёт Remote Config — GitHub-синхронизация не перезаписывает.
+  bool get remoteConfigOwnsLessonTimes =>
+      _prefs.getBool("rc_owns_lesson_times") ?? false;
+  set remoteConfigOwnsLessonTimes(bool v) =>
+      _prefs.setBool("rc_owns_lesson_times", v);
 
   /// Remote-synced times (from GitHub). Used when user taps "Сбросить" so we restore to remote, not built-in.
   Map<int, LessonTime>? getRemoteLessonTimes(String college) {

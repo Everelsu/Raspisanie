@@ -20,14 +20,18 @@ class RefreshLogoMark extends StatefulWidget {
 
 class _RefreshLogoMarkState extends State<RefreshLogoMark>
     with SingleTickerProviderStateMixin {
-  late final AnimationController _ctrl = AnimationController(
-    vsync: this,
-    duration: const Duration(milliseconds: 1100),
-  );
+  // Не ленивый late-инициализатор: если лого ни разу не крутилось,
+  // контроллер создавался прямо в dispose() — на деактивированном
+  // элементе («Looking up a deactivated widget's ancestor is unsafe»).
+  late final AnimationController _ctrl;
 
   @override
   void initState() {
     super.initState();
+    _ctrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1100),
+    );
     if (widget.spinning) _ctrl.repeat();
   }
 
@@ -71,7 +75,7 @@ class _LogoPainter extends CustomPainter {
     final scale = size.width / 615;
     canvas.save();
     canvas.scale(scale, scale);
-    canvas.drawPath(_logoPath, Paint()..color = color);
+    canvas.drawPath(logoMarkPath, Paint()..color = color);
     canvas.restore();
   }
 
@@ -79,7 +83,8 @@ class _LogoPainter extends CustomPainter {
   bool shouldRepaint(_LogoPainter old) => old.color != color;
 }
 
-final Path _logoPath = Path()
+/// Знак в координатах 615×431 (центр — 307.5, 215.5).
+final Path logoMarkPath = Path()
   ..moveTo(55, 0.300781)
   ..cubicTo(55.0429, 0.240718, 55.0858, 0.180066, 55.1289, 0.120117)
   ..lineTo(307.613, 181.841)
@@ -107,4 +112,13 @@ final Path _logoPath = Path()
   ..lineTo(354.689, 215.723)
   ..lineTo(547.588, 354.558)
   ..cubicTo(552.49, 358.086, 556.638, 362.272, 560, 366.908)
+  ..close();
+
+/// Левое треугольное «окно» знака — сквозь него сплэш влетает в приложение.
+final Path logoMarkLeftHole = Path()
+  ..moveTo(55, 367.223)
+  ..cubicTo(58.4014, 362.461, 62.6267, 358.166, 67.6396, 354.558)
+  ..lineTo(260.537, 215.723)
+  ..lineTo(67.6396, 76.8896)
+  ..cubicTo(62.6264, 73.2815, 58.4015, 68.9853, 55, 64.2236)
   ..close();

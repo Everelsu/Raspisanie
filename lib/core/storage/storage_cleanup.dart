@@ -25,6 +25,7 @@ class StorageCleanup {
       final cache = ScheduleCache(prefs);
       cache.trimToMaxEntries(_maxScheduleCachePairs);
       cache.clearExpiredEntries();
+      cache.dropLegacyHistory();
       final groups = GroupsCache(prefs);
       groups.trimToMaxEntries(_maxGroupsCacheEntries);
 

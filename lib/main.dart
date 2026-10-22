@@ -1,3 +1,5 @@
+import "dart:async";
+
 import "package:firebase_core/firebase_core.dart";
 import "package:firebase_crashlytics/firebase_crashlytics.dart";
 import "package:firebase_messaging/firebase_messaging.dart";
@@ -33,68 +35,50 @@ void main() async {
     FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
   }
 
-  if (ScheduleBackgroundWorker.supported) {
-    await Workmanager().initialize(
-      callbackDispatcher,
-    );
-  }
-  try {
-    await Firebase.initializeApp(
-        options: DefaultFirebaseOptions.currentPlatform);
-    if (kReleaseMode) {
-      FlutterError.onError = (details) {
-        FirebaseCrashlytics.instance.recordFlutterFatalError(details);
-      };
-      WidgetsBinding.instance.platformDispatcher.onError = (error, stack) {
-        FirebaseCrashlytics.instance.recordError(error, stack, fatal: true);
-        return true;
-      };
-    } else {
-      // Debug: даём SDK создать session-директорию (setCustomKey ставится в очередь
-      // Crashlytics-executor ПОСЛЕ openSession, поэтому await гарантирует что
-      // директория уже существует к моменту когда Firebase Analytics вызовет log()).
-      // Без этого Analytics вызывает log() в гонке с созданием директории → ENOENT.
-      await FirebaseCrashlytics.instance.setCustomKey('build_type', 'debug');
-      await FirebaseCrashlytics.instance.setCrashlyticsCollectionEnabled(false);
-      FlutterError.onError = FlutterError.presentError;
-    }
-  } catch (_) {}
-  await initializeDateFormatting("ru_RU", null);
-  final prefs = await SharedPreferences.getInstance();
+  // Независимые шаги старта — параллельно: первый кадр ждёт самый долгий
+  // из них, а не сумму всех.
+  final workmanagerReady = ScheduleBackgroundWorker.supported
+      ? Workmanager().initialize(callbackDispatcher).catchError(
+          (Object e) => debugPrint("Workmanager init error: $e"))
+      : Future<void>.value();
   final fontService = FontService();
-  await fontService.load();
+  final (prefs, _, _, _, _) = await (
+    SharedPreferences.getInstance(),
+    initializeDateFormatting("ru_RU", null),
+    fontService.load(),
+    _initFirebase(),
+    _initNotifications(),
+  ).wait;
 
-  try {
-    await NotificationService.instance
-        .init()
-        .timeout(const Duration(seconds: 5));
-    await NotificationService.instance
-        .restoreIfNeeded()
-        .timeout(const Duration(seconds: 3));
-  } catch (e) {
-    debugPrint("NotificationService startup error: $e");
-  }
-
+  // Наблюдатель аналитики нужен MaterialApp уже в первом build.
   await AnalyticsService.instance.init();
   final pm = PreferencesManager(prefs);
-  await AnalyticsService.instance.setEnabled(pm.analyticsEnabled);
-  try {
-    final info = await PackageInfo.fromPlatform();
-    await AnalyticsService.instance.logAppStart(
-      appVersion: info.version,
-      platform: defaultTargetPlatform.name,
-    );
-  } catch (_) {}
-  // app_open логируется Firebase автоматически — ручной вызов не нужен.
-
-  await ScheduleBackgroundWorker.ensureRegisteredIfNeeded(prefs: pm);
-  await AppUpdateBackgroundWorker.ensureRegistered(prefs: pm);
-
-  try {
-    await initFirebaseMessaging();
-  } catch (_) {}
+  unawaited(AnalyticsService.instance.setEnabled(pm.analyticsEnabled));
 
   runApp(RaspiFlutterApp(prefs: prefs, fontService: fontService));
+
+  // Не нужно для первого кадра — после runApp. Раньше всё это (включая
+  // сетевой getToken() у FCM) держало нативный сплэш.
+  unawaited(() async {
+    try {
+      final info = await PackageInfo.fromPlatform();
+      await AnalyticsService.instance.logAppStart(
+        appVersion: info.version,
+        platform: defaultTargetPlatform.name,
+      );
+    } catch (_) {}
+    // app_open логируется Firebase автоматически — ручной вызов не нужен.
+    try {
+      await workmanagerReady;
+      await ScheduleBackgroundWorker.ensureRegisteredIfNeeded(prefs: pm);
+      await AppUpdateBackgroundWorker.ensureRegistered(prefs: pm);
+    } catch (e) {
+      debugPrint("Background workers registration error: $e");
+    }
+    try {
+      await initFirebaseMessaging();
+    } catch (_) {}
+  }());
 
   WidgetsBinding.instance.addPostFrameCallback((_) async {
     // Запрашиваем разрешение после runApp — Activity гарантированно готова.
@@ -123,4 +107,42 @@ void main() async {
     }
     StorageCleanup.runPeriodicCleanup(prefs);
   });
+}
+
+Future<void> _initFirebase() async {
+  try {
+    await Firebase.initializeApp(
+        options: DefaultFirebaseOptions.currentPlatform);
+    if (kReleaseMode) {
+      FlutterError.onError = (details) {
+        FirebaseCrashlytics.instance.recordFlutterFatalError(details);
+      };
+      WidgetsBinding.instance.platformDispatcher.onError = (error, stack) {
+        FirebaseCrashlytics.instance.recordError(error, stack, fatal: true);
+        return true;
+      };
+    } else {
+      // Debug: даём SDK создать session-директорию (setCustomKey ставится в очередь
+      // Crashlytics-executor ПОСЛЕ openSession, поэтому await гарантирует что
+      // директория уже существует к моменту когда Firebase Analytics вызовет log()).
+      // Без этого Analytics вызывает log() в гонке с созданием директории → ENOENT.
+      await FirebaseCrashlytics.instance.setCustomKey('build_type', 'debug');
+      await FirebaseCrashlytics.instance.setCrashlyticsCollectionEnabled(false);
+      FlutterError.onError = FlutterError.presentError;
+    }
+  } catch (_) {}
+}
+
+/// Разрешения запрашиваются в init() — до runApp (см. CLAUDE.md).
+Future<void> _initNotifications() async {
+  try {
+    await NotificationService.instance
+        .init()
+        .timeout(const Duration(seconds: 5));
+    await NotificationService.instance
+        .restoreIfNeeded()
+        .timeout(const Duration(seconds: 3));
+  } catch (e) {
+    debugPrint("NotificationService startup error: $e");
+  }
 }

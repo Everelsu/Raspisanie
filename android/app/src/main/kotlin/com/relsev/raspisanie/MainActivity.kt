@@ -1,5 +1,6 @@
 package com.relsev.raspisanie
 
+import android.appwidget.AppWidgetManager
 import android.content.ComponentName
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -13,6 +14,23 @@ import io.flutter.plugin.common.MethodChannel
 import java.io.File
 
 class MainActivity : FlutterActivity() {
+
+    companion object {
+        /** Тап по виджету: открыть вкладку расписания. */
+        const val EXTRA_OPEN_SCHEDULE = "open_schedule"
+    }
+
+    private val launchChannel = "com.relsev.raspisanie/launch"
+
+    // Тап по виджету, когда приложение уже открыто: задача поднимается без
+    // пересоздания, а сюда приходит интент — переключаем на расписание.
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        if (!intent.getBooleanExtra(EXTRA_OPEN_SCHEDULE, false)) return
+        val messenger = flutterEngine?.dartExecutor?.binaryMessenger ?: return
+        MethodChannel(messenger, launchChannel).invokeMethod("openSchedule", null)
+    }
 
     override fun onCreate(savedInstanceState: android.os.Bundle?) {
         super.onCreate(savedInstanceState)
@@ -116,13 +134,39 @@ class MainActivity : FlutterActivity() {
             // DONT_KILL_APP — иначе система убьёт приложение при переключении.
             pm.setComponentEnabledSetting(component, state, PackageManager.DONT_KILL_APP)
         }
-        // Сначала включаем новый alias, потом выключаем остальные: если процесс
-        // умрёт посреди цикла, в лаунчере всегда останется хотя бы одна иконка.
-        setState(enabledAlias, true)
-        for (alias in iconAliases.values) {
-            if (alias == enabledAlias) continue
-            val keep = isDebuggable && alias == "IconDark"
-            setState(alias, keep)
+        fun stateOf(alias: String) = pm.getComponentEnabledSetting(
+            ComponentName(packageName, "$packageName.$alias")
+        )
+        // Зовётся на каждом старте: если иконка уже нужная — ни десятка
+        // IPC-записей в PackageManager, ни пересборки виджетов.
+        val upToDate =
+            stateOf(enabledAlias) == PackageManager.COMPONENT_ENABLED_STATE_ENABLED &&
+                iconAliases.values.all { alias ->
+                    alias == enabledAlias ||
+                        (isDebuggable && alias == "IconDark") ||
+                        stateOf(alias) == PackageManager.COMPONENT_ENABLED_STATE_DISABLED
+                }
+        if (!upToDate) {
+            // Сначала включаем новый alias, потом выключаем остальные: если
+            // процесс умрёт посреди цикла, в лаунчере останется хотя бы одна иконка.
+            setState(enabledAlias, true)
+            for (alias in iconAliases.values) {
+                if (alias == enabledAlias) continue
+                val keep = isDebuggable && alias == "IconDark"
+                setState(alias, keep)
+            }
+            // Виджеты хранят интент alias'а иконки — пересобираем их, иначе
+            // тап по виджету вёл бы в только что выключенный компонент.
+            val widgets = AppWidgetManager.getInstance(this).getAppWidgetIds(
+                ComponentName(this, ScheduleWidgetProvider::class.java)
+            )
+            if (widgets.isNotEmpty()) {
+                sendBroadcast(
+                    Intent(this, ScheduleWidgetProvider::class.java)
+                        .setAction(AppWidgetManager.ACTION_APPWIDGET_UPDATE)
+                        .putExtra(AppWidgetManager.EXTRA_APPWIDGET_IDS, widgets)
+                )
+            }
         }
         // Сплэш следующего запуска — в цвет иконки: первый кадр системы
         // совпадает с оверлеем SplashIntro, серой вспышки нет. API 33+.
